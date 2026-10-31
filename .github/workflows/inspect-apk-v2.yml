@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       apk_url:
-        description: "Link to the APK (Google Drive share link, or a direct https link). Paste the NEW 1.0.3 link."
+        description: "Link to the APK (Google Drive share link, or a direct https link). Defaults to the 1.0.3 link."
         required: true
-        default: "https://drive.google.com/file/d/1QcHUrrsNjlb2BeH_MHkgUCuFYDbw_kzZ/view?usp=share_link"
+        default: "https://drive.google.com/file/d/1cSoNW0PKW_WHhULqHcKUMzv3bOpOuPan/view?usp=share_link"
 
 jobs:
   analyze:
@@ -24,12 +24,25 @@ jobs:
           APK_URL: ${{ github.event.inputs.apk_url }}
         run: |
           case "$APK_URL" in
-            *://google.com*) gdown "$APK_URL" -O game.apk ;;
+            *drive.google.com*|*docs.google.com*)
+              # Pull the file ID out of the share link, then let gdown fetch it (no --fuzzy needed)
+              ID=$(echo "$APK_URL" | sed -nE 's#.*/d/([A-Za-z0-9_-]+).*#\1#p')
+              if [ -z "$ID" ]; then ID=$(echo "$APK_URL" | sed -nE 's#.*[?&]id=([A-Za-z0-9_-]+).*#\1#p'); fi
+              echo "Drive file ID: $ID"
+              gdown "https://drive.google.com/uc?id=$ID" -O game.apk
+              ;;
             *) curl -L --fail -o game.apk "$APK_URL" ;;
           esac
           ls -la game.apk
           file game.apk
-          unzip -tq game.apk | tail -1
+          # Fail loudly if we got a web page instead of an APK
+          if ! unzip -tq game.apk > /dev/null 2>&1; then
+            echo "::error::Downloaded file is not a valid APK/zip. First bytes follow:"
+            head -c 400 game.apk
+            echo
+            exit 1
+          fi
+          echo "APK zip structure OK"
 
       - name: Unzip APK
         run: |
