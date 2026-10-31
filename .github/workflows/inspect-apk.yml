@@ -20,7 +20,7 @@ jobs:
 
       - name: Download APK
         run: |
-          gdown --fuzzy "${{ github.event.inputs.drive_url }}" -O game.apk
+          gdown "${{ github.event.inputs.drive_url }}" -O game.apk
           ls -la game.apk
           file game.apk
           # If this says "HTML document" the Drive link isn't public or hit a quota
