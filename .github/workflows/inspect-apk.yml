@@ -6,7 +6,7 @@ on:
       drive_url:
         description: "Google Drive share link to the APK (must be shared as 'Anyone with the link')"
         required: true
-        default: "https://drive.google.com/file/d/119Xuqnp5ZlkNlJTJ2X5gGl0XpyPKt6zX/view?usp=share_link"
+        default: "https://drive.google.com/file/d/1cSoNW0PKW_WHhULqHcKUMzv3bOpOuPan/view?usp=share_link"
 
 jobs:
   inspect:
