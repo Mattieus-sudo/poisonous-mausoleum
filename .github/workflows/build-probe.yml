@@ -1,4 +1,4 @@
-name: Build P2 probe IPA
+name: Build P2 probe IPA v2
 
 # One-file workflow: contains the whole probe app. Run it from the Actions tab.
 on:
@@ -12,7 +12,7 @@ jobs:
         run: |
           mkdir -p probe
           cat > probe/main.m <<'SRC_EOF'
-          // P2 Probe v1: answers the go/no-go questions for the Prototype 2 iOS port.
+          // P2 Probe v2: answers the go/no-go questions for the Prototype 2 iOS port.
           #import <UIKit/UIKit.h>
           #import <os/proc.h>
           #include <sys/mman.h>
@@ -25,6 +25,9 @@ jobs:
           #include <string.h>
           #include <stdint.h>
           #include <unistd.h>
+          #include <setjmp.h>
+          #include <signal.h>
+          #include <mach/mach.h>
 
           #ifndef MAP_JIT
           #define MAP_JIT 0x0800
@@ -96,46 +99,40 @@ jobs:
               L(@"");
           }
 
+          static kern_return_t tryFixed(uint64_t base, size_t sz) {
+              vm_address_t a = (vm_address_t)base;
+              kern_return_t kr = vm_allocate(mach_task_self(), &a, sz, VM_FLAGS_FIXED);
+              if (kr == KERN_SUCCESS) vm_deallocate(mach_task_self(), a, sz);
+              return kr;
+          }
+
           static void testWindow(void) {
               const uint64_t BASE = 0x2000000000ULL;
-              L(@"== GUEST WINDOW at fixed address 0x%llx (the go/no-go) ==", BASE);
-              size_t sizes[] = {MB(4096), MB(3072), MB(2048), MB(1024), MB(512), MB(256)};
-              void *held = NULL;
-              size_t heldSz = 0;
+              L(@"== FIXED-ADDRESS TESTS (vm_allocate FIXED never overwrites anything) ==");
+              L(@"codes: 0=OK, 1=INVALID_ADDRESS (outside allowed range), 3=NO_SPACE (occupied)");
+              uint64_t bases[] = {0x1000000000ULL, 0x2000000000ULL, 0x4000000000ULL,
+                                  0x6000000000ULL, 0x7000000000ULL, 0x7800000000ULL};
+              size_t sizes[] = {MB(64), MB(4096)};
               for (int i = 0; i < 6; i++) {
-                  errno = 0;
-                  void *p = mmap((void *)BASE, sizes[i], PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
-                  if (p == MAP_FAILED) {
-                      L(@"reserve %zu MB: FAILED errno=%d (%s)", sizes[i] >> 20, errno, strerror(errno));
-                      continue;
+                  for (int j = 0; j < 2; j++) {
+                      kern_return_t kr = tryFixed(bases[i], sizes[j]);
+                      L(@"base 0x%llx size %zu MB: code %d (%s)", bases[i], sizes[j] >> 20, (int)kr, mach_error_string(kr));
                   }
-                  if ((uint64_t)p != BASE) {
-                      L(@"reserve %zu MB: address NOT honored (got %p)", sizes[i] >> 20, p);
-                      munmap(p, sizes[i]);
-                      continue;
-                  }
-                  L(@"reserve %zu MB at fixed address: OK", sizes[i] >> 20);
-                  held = p;
-                  heldSz = sizes[i];
-                  break;
               }
-              if (!held) {
-                  L(@"RESULT: could NOT reserve even 256 MB at the fixed address.");
+              L(@"-- full window at 0x%llx --", BASE);
+              vm_address_t a = (vm_address_t)BASE;
+              kern_return_t kr = vm_allocate(mach_task_self(), &a, MB(4096), VM_FLAGS_FIXED);
+              if (kr != KERN_SUCCESS) {
+                  L(@"RESULT: 4 GB at the fixed address FAILED, code %d (%s)", (int)kr, mach_error_string(kr));
                   L(@"");
                   return;
               }
-              L(@"largest reservable at the fixed address: %zu MB", heldSz >> 20);
-              errno = 0;
-              if (mprotect(held, heldSz, PROT_READ | PROT_WRITE) == 0)
-                  L(@"make whole region read/write: OK");
-              else
-                  L(@"make whole region read/write: FAILED errno=%d (%s)", errno, strerror(errno));
+              L(@"4 GB reserved read/write at 0x%llx: OK", (uint64_t)a);
               size_t page = (size_t)getpagesize();
-              size_t touch = heldSz < MB(256) ? heldSz : MB(256);
-              for (size_t off = 0; off < touch; off += page) ((volatile uint8_t *)held)[off] = 1;
-              L(@"touched %zu MB inside it: OK (available now %.0f MB)", touch >> 20, availMB());
-              munmap(held, heldSz);
-              L(@"RESULT: %@", heldSz >= MB(4096) ? @"FULL 4 GB WINDOW WORKS -> GO" : @"only a partial window -> see sizes above");
+              for (size_t off = 0; off < MB(256); off += page) ((volatile uint8_t *)a)[off] = 1;
+              L(@"touched 256 MB inside it: OK (available now %.0f MB)", availMB());
+              vm_deallocate(mach_task_self(), a, MB(4096));
+              L(@"RESULT: FULL 4 GB WINDOW WORKS -> GO");
               L(@"");
           }
 
@@ -167,34 +164,67 @@ jobs:
 
           static const uint32_t kStub[2] = {0x52800540, 0xD65F03C0}; // mov w0,#42 ; ret
 
+          static sigjmp_buf g_jb;
+          static volatile sig_atomic_t g_sig;
+          static void *volatile g_addr;
+          static volatile int g_done;
+          static void sigh(int sig, siginfo_t *info, void *ctx) {
+              g_sig = sig;
+              g_addr = info->si_addr;
+              siglongjmp(g_jb, 1);
+          }
+
+          // Runs the stub, catching crashes and reporting a hang. Returns 42 on success.
+          static int callStub(void *p) {
+              struct sigaction sa, old[4];
+              memset(&sa, 0, sizeof sa);
+              sa.sa_sigaction = sigh;
+              sa.sa_flags = SA_SIGINFO | SA_NODEFER;
+              sigemptyset(&sa.sa_mask);
+              int sigs[4] = {SIGSEGV, SIGBUS, SIGILL, SIGTRAP};
+              for (int i = 0; i < 4; i++) sigaction(sigs[i], &sa, &old[i]);
+              g_done = 0;
+              dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC),
+                             dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                  if (!g_done) L(@"WATCHDOG: stub has not returned after 3 s (hung, or a debugger stopped this thread)");
+              });
+              volatile int r = -1;
+              if (sigsetjmp(g_jb, 1) == 0) {
+                  r = ((int (*)(void))p)();
+              } else {
+                  L(@"stub FAULTED: signal %d at address %p", (int)g_sig, g_addr);
+                  r = -2;
+              }
+              g_done = 1;
+              for (int i = 0; i < 4; i++) sigaction(sigs[i], &old[i], NULL);
+              return r;
+          }
+
           static void testJIT(void) {
-              L(@"== JIT TEST (MAP_JIT) ==");
-              L(@"If the app closes right after 'calling stub', JIT is NOT active.");
+              L(@"== JIT TEST A: MAP_JIT (Apple's official JIT region) ==");
               errno = 0;
               void *p = mmap(NULL, 16384, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
               if (p == MAP_FAILED) {
                   L(@"mmap MAP_JIT read/write/exec: FAILED errno=%d (%s)", errno, strerror(errno));
-                  L(@"RESULT: MAP_JIT not available in this launch");
+                  L(@"RESULT A: MAP_JIT not allowed for this app");
                   L(@"");
                   return;
               }
               L(@"mmap MAP_JIT read/write/exec: OK at %p", p);
               void (*wp)(int) = (void (*)(int))dlsym(RTLD_DEFAULT, "pthread_jit_write_protect_np");
-              L(@"pthread_jit_write_protect_np present: %@", wp ? @"yes" : @"no");
               if (wp) wp(0);
               memcpy(p, kStub, sizeof kStub);
               if (wp) wp(1);
               sys_icache_invalidate(p, sizeof kStub);
               L(@"calling stub...");
-              int r = ((int (*)(void))p)();
-              L(@"stub returned %d (expected 42) -> %@", r, r == 42 ? @"JIT WORKS" : @"unexpected");
+              int r = callStub(p);
+              L(@"RESULT A: stub returned %d -> %@", r, r == 42 ? @"MAP_JIT WORKS" : @"did NOT work");
               munmap(p, 16384);
               L(@"");
           }
 
           static void testMprotectRX(void) {
-              L(@"== W^X TEST: map read/write, copy code, switch to read/exec (no JIT flag) ==");
-              L(@"This is how a simple ELF loader would work. If the app closes after 'calling stub', it is blocked.");
+              L(@"== JIT TEST B: map read/write, copy code, switch to read/exec ==");
               errno = 0;
               void *p = mmap(NULL, 16384, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
               if (p == MAP_FAILED) {
@@ -205,16 +235,16 @@ jobs:
               errno = 0;
               if (mprotect(p, 16384, PROT_READ | PROT_EXEC) != 0) {
                   L(@"mprotect to read/exec: FAILED errno=%d (%s)", errno, strerror(errno));
-                  L(@"RESULT: blocked");
+                  L(@"RESULT B: blocked");
                   L(@"");
                   munmap(p, 16384);
                   return;
               }
-              L(@"mprotect to read/exec: OK");
+              L(@"mprotect to read/exec: OK (permission granted, now see if the code RUNS)");
               sys_icache_invalidate(p, sizeof kStub);
               L(@"calling stub...");
-              int r = ((int (*)(void))p)();
-              L(@"stub returned %d (expected 42) -> %@", r, r == 42 ? @"W^X SWITCH WORKS" : @"unexpected");
+              int r = callStub(p);
+              L(@"RESULT B: stub returned %d -> %@", r, r == 42 ? @"W^X SWITCH WORKS" : @"did NOT work");
               munmap(p, 16384);
               L(@"");
           }
@@ -285,7 +315,7 @@ jobs:
               NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
               g_path = [docs stringByAppendingPathComponent:@"probe_report.txt"];
               g_report = [NSMutableString new];
-              L(@"P2 PROBE v1  %@", [NSDate date]);
+              L(@"P2 PROBE v2  %@", [NSDate date]);
               L(@"(report is also saved as probe_report.txt, visible in Files > On My iPhone > P2 Probe)");
               L(@"");
               testBasics();
