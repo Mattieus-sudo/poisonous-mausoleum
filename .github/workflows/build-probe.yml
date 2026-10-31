@@ -1,0 +1,394 @@
+name: Build P2 probe IPA
+
+# One-file workflow: contains the whole probe app. Run it from the Actions tab.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Write probe sources
+        run: |
+          mkdir -p probe
+          cat > probe/main.m <<'SRC_EOF'
+          // P2 Probe v1: answers the go/no-go questions for the Prototype 2 iOS port.
+          #import <UIKit/UIKit.h>
+          #import <os/proc.h>
+          #include <sys/mman.h>
+          #include <sys/sysctl.h>
+          #include <sys/resource.h>
+          #include <sys/utsname.h>
+          #include <libkern/OSCacheControl.h>
+          #include <dlfcn.h>
+          #include <errno.h>
+          #include <string.h>
+          #include <stdint.h>
+          #include <unistd.h>
+
+          #ifndef MAP_JIT
+          #define MAP_JIT 0x0800
+          #endif
+          #define MB(x) ((size_t)(x) << 20)
+
+          static NSMutableString *g_report;
+          static NSString *g_path;
+          static UITextView *g_tv;
+
+          static void L(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
+          static void L(NSString *fmt, ...) {
+              va_list ap;
+              va_start(ap, fmt);
+              NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
+              va_end(ap);
+              NSString *snap;
+              @synchronized (g_report) {
+                  [g_report appendFormat:@"%@\n", s];
+                  // written on every line so the report survives if iOS kills the app
+                  [g_report writeToFile:g_path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                  snap = [g_report copy];
+              }
+              dispatch_async(dispatch_get_main_queue(), ^{
+                  g_tv.text = snap;
+                  if (snap.length > 0) [g_tv scrollRangeToVisible:NSMakeRange(snap.length - 1, 1)];
+              });
+          }
+
+          static double availMB(void) { return os_proc_available_memory() / 1048576.0; }
+
+          static void testBasics(void) {
+              struct utsname u;
+              uname(&u);
+              L(@"== DEVICE ==");
+              L(@"model id: %s", u.machine);
+              L(@"iOS: %@", UIDevice.currentDevice.systemVersion);
+              L(@"RAM: %.2f GB", NSProcessInfo.processInfo.physicalMemory / 1073741824.0);
+              L(@"page size: %d", (int)getpagesize());
+              L(@"memory available to this app now: %.0f MB", availMB());
+              struct rlimit rl;
+              if (getrlimit(RLIMIT_AS, &rl) == 0)
+                  L(@"RLIMIT_AS cur=%llu max=%llu", (unsigned long long)rl.rlim_cur, (unsigned long long)rl.rlim_max);
+              if (getrlimit(RLIMIT_DATA, &rl) == 0)
+                  L(@"RLIMIT_DATA cur=%llu max=%llu", (unsigned long long)rl.rlim_cur, (unsigned long long)rl.rlim_max);
+              int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, (int)getpid()};
+              struct kinfo_proc info;
+              size_t sz = sizeof info;
+              memset(&info, 0, sz);
+              if (sysctl(mib, 4, &info, &sz, NULL, 0) == 0)
+                  L(@"debugger/JIT-enabler attached (P_TRACED): %@", (info.kp_proc.p_flag & P_TRACED) ? @"YES" : @"no");
+              L(@"");
+          }
+
+          static void testAddressSpace(void) {
+              L(@"== ADDRESS SPACE: is a 64 MB map honored at these addresses? ==");
+              uint64_t hints[] = {0x0100000000ULL, 0x1000000000ULL, 0x2000000000ULL,
+                                  0x4000000000ULL, 0x8000000000ULL, 0x10000000000ULL};
+              for (int i = 0; i < 6; i++) {
+                  errno = 0;
+                  void *p = mmap((void *)hints[i], MB(64), PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
+                  if (p == MAP_FAILED) {
+                      L(@"0x%llx: FAILED errno=%d (%s)", hints[i], errno, strerror(errno));
+                  } else {
+                      L(@"0x%llx: %@ (got %p)", hints[i], (uint64_t)p == hints[i] ? @"HONORED" : @"moved elsewhere", p);
+                      munmap(p, MB(64));
+                  }
+              }
+              L(@"");
+          }
+
+          static void testWindow(void) {
+              const uint64_t BASE = 0x2000000000ULL;
+              L(@"== GUEST WINDOW at fixed address 0x%llx (the go/no-go) ==", BASE);
+              size_t sizes[] = {MB(4096), MB(3072), MB(2048), MB(1024), MB(512), MB(256)};
+              void *held = NULL;
+              size_t heldSz = 0;
+              for (int i = 0; i < 6; i++) {
+                  errno = 0;
+                  void *p = mmap((void *)BASE, sizes[i], PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
+                  if (p == MAP_FAILED) {
+                      L(@"reserve %zu MB: FAILED errno=%d (%s)", sizes[i] >> 20, errno, strerror(errno));
+                      continue;
+                  }
+                  if ((uint64_t)p != BASE) {
+                      L(@"reserve %zu MB: address NOT honored (got %p)", sizes[i] >> 20, p);
+                      munmap(p, sizes[i]);
+                      continue;
+                  }
+                  L(@"reserve %zu MB at fixed address: OK", sizes[i] >> 20);
+                  held = p;
+                  heldSz = sizes[i];
+                  break;
+              }
+              if (!held) {
+                  L(@"RESULT: could NOT reserve even 256 MB at the fixed address.");
+                  L(@"");
+                  return;
+              }
+              L(@"largest reservable at the fixed address: %zu MB", heldSz >> 20);
+              errno = 0;
+              if (mprotect(held, heldSz, PROT_READ | PROT_WRITE) == 0)
+                  L(@"make whole region read/write: OK");
+              else
+                  L(@"make whole region read/write: FAILED errno=%d (%s)", errno, strerror(errno));
+              size_t page = (size_t)getpagesize();
+              size_t touch = heldSz < MB(256) ? heldSz : MB(256);
+              for (size_t off = 0; off < touch; off += page) ((volatile uint8_t *)held)[off] = 1;
+              L(@"touched %zu MB inside it: OK (available now %.0f MB)", touch >> 20, availMB());
+              munmap(held, heldSz);
+              L(@"RESULT: %@", heldSz >= MB(4096) ? @"FULL 4 GB WINDOW WORKS -> GO" : @"only a partial window -> see sizes above");
+              L(@"");
+          }
+
+          static void testRamp(void) {
+              L(@"== MEMORY RAMP: touching real memory in 256 MB steps ==");
+              L(@"The app may be killed by iOS. The LAST line = how far it got.");
+              size_t step = MB(256);
+              void *chunks[24];
+              int n = 0;
+              for (; n < 24; n++) {
+                  void *p = mmap(NULL, step, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+                  if (p == MAP_FAILED) {
+                      L(@"mmap failed at %d MB (errno=%d)", n * 256, errno);
+                      break;
+                  }
+                  uint64_t x = 88172645463325252ULL + (uint64_t)n;
+                  uint64_t *q = (uint64_t *)p;
+                  for (size_t i = 0; i < step / 8; i++) {
+                      x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+                      q[i] = x;
+                  }
+                  chunks[n] = p;
+                  L(@"touched %d MB total, iOS says %.0f MB still available", (n + 1) * 256, availMB());
+              }
+              for (int i = 0; i < n; i++) munmap(chunks[i], step);
+              L(@"ramp finished WITHOUT being killed at %d MB", n * 256);
+              L(@"");
+          }
+
+          static const uint32_t kStub[2] = {0x52800540, 0xD65F03C0}; // mov w0,#42 ; ret
+
+          static void testJIT(void) {
+              L(@"== JIT TEST (MAP_JIT) ==");
+              L(@"If the app closes right after 'calling stub', JIT is NOT active.");
+              errno = 0;
+              void *p = mmap(NULL, 16384, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+              if (p == MAP_FAILED) {
+                  L(@"mmap MAP_JIT read/write/exec: FAILED errno=%d (%s)", errno, strerror(errno));
+                  L(@"RESULT: MAP_JIT not available in this launch");
+                  L(@"");
+                  return;
+              }
+              L(@"mmap MAP_JIT read/write/exec: OK at %p", p);
+              void (*wp)(int) = (void (*)(int))dlsym(RTLD_DEFAULT, "pthread_jit_write_protect_np");
+              L(@"pthread_jit_write_protect_np present: %@", wp ? @"yes" : @"no");
+              if (wp) wp(0);
+              memcpy(p, kStub, sizeof kStub);
+              if (wp) wp(1);
+              sys_icache_invalidate(p, sizeof kStub);
+              L(@"calling stub...");
+              int r = ((int (*)(void))p)();
+              L(@"stub returned %d (expected 42) -> %@", r, r == 42 ? @"JIT WORKS" : @"unexpected");
+              munmap(p, 16384);
+              L(@"");
+          }
+
+          static void testMprotectRX(void) {
+              L(@"== W^X TEST: map read/write, copy code, switch to read/exec (no JIT flag) ==");
+              L(@"This is how a simple ELF loader would work. If the app closes after 'calling stub', it is blocked.");
+              errno = 0;
+              void *p = mmap(NULL, 16384, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+              if (p == MAP_FAILED) {
+                  L(@"mmap read/write: FAILED errno=%d", errno);
+                  return;
+              }
+              memcpy(p, kStub, sizeof kStub);
+              errno = 0;
+              if (mprotect(p, 16384, PROT_READ | PROT_EXEC) != 0) {
+                  L(@"mprotect to read/exec: FAILED errno=%d (%s)", errno, strerror(errno));
+                  L(@"RESULT: blocked");
+                  L(@"");
+                  munmap(p, 16384);
+                  return;
+              }
+              L(@"mprotect to read/exec: OK");
+              sys_icache_invalidate(p, sizeof kStub);
+              L(@"calling stub...");
+              int r = ((int (*)(void))p)();
+              L(@"stub returned %d (expected 42) -> %@", r, r == 42 ? @"W^X SWITCH WORKS" : @"unexpected");
+              munmap(p, 16384);
+              L(@"");
+          }
+
+          @interface PVC : UIViewController
+          @end
+
+          @implementation PVC
+          - (UIButton *)btn:(NSString *)t action:(SEL)a {
+              UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+              [b setTitle:t forState:UIControlStateNormal];
+              b.titleLabel.font = [UIFont boldSystemFontOfSize:13];
+              b.backgroundColor = [UIColor colorWithWhite:0.18 alpha:1];
+              b.layer.cornerRadius = 8;
+              [b addTarget:self action:a forControlEvents:UIControlEventTouchUpInside];
+              return b;
+          }
+          - (UIStackView *)row:(NSArray *)views {
+              UIStackView *r = [[UIStackView alloc] initWithArrangedSubviews:views];
+              r.axis = UILayoutConstraintAxisHorizontal;
+              r.distribution = UIStackViewDistributionFillEqually;
+              r.spacing = 8;
+              [r.heightAnchor constraintEqualToConstant:44].active = YES;
+              return r;
+          }
+          - (void)viewDidLoad {
+              [super viewDidLoad];
+              self.view.backgroundColor = UIColor.blackColor;
+              g_tv = [UITextView new];
+              g_tv.editable = NO;
+              g_tv.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
+              g_tv.backgroundColor = UIColor.blackColor;
+              g_tv.textColor = [UIColor colorWithRed:0.4 green:1 blue:0.5 alpha:1];
+              @synchronized (g_report) { g_tv.text = g_report; }
+              UIStackView *r1 = [self row:@[[self btn:@"Copy report" action:@selector(copyIt)],
+                                            [self btn:@"Memory ramp" action:@selector(ramp)]]];
+              UIStackView *r2 = [self row:@[[self btn:@"JIT test" action:@selector(jit)],
+                                            [self btn:@"W^X test" action:@selector(wx)]]];
+              UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[g_tv, r1, r2]];
+              col.axis = UILayoutConstraintAxisVertical;
+              col.spacing = 8;
+              col.translatesAutoresizingMaskIntoConstraints = NO;
+              [self.view addSubview:col];
+              UILayoutGuide *g = self.view.safeAreaLayoutGuide;
+              [NSLayoutConstraint activateConstraints:@[
+                  [col.topAnchor constraintEqualToAnchor:g.topAnchor constant:8],
+                  [col.bottomAnchor constraintEqualToAnchor:g.bottomAnchor constant:-8],
+                  [col.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:8],
+                  [col.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-8]]];
+          }
+          - (void)copyIt {
+              NSString *s;
+              @synchronized (g_report) { s = [g_report copy]; }
+              UIPasteboard.generalPasteboard.string = s;
+              L(@"(report copied to clipboard)");
+          }
+          - (void)ramp { dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ testRamp(); }); }
+          - (void)jit  { dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ testJIT(); }); }
+          - (void)wx   { dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ testMprotectRX(); }); }
+          @end
+
+          @interface AD : UIResponder <UIApplicationDelegate>
+          @property(strong) UIWindow *window;
+          @end
+
+          @implementation AD
+          - (BOOL)application:(UIApplication *)a didFinishLaunchingWithOptions:(NSDictionary *)o {
+              NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+              g_path = [docs stringByAppendingPathComponent:@"probe_report.txt"];
+              g_report = [NSMutableString new];
+              L(@"P2 PROBE v1  %@", [NSDate date]);
+              L(@"(report is also saved as probe_report.txt, visible in Files > On My iPhone > P2 Probe)");
+              L(@"");
+              testBasics();
+              self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+              self.window.rootViewController = [PVC new];
+              [self.window makeKeyAndVisible];
+              dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                  testAddressSpace();
+                  testWindow();
+                  L(@"== safe tests done. Buttons below run the risky ones (they may close the app). ==");
+              });
+              return YES;
+          }
+          @end
+
+          int main(int argc, char *argv[]) {
+              @autoreleasepool {
+                  return UIApplicationMain(argc, argv, nil, NSStringFromClass([AD class]));
+              }
+          }
+          SRC_EOF
+          cat > probe/project.yml <<'SRC_EOF'
+          name: Probe
+          options:
+            deploymentTarget:
+              iOS: "15.0"
+          targets:
+            Probe:
+              type: application
+              platform: iOS
+              sources:
+                - path: main.m
+              info:
+                path: Info.plist
+                properties:
+                  CFBundleDisplayName: P2 Probe
+                  UILaunchScreen: {}
+                  UIFileSharingEnabled: true
+                  LSSupportsOpeningDocumentsInPlace: true
+                  UISupportedInterfaceOrientations:
+                    - UIInterfaceOrientationPortrait
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: com.p2probe.app
+                  CODE_SIGNING_ALLOWED: "NO"
+                  CODE_SIGNING_REQUIRED: "NO"
+                  CODE_SIGN_IDENTITY: ""
+          SRC_EOF
+          cat > probe/entitlements.plist <<'SRC_EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>com.apple.developer.kernel.extended-virtual-addressing</key>
+            <true/>
+            <key>com.apple.developer.kernel.increased-memory-limit</key>
+            <true/>
+            <key>get-task-allow</key>
+            <true/>
+          </dict>
+          </plist>
+          SRC_EOF
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: probe
+        run: xcodegen generate
+
+      - name: Build (unsigned)
+        working-directory: probe
+        run: |
+          set -o pipefail
+          xcodebuild -project Probe.xcodeproj -scheme Probe -configuration Release \
+            -sdk iphoneos -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            > build.log 2>&1 || { tail -80 build.log; exit 1; }
+          tail -5 build.log
+          ls build/Build/Products/Release-iphoneos/
+
+      - name: Package plain IPA
+        working-directory: probe
+        run: |
+          mkdir -p out/plain/Payload
+          cp -R build/Build/Products/Release-iphoneos/Probe.app out/plain/Payload/
+          (cd out/plain && zip -qry ../P2Probe-plain.ipa Payload)
+          ls -l out
+
+      - name: Package entitled IPA (extra memory entitlements)
+        continue-on-error: true
+        working-directory: probe
+        run: |
+          brew install ldid
+          mkdir -p out/ent/Payload
+          cp -R build/Build/Products/Release-iphoneos/Probe.app out/ent/Payload/
+          ldid -Sentitlements.plist out/ent/Payload/Probe.app/Probe
+          (cd out/ent && zip -qry ../P2Probe-entitled.ipa Payload)
+          ls -l out
+
+      - name: Upload IPAs
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-probe-ipas
+          path: |
+            probe/out/*.ipa
