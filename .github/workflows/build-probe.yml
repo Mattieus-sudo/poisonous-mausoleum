@@ -1,4 +1,4 @@
-name: Build P2 probe IPA v2
+name: Build P2 probe IPA v3
 
 # One-file workflow: contains the whole probe app. Run it from the Actions tab.
 on:
@@ -12,7 +12,7 @@ jobs:
         run: |
           mkdir -p probe
           cat > probe/main.m <<'SRC_EOF'
-          // P2 Probe v2: answers the go/no-go questions for the Prototype 2 iOS port.
+          // P2 Probe v3 (address-space map): answers the go/no-go questions for the Prototype 2 iOS port.
           #import <UIKit/UIKit.h>
           #import <os/proc.h>
           #include <sys/mman.h>
@@ -25,8 +25,6 @@ jobs:
           #include <string.h>
           #include <stdint.h>
           #include <unistd.h>
-          #include <setjmp.h>
-          #include <signal.h>
           #include <mach/mach.h>
 
           #ifndef MAP_JIT
@@ -99,40 +97,58 @@ jobs:
               L(@"");
           }
 
-          static kern_return_t tryFixed(uint64_t base, size_t sz) {
-              vm_address_t a = (vm_address_t)base;
-              kern_return_t kr = vm_allocate(mach_task_self(), &a, sz, VM_FLAGS_FIXED);
-              if (kr == KERN_SUCCESS) vm_deallocate(mach_task_self(), a, sz);
-              return kr;
+          static void testRegions(void) {
+              L(@"== MEMORY MAP above 4 GB (what is already mapped, and the free gaps) ==");
+              const uint64_t LO = 0x100000000ULL, HI = 0x10000000000ULL;
+              vm_address_t addr = (vm_address_t)LO;
+              uint64_t prevEnd = LO;
+              int lines = 0, total = 0;
+              while (1) {
+                  vm_size_t size = 0;
+                  vm_region_basic_info_data_64_t info;
+                  mach_msg_type_number_t cnt = VM_REGION_BASIC_INFO_COUNT_64;
+                  mach_port_t obj = MACH_PORT_NULL;
+                  kern_return_t kr = vm_region_64(mach_task_self(), &addr, &size, VM_REGION_BASIC_INFO_64,
+                                                  (vm_region_info_t)&info, &cnt, &obj);
+                  if (kr != KERN_SUCCESS || (uint64_t)addr >= HI) {
+                      if ((uint64_t)HI > prevEnd)
+                          L(@"  FREE 0x%llx - 0x%llx (%llu MB)", prevEnd, HI, (HI - prevEnd) >> 20);
+                      break;
+                  }
+                  total++;
+                  if ((uint64_t)addr > prevEnd && (((uint64_t)addr - prevEnd) >> 20) >= 512)
+                      L(@"  FREE 0x%llx - 0x%llx (%llu MB)", prevEnd, (uint64_t)addr, ((uint64_t)addr - prevEnd) >> 20);
+                  if (lines < 60) {
+                      L(@"  MAPPED 0x%llx - 0x%llx %c%c%c (%llu MB)", (uint64_t)addr, (uint64_t)addr + size,
+                        (info.protection & VM_PROT_READ) ? 'r' : '-', (info.protection & VM_PROT_WRITE) ? 'w' : '-',
+                        (info.protection & VM_PROT_EXECUTE) ? 'x' : '-', (uint64_t)size >> 20);
+                      lines++;
+                  }
+                  prevEnd = (uint64_t)addr + size;
+                  addr += size;
+              }
+              L(@"  (%d mapped regions above 4 GB; first 60 shown)", total);
+              L(@"");
           }
 
           static void testWindow(void) {
-              const uint64_t BASE = 0x2000000000ULL;
               L(@"== FIXED-ADDRESS TESTS (vm_allocate FIXED never overwrites anything) ==");
-              L(@"codes: 0=OK, 1=INVALID_ADDRESS (outside allowed range), 3=NO_SPACE (occupied)");
-              uint64_t bases[] = {0x1000000000ULL, 0x2000000000ULL, 0x4000000000ULL,
-                                  0x6000000000ULL, 0x7000000000ULL, 0x7800000000ULL};
-              size_t sizes[] = {MB(64), MB(4096)};
-              for (int i = 0; i < 6; i++) {
-                  for (int j = 0; j < 2; j++) {
-                      kern_return_t kr = tryFixed(bases[i], sizes[j]);
-                      L(@"base 0x%llx size %zu MB: code %d (%s)", bases[i], sizes[j] >> 20, (int)kr, mach_error_string(kr));
-                  }
-              }
-              L(@"-- full window at 0x%llx --", BASE);
-              vm_address_t a = (vm_address_t)BASE;
-              kern_return_t kr = vm_allocate(mach_task_self(), &a, MB(4096), VM_FLAGS_FIXED);
-              if (kr != KERN_SUCCESS) {
-                  L(@"RESULT: 4 GB at the fixed address FAILED, code %d (%s)", (int)kr, mach_error_string(kr));
-                  L(@"");
-                  return;
-              }
-              L(@"4 GB reserved read/write at 0x%llx: OK", (uint64_t)a);
+              L(@"codes: 0=OK, 1=INVALID_ADDRESS, 3=NO_SPACE");
+              uint64_t bases[] = {0x2000000000ULL, 0x7000000000ULL, 0x7800000000ULL};
               size_t page = (size_t)getpagesize();
-              for (size_t off = 0; off < MB(256); off += page) ((volatile uint8_t *)a)[off] = 1;
-              L(@"touched 256 MB inside it: OK (available now %.0f MB)", availMB());
-              vm_deallocate(mach_task_self(), a, MB(4096));
-              L(@"RESULT: FULL 4 GB WINDOW WORKS -> GO");
+              for (int i = 0; i < 3; i++) {
+                  vm_address_t a = (vm_address_t)bases[i];
+                  kern_return_t kr = vm_allocate(mach_task_self(), &a, MB(4096), VM_FLAGS_FIXED);
+                  if (kr != KERN_SUCCESS) {
+                      L(@"4 GB at 0x%llx: FAILED code %d (%s)", bases[i], (int)kr, mach_error_string(kr));
+                      continue;
+                  }
+                  volatile uint8_t *p = (volatile uint8_t *)a;
+                  for (size_t off = 0; off < MB(64); off += page) p[off] = 1;
+                  for (size_t off = MB(4096) - MB(64); off < MB(4096); off += page) p[off] = 1;
+                  L(@"4 GB at 0x%llx: OK (touched first and last 64 MB; available %.0f MB)", bases[i], availMB());
+                  vm_deallocate(mach_task_self(), a, MB(4096));
+              }
               L(@"");
           }
 
@@ -159,93 +175,6 @@ jobs:
               }
               for (int i = 0; i < n; i++) munmap(chunks[i], step);
               L(@"ramp finished WITHOUT being killed at %d MB", n * 256);
-              L(@"");
-          }
-
-          static const uint32_t kStub[2] = {0x52800540, 0xD65F03C0}; // mov w0,#42 ; ret
-
-          static sigjmp_buf g_jb;
-          static volatile sig_atomic_t g_sig;
-          static void *volatile g_addr;
-          static volatile int g_done;
-          static void sigh(int sig, siginfo_t *info, void *ctx) {
-              g_sig = sig;
-              g_addr = info->si_addr;
-              siglongjmp(g_jb, 1);
-          }
-
-          // Runs the stub, catching crashes and reporting a hang. Returns 42 on success.
-          static int callStub(void *p) {
-              struct sigaction sa, old[4];
-              memset(&sa, 0, sizeof sa);
-              sa.sa_sigaction = sigh;
-              sa.sa_flags = SA_SIGINFO | SA_NODEFER;
-              sigemptyset(&sa.sa_mask);
-              int sigs[4] = {SIGSEGV, SIGBUS, SIGILL, SIGTRAP};
-              for (int i = 0; i < 4; i++) sigaction(sigs[i], &sa, &old[i]);
-              g_done = 0;
-              dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC),
-                             dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-                  if (!g_done) L(@"WATCHDOG: stub has not returned after 3 s (hung, or a debugger stopped this thread)");
-              });
-              volatile int r = -1;
-              if (sigsetjmp(g_jb, 1) == 0) {
-                  r = ((int (*)(void))p)();
-              } else {
-                  L(@"stub FAULTED: signal %d at address %p", (int)g_sig, g_addr);
-                  r = -2;
-              }
-              g_done = 1;
-              for (int i = 0; i < 4; i++) sigaction(sigs[i], &old[i], NULL);
-              return r;
-          }
-
-          static void testJIT(void) {
-              L(@"== JIT TEST A: MAP_JIT (Apple's official JIT region) ==");
-              errno = 0;
-              void *p = mmap(NULL, 16384, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
-              if (p == MAP_FAILED) {
-                  L(@"mmap MAP_JIT read/write/exec: FAILED errno=%d (%s)", errno, strerror(errno));
-                  L(@"RESULT A: MAP_JIT not allowed for this app");
-                  L(@"");
-                  return;
-              }
-              L(@"mmap MAP_JIT read/write/exec: OK at %p", p);
-              void (*wp)(int) = (void (*)(int))dlsym(RTLD_DEFAULT, "pthread_jit_write_protect_np");
-              if (wp) wp(0);
-              memcpy(p, kStub, sizeof kStub);
-              if (wp) wp(1);
-              sys_icache_invalidate(p, sizeof kStub);
-              L(@"calling stub...");
-              int r = callStub(p);
-              L(@"RESULT A: stub returned %d -> %@", r, r == 42 ? @"MAP_JIT WORKS" : @"did NOT work");
-              munmap(p, 16384);
-              L(@"");
-          }
-
-          static void testMprotectRX(void) {
-              L(@"== JIT TEST B: map read/write, copy code, switch to read/exec ==");
-              errno = 0;
-              void *p = mmap(NULL, 16384, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-              if (p == MAP_FAILED) {
-                  L(@"mmap read/write: FAILED errno=%d", errno);
-                  return;
-              }
-              memcpy(p, kStub, sizeof kStub);
-              errno = 0;
-              if (mprotect(p, 16384, PROT_READ | PROT_EXEC) != 0) {
-                  L(@"mprotect to read/exec: FAILED errno=%d (%s)", errno, strerror(errno));
-                  L(@"RESULT B: blocked");
-                  L(@"");
-                  munmap(p, 16384);
-                  return;
-              }
-              L(@"mprotect to read/exec: OK (permission granted, now see if the code RUNS)");
-              sys_icache_invalidate(p, sizeof kStub);
-              L(@"calling stub...");
-              int r = callStub(p);
-              L(@"RESULT B: stub returned %d -> %@", r, r == 42 ? @"W^X SWITCH WORKS" : @"did NOT work");
-              munmap(p, 16384);
               L(@"");
           }
 
@@ -281,8 +210,7 @@ jobs:
               @synchronized (g_report) { g_tv.text = g_report; }
               UIStackView *r1 = [self row:@[[self btn:@"Copy report" action:@selector(copyIt)],
                                             [self btn:@"Memory ramp" action:@selector(ramp)]]];
-              UIStackView *r2 = [self row:@[[self btn:@"JIT test" action:@selector(jit)],
-                                            [self btn:@"W^X test" action:@selector(wx)]]];
+              UIStackView *r2 = [self row:@[[self btn:@"Re-run address tests" action:@selector(addr)]]];
               UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[g_tv, r1, r2]];
               col.axis = UILayoutConstraintAxisVertical;
               col.spacing = 8;
@@ -302,8 +230,7 @@ jobs:
               L(@"(report copied to clipboard)");
           }
           - (void)ramp { dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ testRamp(); }); }
-          - (void)jit  { dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ testJIT(); }); }
-          - (void)wx   { dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ testMprotectRX(); }); }
+          - (void)addr { dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ testAddressSpace(); testRegions(); testWindow(); }); }
           @end
 
           @interface AD : UIResponder <UIApplicationDelegate>
@@ -315,7 +242,7 @@ jobs:
               NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
               g_path = [docs stringByAppendingPathComponent:@"probe_report.txt"];
               g_report = [NSMutableString new];
-              L(@"P2 PROBE v2  %@", [NSDate date]);
+              L(@"P2 PROBE v3  %@", [NSDate date]);
               L(@"(report is also saved as probe_report.txt, visible in Files > On My iPhone > P2 Probe)");
               L(@"");
               testBasics();
@@ -324,8 +251,9 @@ jobs:
               [self.window makeKeyAndVisible];
               dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                   testAddressSpace();
+                  testRegions();
                   testWindow();
-                  L(@"== safe tests done. Buttons below run the risky ones (they may close the app). ==");
+                  L(@"== tests done. ==");
               });
               return YES;
           }
