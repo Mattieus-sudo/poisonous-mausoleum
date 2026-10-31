@@ -24,7 +24,7 @@ jobs:
           APK_URL: ${{ github.event.inputs.apk_url }}
         run: |
           case "$APK_URL" in
-            *drive.google.com*) gdown --fuzzy "$APK_URL" -O game.apk ;;
+            *://google.com*) gdown "$APK_URL" -O game.apk ;;
             *) curl -L --fail -o game.apk "$APK_URL" ;;
           esac
           ls -la game.apk
