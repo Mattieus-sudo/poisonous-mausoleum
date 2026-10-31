@@ -1,0 +1,59 @@
+name: Vulkan feasibility scan (libp2re vs MoltenVK)
+# Reads only libp2re.so strings and MoltenVK's public source. Produces a short report, no game binaries uploaded.
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: Drive share link to the APK (1.0.3)
+        default: https://drive.google.com/file/d/1cSoNW0PKW_WHhULqHcKUMzv3bOpOuPan/view?usp=share_link
+jobs:
+  scan:
+    runs-on: macos-latest
+    steps:
+      - name: Download APK and extract libp2re.so
+        env:
+          APK_URL: ${{ inputs.apk_url }}
+        run: |
+          set -e
+          python3 -m venv .venv && . .venv/bin/activate && pip install -q gdown
+          ID=$(echo "$APK_URL" | sed -E 's#.*/d/([^/]+).*#\1#')
+          gdown "https://drive.google.com/uc?id=$ID" -O game.apk
+          unzip -tq game.apk >/dev/null || { echo "not a zip"; head -c 400 game.apk; exit 1; }
+          mkdir -p work && unzip -o -j game.apk lib/arm64-v8a/libp2re.so -d work
+      - name: Get MoltenVK source (shallow)
+        run: git clone --depth 1 https://github.com/KhronosGroup/MoltenVK.git mvk && git -C mvk log -1 --format='MoltenVK commit %h %cs'
+      - name: Compare
+        run: |
+          set -e
+          . .venv/bin/activate
+          cat > scan.py <<'EOF_SCAN'
+          import re, subprocess, glob, sys
+          so = open("work/libp2re.so", "rb").read()
+          strs = set(re.findall(rb"[\x20-\x7e]{4,200}", so))
+          txt = [s.decode() for s in strs]
+          exts = sorted({m for s in txt for m in re.findall(r"\bVK_[A-Za-z0-9]+_[A-Za-z0-9_]+\b", s) if not m.isupper() or "_" in m and m.count("_") >= 2})
+          exts = sorted({e for e in exts if re.match(r"VK_(KHR|EXT|AMD|NV|NVX|ARM|QCOM|IMG|INTEL|GOOGLE|ANDROID|MVK|VALVE|HUAWEI|FUCHSIA|MESA)_[a-z0-9_]+$", e)})
+          feats = sorted({m for s in txt for m in re.findall(r"VkPhysicalDevice[A-Za-z0-9]*Features[0-9A-Za-z]*", s)})
+          vkfn = sorted({m for s in txt for m in re.findall(r"^vk[A-Z][A-Za-z0-9]+$", s)})
+          ver = [s for s in txt if re.search(r"vulkan|vk[a-z]*:|ngfx", s, re.I)][:60]
+          defs = glob.glob("mvk/**/MVKExtensions.def", recursive=True)
+          sup = set()
+          if defs:
+              for l in open(defs[0], errors="ignore"):
+                  m = re.match(r"\s*MVK_EXTENSION\(\s*([A-Za-z0-9_]+)\s*,", l)
+                  if m: sup.add("VK_" + m.group(1))
+          print("# Vulkan scan\n")
+          print(f"- extension-like strings in libp2re: {len(exts)}; MoltenVK extension table entries parsed: {len(sup)}")
+          if not sup: print("- **WARNING: MoltenVK extension table not found/parsed; comparison below is empty**")
+          miss = [e for e in exts if e not in sup and e.lower() not in {s.lower() for s in sup}]
+          print(f"\n## Extensions named in the binary that MoltenVK does NOT list ({len(miss)})"); [print("-", e) for e in miss]
+          print(f"\n## Extensions named in the binary that MoltenVK lists ({len(exts)-len(miss)})"); [print("-", e) for e in exts if e not in miss]
+          print(f"\n## Feature structs named ({len(feats)})"); [print("-", f) for f in feats]
+          print(f"\n## vk* entry points named ({len(vkfn)})"); print(" ".join(vkfn))
+          print("\n## Version / loader strings"); [print("-", s[:160]) for s in ver]
+          EOF_SCAN
+          python3 scan.py | tee vk-report.md >> $GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vk-report
+          path: vk-report.md
