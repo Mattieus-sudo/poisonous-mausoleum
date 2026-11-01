@@ -2687,6 +2687,7 @@ jobs:
           ls -l P2Loader.ipa
       - name: Step summary (paste this back)
         if: always()
+        continue-on-error: true
         run: |
           { echo '```'; head -c 60000 disasm/disasm.txt 2>/dev/null; echo '--- x18 uses (first 60) ---'; head -n 60 disasm/x18.txt 2>/dev/null; echo '--- dev debug-switch strings (first 700 lines) ---'; head -n 700 disasm/markers.txt 2>/dev/null; echo '```'; } >> $GITHUB_STEP_SUMMARY
           { echo '```'; cat src/prep-report.md 2>/dev/null | cut -c1-600; echo '```'; } >> $GITHUB_STEP_SUMMARY
