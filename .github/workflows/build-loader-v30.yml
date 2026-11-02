@@ -1507,9 +1507,33 @@ jobs:
           }
           static int sh_fstat(int fd, void *out) { struct stat s; int r = fstat(fd, &s); if (r == 0) st_to_bionic(&s, (uint8_t *)out); return r; }
           static int sh_access(const char *p, int m) { char b[1100]; return access(fixp(p, b, sizeof b), m); }
+          /* v30: the game's Present() polls a file "<something>/../rtdump" (found by the xref step: fopen, then fscanf of one number [probably %x], then
+             "rtdump: next draw with ps %08x"): a one-number text file that arms the dev's render-target range dump for the next draw that uses that pixel shader. We cannot
+             make text files on the phone, so a FOLDER named rtdump_ps=<hex shader id> (id as printed in p2.log, e.g. rtdump_ps=04000207) makes this shim hand the game a
+             one-line file containing that id, once, and the folder is removed (so it can be made while the game runs). Where exactly the game looks is logged below. */
+          static void *rt_serve(void) {
+              if (!gDocs[0]) return NULL;
+              DIR *d = opendir(gDocs); if (!d) return NULL;
+              char hex[40] = "", nm[300] = ""; struct dirent *e;
+              while ((e = readdir(d))) if (!strncmp(e->d_name, "rtdump_ps=", 10)) { snprintf(nm, sizeof nm, "%s", e->d_name); snprintf(hex, sizeof hex, "%.30s", e->d_name + 10); break; }
+              closedir(d);
+              if (!hex[0]) return NULL;
+              char dir[1300]; snprintf(dir, sizeof dir, "%s/%s", gDocs, nm); rmdir(dir);
+              for (const char *c = hex; *c; c++) if (!((*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f') || (*c >= 'A' && *c <= 'F'))) { L("RTDUMP trigger ignored (not a hex number): %s", nm); return NULL; }
+              char fp[1200]; snprintf(fp, sizeof fp, "%s/rtdump_trigger.txt", gDocs);
+              FILE *w = fopen(fp, "w"); if (!w) return NULL; fprintf(w, "%s\n", hex); fclose(w);
+              L("RTDUMP trigger served to the game: ps %s (folder %s removed)", hex, nm);
+              return fopen(fp, "r");
+          }
           static void *sh_fopen(const char *p, const char *m) {
-              static int logged; char b[1100]; const char *q = fixp(p, b, sizeof b); void *f = fopen(q, m);
-              if (logged++ < 20) L("PLAT fopen(%s, %s) -> %p", okptr((uint64_t)q) ? q : "?", okptr((uint64_t)m) ? m : "?", f); return f;
+              static int logged, mlog; char b[1100]; const char *q = fixp(p, b, sizeof b); void *f = NULL;
+              int qok = okptr((uint64_t)q), mok = okptr((uint64_t)m);
+              int mark = qok && strstr(q, "/../") != NULL;
+              if (mark && mok && m[0] == 'r') { size_t n = strlen(q); if (n >= 10 && !strcmp(q + n - 10, "/../rtdump")) f = rt_serve(); }
+              if (!f) f = fopen(q, m);
+              if (logged++ < 20) L("PLAT fopen(%s, %s) -> %p", qok ? q : "?", mok ? m : "?", f);
+              else if (mark && mlog++ < 24) L("PLAT marker-probe fopen(%s, %s) -> %p", q, mok ? m : "?", f);
+              return f;
           }
           static void *sh_opendir(const char *p) {
               static int logged; char b[1100]; const char *q = fixp(p, b, sizeof b); void *d = opendir(q);
@@ -1571,10 +1595,12 @@ jobs:
                   "vk_loadop_fix_off   do NOT rewrite Vulkan LOAD_OP_NONE / STORE_OP_NONE to LOAD / STORE (v29 default rewrites them; see VKTRACE lines).\n"
                   "vktrace_now         while the game runs: create this folder (switch app, make it, come back). The next frame boundary prints a VKTRACE\n"
                   "                    dump of that frame's render passes and the loader deletes the folder again, so you can repeat it.\n\n"
+                  "rtdump_ps=<hex id>  (v30) while the game runs: make a folder like rtdump_ps=04000207 (a pixel-shader id from p2.log). The loader hands the game's\n"
+                  "                    own render-target range dump (rtdump) a one-line trigger file once and removes the folder. Results go to p2.log (\"rtdump: ... range r a..b\").\n"
                   "setenv_NAME=VALUE  (v30) a folder named like  setenv_P2RE_VKFLATPS=1  sets the environment variable P2RE_VKFLATPS=1 BEFORE the game starts.\n"
                   "                    Only names starting with P2RE_ are accepted. Without =VALUE the value is 1. These are the dev's own debug switches (names found in\n"
                   "                    libp2re.so; what each does is NOT verified): P2RE_VKFLATPS  P2RE_VKSHOT  P2RE_VKSHOTDIR  P2RE_VKSKIPPLAN  P2RE_VKGPUTIME\n"
-                  "                    P2RE_VKSHADERDUMP  P2RE_NOAUDIO. Create the folder with the app CLOSED, then start the app. The log shows P2RE_ENV lines.\n\n"
+                  "                    P2RE_VKSHADERDUMP  P2RE_NOAUDIO  P2RE_VKDEBUGCLEAR (hex RGB colour, e.g. FF00FF)  P2RE_VKWHITESLOT  P2RE_VKNULLSLOT  P2RE_VKSKIPPS  P2RE_VKSKIPTGT. Create the folder with the app CLOSED, then start the app. The log shows P2RE_ENV lines.\n\n"
                   "Log files: p2_loader_log.txt (VKTRACE / MVKENV / P2RE_ENV / GUEST getenv lines), mvk_stderr.log (MoltenVK's own messages).\n", f); fclose(f); } }
               snprintf(p, sizeof p, "%s/mvk_stderr.log", gDocs);
               int fd = open(p, O_WRONLY | O_CREAT | O_TRUNC, 0644); if (fd >= 0) { dup2(fd, 2); close(fd); }
@@ -2851,7 +2877,9 @@ jobs:
           ls -l P2Loader.ipa
       - name: Step summary (paste this back)
         if: always()
+        continue-on-error: true
         run: |
+          set +e
           { echo '```'; head -c 60000 disasm/disasm.txt 2>/dev/null; echo '--- x18 uses (first 60) ---'; head -n 60 disasm/x18.txt 2>/dev/null; echo '--- dev debug-switch strings (first 700 lines) ---'; head -n 700 disasm/markers.txt 2>/dev/null; echo '```'; } >> $GITHUB_STEP_SUMMARY
           { echo '```'; cat src/prep-report.md 2>/dev/null | cut -c1-600; echo '```'; } >> $GITHUB_STEP_SUMMARY
       - name: Upload report (counts + short instruction snippets, no binaries)
