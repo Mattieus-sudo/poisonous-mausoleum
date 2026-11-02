@@ -11,7 +11,7 @@ on:
         default: "0x59fae80-0x59fb140 0x59fd5b0-0x59fd6f8 0x59fd940-0x59fdc00 0x54b42e0-0x54b4500"
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - name: Refuse to run in a public repo
         run: |
