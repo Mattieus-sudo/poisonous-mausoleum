@@ -16,7 +16,7 @@ binkw32.dll: DllMain -> 1
 prototype2engine.dll: DllMain -> 1
 LoadLibraryA(prototype2engine.dll) -> 10000000
 render scale: 84% of the panel
-CreateWindowExA '[PROTOTYPE®2]' 1280x720 (screen 2408x1108) -> 00010020
+CreateWindowExA '[PROTOTYPEÂ®2]' 1280x720 (screen 2408x1108) -> 00010020
 critical section at unaligned address 1714b39d: lock kept on the host
 waits: spin 250 us before sleeping (default)
 wake-ups: waker thread
