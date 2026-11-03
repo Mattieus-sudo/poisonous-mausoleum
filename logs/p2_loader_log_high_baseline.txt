@@ -293,7 +293,7 @@ ANDROID LOG [4] p2re: LoadLibraryA(prototype2engine.dll) -> 10000000 {t=1141268 
 PLAT fopen(/var/mobile/Containers/Data/Application/6B0AD999-AF67-4980-BD3B-25CC1DD04BE0/Documents/fake_aspect, r) -> 0x0
 PLAT fopen(/var/mobile/Containers/Data/Application/6B0AD999-AF67-4980-BD3B-25CC1DD04BE0/Documents/render_scale, r) -> 0x0
 ANDROID LOG [4] p2re: render scale: 84% of the panel {t=1141268 m=93721622}
-ANDROID LOG [4] p2re: CreateWindowExA '[PROTOTYPE®2]' 1280x720 (screen 2408x1108) -> 00010020 {t=1141268 m=93721622}
+ANDROID LOG [4] p2re: CreateWindowExA '[PROTOTYPEÂ®2]' 1280x720 (screen 2408x1108) -> 00010020 {t=1141268 m=93721622}
 CLOCKPROBE #20 clk=1 -> 93721.622950000 tid=1141268 from elf+0x5a88bc8
 CLOCKPROBE #21 clk=1 -> 93721.622995000 tid=1141268 from elf+0x5afa0e0
 CLOCKPROBE #22 clk=1 -> 93721.623057000 tid=1141268 from elf+0x5a88bc8
