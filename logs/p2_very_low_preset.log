@@ -1,0 +1,1055 @@
+Far Cry 3 recompiled (Android): 80665 guest functions, game data in /storage/emulated/0/Prototype2/game
+guest window at 0x7800000000
+module prototype2.exe at 00400000 (3055616 bytes), entry 00401eff, 0 exports
+msvcr90.dll: from the APK
+module msvcr90.dll at 78520000 (667648 bytes), entry 78542d40, 1450 exports
+module binkw32.dll at 0f000000 (299008 bytes), entry 0f0024d0, 77 exports, relocated: 2776 fixups
+module prototype2engine.dll at 10000000 (17969152 bytes), entry 109eedc3, 6 exports
+imports: 695 (0 missing)
+ADPF: not available on this Android version
+starting guest entry 00401eff
+command line: "C:\Prototype2\prototype2.exe"
+GetProcAddress(KERNEL32, FindActCtxSectionStringW): not available
+msvcr90.dll: DllMain -> 1
+cursor: GetCursorPos read 0,0
+binkw32.dll: DllMain -> 1
+prototype2engine.dll: DllMain -> 1
+LoadLibraryA(prototype2engine.dll) -> 10000000
+render scale: 40% of the panel
+CreateWindowExA '[PROTOTYPE®2]' 1280x720 (screen 1152x528) -> 00010020
+waits: spin 250 us before sleeping (default)
+critical section at unaligned address 1714b39d: lock kept on the host
+wake-ups: waker thread
+file not found: C:\Prototype2\args.txt -> /storage/emulated/0/Prototype2/game/args.txt
+steam: offline stand-in ready
+ShowCursor(0) -> -1
+CreateFiber 0200b310: start 106e9d90 param 171500c0 guest stack 256 KB
+CoCreateInstance(4590f811-...) -> class not registered
+vkpddi: null D3D9 device (replace mode), screen 1152x528
+vkpddi: D3D format 20 (0x00000014) not supported
+graphics: shadow maps as the game makes them
+ngfx: loading Vulkan
+ngfx: Vulkan library loaded
+ngfx: vkCreateInstance (3 extensions, 0 layers)
+ngfx: instance created
+ngfx: Apple A19 Pro GPU, Vulkan 1.3.357, driver 000028a2
+ngfx: clip distances native, null descriptors dummies
+ngfx: shaderDrawParameters 1, multiDrawIndirect 1, drawIndirectFirstInstance 1, textureCompressionBC 1, ETC2 1, ASTC 1
+ngfx: memory: 11695 MB device-local, 11695 MB of it host-visible (unified)
+ngfx: dummy resources for empty descriptor slots ready
+ngfx: pipeline cache /var/mobile/Containers/Data/Application/6B0AD999-AF67-4980-BD3B-25CC1DD04BE0/Documents/vkpddi_cache/pipelines.bin: 14713 KB loaded
+ngfx: device ready (queue family 0, custom border colors 0, f32 denorm flush 0 preserve 0, nan preserve 1)
+ngfx: BC textures native
+vkpddi: swapchain 2868x1320, 3 images, format 44, transform 1 (current 1), composite alpha 1 (supported d)
+vkpddi: ready (replace mode), back buffer 1600x900
+menu taps: the game renders at 1600x900
+vkpddi: render thread on (recording off the game's render thread)
+file not found: C:\Prototype2\shaders\texturegutter_vp.dxcho -> /storage/emulated/0/Prototype2/game/shaders/texturegutter_vp.dxcho
+file not found: C:\Prototype2\shaders\texturegutter_fp.dxcho -> /storage/emulated/0/Prototype2/game/shaders/texturegutter_fp.dxcho
+file not found: C:\Prototype2\shaders\occlusionblur_vp.dxcho -> /storage/emulated/0/Prototype2/game/shaders/occlusionblur_vp.dxcho
+file not found: C:\Prototype2\shaders\occlusionblur_fp.dxcho -> /storage/emulated/0/Prototype2/game/shaders/occlusionblur_fp.dxcho
+vkpddi: render target 02000013 2048x2048 d3d format 75 (vk 130)
+vkpddi: IB lock 07b298a0 ptr 20bd0010 isize 2 count 0/24576 handle 01000001
+vkpddi: VB lock 07b29d60 ptr 0201d2b0 stride 16 count 0 size 0 handle 01000002
+vkpddi: VB lock 07bb9da0 ptr 20be0010 stride 12 count 0 size 0 handle 01000103
+vkpddi: VB lock 07bb9f10 ptr 02061810 stride 8 count 0 size 0 handle 01000104
+vkpddi: render target 0200001a 1600x900 d3d format 75 (vk 130)
+vkpddi: render target 0200001b 1600x900 d3d format 114 (vk 100)
+vkpddi: render target 0200001c 1600x900 d3d format 32 (vk 37)
+vkpddi: render target 0200001d 1600x900 d3d format 32 (vk 37)
+vkpddi: render target 0200001e 1600x900 d3d format 113 (vk 97)
+vkpddi: render target 02000022 1600x900 d3d format 32 (vk 37)
+vkpddi: render target 02000023 1600x900 d3d format 113 (vk 97)
+vkpddi: render target 02000024 1600x900 d3d format 113 (vk 97)
+vkpddi: render target 02000046 1600x900 d3d format 32 (vk 37)
+vkpddi: render target 02000048 1600x900 d3d format 32 (vk 37)
+vkpddi: render target 02000049 1600x900 d3d format 32 (vk 37)
+vkpddi: render target 0200004a 1600x900 d3d format 75 (vk 130)
+vkpddi: render target 02000051 1600x900 d3d format 32 (vk 37)
+vkpddi: VB lock 07bbe6b0 ptr 20bf0010 stride 12 count 0 size 0 handle 01000105
+CoCreateInstance(DirectInput8) -> own DirectInput8
+DirectInput EnumDevices(type 0, flags 1)
+CoCreateInstance(4590f811-...) -> class not registered
+DirectInput CreateDevice(mouse)
+DirectInput SetDataFormat(mouse): 11 objects, 44 bytes (the game's own layout)
+CoCreateInstance(4590f811-...) -> class not registered
+DirectInput CreateDevice(keyboard)
+DirectInput SetDataFormat(keyboard): 105 objects, 420 bytes (the game's own layout)
+game state: state 0 target 0 stack [ ]
+CreateFiber 02256110: start 106e9d90 param 10fcba70 guest stack 256 KB
+CoCreateInstance(XAudio2) -> own XAudio2 2.7
+XAudio2: AAudio output started (48000 Hz)
+XAudio2: mastering voice 2 ch, 48000 Hz
+adopted host thread 300 for guest calls
+XAudio2: source voice tag 1, 2 ch, 48000 Hz, 16 bit
+XAudio2: engine thread running
+CreateFiber 0225aa50: start 106e9d90 param 10fcbff0 guest stack 256 KB
+file not found: C:\Prototype2\audio_french.rcf -> /storage/emulated/0/Prototype2/game/audio_french.rcf
+file not found: C:\Prototype2\audio_italian.rcf -> /storage/emulated/0/Prototype2/game/audio_italian.rcf
+file not found: C:\Prototype2\audio_spanish.rcf -> /storage/emulated/0/Prototype2/game/audio_spanish.rcf
+file not found: C:\Prototype2\enable_debug.rcf -> /storage/emulated/0/Prototype2/game/enable_debug.rcf
+game state: state 5 target 3 stack [ ]
+native math 108475c0: 300 calls match the original (3 words the last): native from now on
+vkpddi: hitch 217 ms at 84287.401 s (monotonic): render thread busy 18.5 ms, game frames 2 (262.1 ms, waited for the render thread 0.0 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 4 (25.2 ms), texture uploads 2 (0.0 ms)
+native math 10847530: 300 calls match the original (3 words the last): native from now on
+native math 10845940: 300 calls match the original (0 words the last): native from now on
+vkpddi: per frame: vk present 15.76 ms, d3d present 0.00 ms, rest of the frame 4.98 ms
+vkpddi: driver: submit 51 x 37.9 ms, GPU waits 0 x 0.0 ms, new command buffers 100 x 0.6 ms, descriptor sets 51 x 0.0 ms (1 new pools, 0 resets), memory allocations 222 x 0.3 ms; command buffers: lock 0.0, reset 0.7, begin 0.0 ms
+vkpddi: 51 fps (worst frame 217.3 ms, 1 hitches), 247 clears (247 as load ops), 2 passes, acquire 1509 us, present 2703 us; 0 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, 0 pr; 1661 buffers (+1661, 5 writes 101 KB), 213 textures (+213, 2197 uploads 8702 KB), 47 shaders, 0 decls
+native math 10846c90: 300 calls match the original (16 words the last): native from now on
+native inflate: 200 calls match the original: native from now on
+game state: state 6 target 3 stack [ 3 ]
+vkpddi: VB lock 052dfdf0 ptr 02293110 stride 16 count 4 size 64 handle 0100067e
+vkpddi: VB lock 052dff90 ptr 02419780 stride 16 count 4 size 64 handle 0100067f
+graphics LOW: the game's shadow detail 2 -> 0 (the lowest)
+graphics LOW: the game's ambient occlusion off
+graphics LOW: the game's motion blur off
+game state: state 0 target 3 stack [ 3 ]
+vkpddi: IB lock 052d4250 ptr 02133840 isize 2 count 6/700 handle 0100048a
+vkpddi: VB lock 05297cb0 ptr 020fec80 stride 4 count 4 size 16 handle 01000232
+vkpddi: IB lock 052d4310 ptr 02134ac0 isize 2 count 6/700 handle 0100048c
+vkpddi: VB lock 05297e40 ptr 020ff0c0 stride 4 count 4 size 16 handle 01000233
+vkpddi: IB lock 052d43d0 ptr 02135d40 isize 2 count 6/700 handle 0100048e
+vkpddi: IB lock 052d4490 ptr 02136fc0 isize 2 count 6/700 handle 01000490
+vkpddi: IB lock 052d4550 ptr 02138240 isize 2 count 6/700 handle 01000492
+vkpddi: render target 02000113 1536x1536 d3d format 75 (vk 130)
+vkpddi: draw left out: vs 0400000f ps 04000024 decl 00000000 (missing)
+vkpddi: pipelines compiled in the background (3 threads)
+vkpddi: draw left out: no pipeline (vs 0400003b ps 0400003c decl 05000001)
+vkpddi: draw left out: no pipeline (vs 0400003b ps 0400003c decl 05000001)
+vkpddi: draw left out: no pipeline (vs 0400003b ps 0400003c decl 05000001)
+vkpddi: draw left out: no pipeline (vs 0400003b ps 0400003c decl 05000001)
+vkpddi: draw left out: no pipeline (vs 0400003b ps 0400003c decl 05000001)
+vkpddi: prewarming 560 pipelines from the last runs
+vkpddi: render target 0200011b 1536x1536 d3d format 75 (vk 130)
+vkpddi: render target 02000113 1600x900 d3d format 32 (vk 37)
+vkpddi: texture 02062080 made at first use (1600x900 format 32, 1 levels, type 1)
+vkpddi: render target 02000013 1600x900 d3d format 114 (vk 100)
+vkpddi: texture 02063e90 made at first use (1600x900 format 114, 1 levels, type 1)
+vkpddi: render target 0200011c 1600x900 d3d format 32 (vk 37)
+vkpddi: texture 02063de0 made at first use (1600x900 format 32, 1 levels, type 1)
+vkpddi: render target 0200011d 1600x900 d3d format 75 (vk 130)
+vkpddi: texture 02063f40 made at first use (1600x900 format 75, 1 levels, type 1)
+vkpddi: texture 02063bd0 made at first use (800x450 format 114, 1 levels, type 1)
+vkpddi: texture 02061c60 made at first use (800x450 format 75, 1 levels, type 1)
+vkpddi: texture 02063b20 made at first use (800x450 format 32, 1 levels, type 1)
+vkpddi: texture 02063a70 made at first use (800x450 format 32, 1 levels, type 1)
+vkpddi: render target 02000122 1600x900 d3d format 32 (vk 37)
+vkpddi: texture 020639c0 made at first use (1600x900 format 32, 1 levels, type 1)
+vkpddi: render target 02000123 1600x900 d3d format 75 (vk 130)
+vkpddi: texture 02061dc0 made at first use (1600x900 format 75, 1 levels, type 1)
+vkpddi: texture 02062550 made at first use (400x225 format 113, 1 levels, type 1)
+vkpddi: texture 02062340 made at first use (400x225 format 75, 1 levels, type 1)
+vkpddi: texture 02062290 made at first use (400x225 format 113, 9 levels, type 1)
+vkpddi: render target 02000127 1600x900 d3d format 113 (vk 97)
+vkpddi: texture 02063910 made at first use (1600x900 format 113, 1 levels, type 1)
+vkpddi: render target 02000128 1600x900 d3d format 113 (vk 97)
+vkpddi: texture 02063c80 made at first use (1600x900 format 113, 1 levels, type 1)
+vkpddi: render target 02000129 1600x900 d3d format 32 (vk 37)
+vkpddi: texture 02063d30 made at first use (1600x900 format 32, 1 levels, type 1)
+vkpddi: texture 02062130 made at first use (256x256 format 113, 1 levels, type 1)
+vkpddi: texture 020635d0 made at first use (800x450 format 113, 1 levels, type 1)
+vkpddi: texture 02063520 made at first use (214x120 format 113, 1 levels, type 1)
+vkpddi: texture 02063470 made at first use (107x60 format 113, 1 levels, type 1)
+vkpddi: render target 0200013b 1600x900 d3d format 32 (vk 37)
+vkpddi: IB lock 052d4610 ptr 021a0340 isize 2 count 6/700 handle 01000494
+vkpddi: IB lock 052d46d0 ptr 0219f0c0 isize 2 count 6/700 handle 01000496
+vkpddi: GetRenderTargetData 03000053 (1x1 vk 97) -> 1x1 d3d format 113, pitch 8
+vkpddi: shader 5ddb2dfd35e4c15f: effect off (graphics LOW)
+vkpddi: shader 9adba608ea65ef17: effect off (graphics LOW)
+vkpddi: shader 7d39fe0744aa2567: effect off (graphics LOW)
+vkpddi: shader fbaf6c216e96d44b: effect off (graphics LOW)
+vkpddi: shader 0499f1a9bf3a33ab: effect off (graphics LOW)
+vkpddi: texture 02000001 (type 1) on a sampler of type 4 (slot 1): empty texture
+vkpddi: shader e7ef937f103fc726: effect off (graphics LOW)
+vkpddi: GetRenderTargetData 0300005b (1x1 vk 97) -> 1x1 d3d format 113, pitch 8
+vkpddi: texture 02000001 (type 1) on a sampler of type 4 (slot 1): empty texture
+vkpddi: hitch 103 ms at 84288.908 s (monotonic): render thread busy 54.4 ms, game frames 2 (111.0 ms, waited for the render thread 0.0 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 53 (1.9 ms), texture uploads 128 (0.2 ms)
+vkpddi: GetRenderTargetData 0300005c (1x1 vk 97) -> 1x1 d3d format 113, pitch 8
+vkpddi: texture 02000001 (type 1) on a sampler of type 4 (slot 1): empty texture
+vkpddi: GetRenderTargetData 03000053 (1x1 vk 97) -> 1x1 d3d format 113, pitch 8
+vkpddi: texture 02000001 (type 1) on a sampler of type 4 (slot 1): empty texture
+native sampler stage: 300 calls match the original: native from now on
+vkpddi: GetRenderTargetData 0300005b (1x1 vk 97) -> 1x1 d3d format 113, pitch 8
+vkpddi: texture 02000001 (type 1) on a sampler of type 4 (slot 1): empty texture
+vkpddi: GetRenderTargetData 0300005c (1x1 vk 97) -> 1x1 d3d format 113, pitch 8
+vkpddi: texture 02000001 (type 1) on a sampler of type 4 (slot 1): empty texture
+native math 10846b80: 300 calls match the original (3 words the last): native from now on
+native math 10847680: 300 calls match the original (3 words the last): native from now on
+vkpddi: texture 02000001 (type 1) on a sampler of type 4 (slot 1): empty texture
+vkpddi: texture 02000001 (type 1) on a sampler of type 4 (slot 1): empty texture
+vkpddi: per frame: vk present 14.72 ms, d3d present 0.00 ms, rest of the frame 3.27 ms
+vkpddi: driver: submit 55 x 102.3 ms, GPU waits 0 x 0.0 ms, new command buffers 94 x 0.4 ms, descriptor sets 149 x 0.0 ms (0 new pools, 0 resets), memory allocations 208 x 6.0 ms; command buffers: lock 0.0, reset 0.8, begin 0.1 ms
+vkpddi: 55 fps (worst frame 102.6 ms, 5 hitches), 398 clears (378 as load ops), 678 passes, acquire 1759 us, present 1552 us; 908 draws, 79 skipped (42 no shader/decl, 0 no buffer, 0 no pass, 37 no pipeline, 0 no constants), 23 new pipelines (23 in the background, 0 where drawn: 0.0 m; 2287 buffers (+626, 1278 writes 814 KB), 409 textures (+198, 1083 uploads 54678 KB), 656 shaders, 2 decls
+vkpddi: prewarmed 544 pipelines in 0.4 s
+vkpddi: per frame: vk present 14.35 ms, d3d present 0.00 ms, rest of the frame 2.74 ms
+vkpddi: driver: submit 58 x 591.4 ms, GPU waits 0 x 0.0 ms, new command buffers 116 x 0.5 ms, descriptor sets 233 x 0.3 ms (0 new pools, 0 resets), memory allocations 83 x 0.0 ms; command buffers: lock 0.0, reset 2.9, begin 0.1 ms
+vkpddi: 58 fps (worst frame 22.9 ms, 0 hitches), 580 clears (522 as load ops), 1914 passes, acquire 1820 us, present 2401 us; 2842 draws, 116 skipped (116 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+725, 3602 writes 4843 KB), 491 textures (+82, 760 uploads 13542 KB), 656 shaders, 3 decls
+native culling: 500 calls match the original: native from now on
+vkpddi: per frame: vk present 14.13 ms, d3d present 0.00 ms, rest of the frame 2.44 ms
+vkpddi: driver: submit 62 x 178.6 ms, GPU waits 0 x 0.0 ms, new command buffers 123 x 0.6 ms, descriptor sets 248 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 4.0, begin 0.2 ms
+vkpddi: 62 fps (worst frame 19.6 ms, 0 hitches), 620 clears (558 as load ops), 2046 passes, acquire 4103 us, present 1988 us; 3162 draws, 124 skipped (124 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 3596 writes 2049 KB), 491 textures (+0, 61 uploads 0 KB), 656 shaders, 3 decls
+vkpddi: per frame: vk present 13.48 ms, d3d present 0.00 ms, rest of the frame 3.18 ms
+vkpddi: driver: submit 61 x 108.9 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.7 ms, descriptor sets 244 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 4.0, begin 0.2 ms
+vkpddi: 61 fps (worst frame 20.7 ms, 0 hitches), 610 clears (549 as load ops), 2013 passes, acquire 5004 us, present 2424 us; 3111 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 3538 writes 2016 KB), 491 textures (+0, 61 uploads 0 KB), 656 shaders, 3 decls
+XAudio2: last 5 s: 0 output underruns, 10 voice passes ran dry
+vkpddi: per frame: vk present 13.53 ms, d3d present 0.00 ms, rest of the frame 3.13 ms
+vkpddi: driver: submit 60 x 182.7 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.7 ms, descriptor sets 276 x 0.3 ms (1 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 3.9, begin 0.2 ms
+vkpddi: 60 fps (worst frame 21.5 ms, 0 hitches), 600 clears (540 as load ops), 1980 passes, acquire 4559 us, present 2275 us; 3060 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 3480 writes 1983 KB), 491 textures (+0, 60 uploads 0 KB), 656 shaders, 3 decls
+vkpddi: per frame: vk present 14.30 ms, d3d present 0.00 ms, rest of the frame 2.37 ms
+vkpddi: driver: submit 61 x 88.9 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.7 ms, descriptor sets 244 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 3.5, begin 0.2 ms
+vkpddi: 61 fps (worst frame 20.6 ms, 0 hitches), 610 clears (549 as load ops), 2013 passes, acquire 4248 us, present 1834 us; 3111 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 3538 writes 2016 KB), 491 textures (+0, 61 uploads 0 KB), 656 shaders, 3 decls
+vkpddi: per frame: vk present 13.70 ms, d3d present 0.00 ms, rest of the frame 2.97 ms
+vkpddi: driver: submit 60 x 162.9 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.6 ms, descriptor sets 240 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 4.0, begin 0.2 ms
+vkpddi: 60 fps (worst frame 20.2 ms, 0 hitches), 600 clears (540 as load ops), 1980 passes, acquire 4270 us, present 2517 us; 3060 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 3480 writes 1983 KB), 491 textures (+0, 60 uploads 0 KB), 656 shaders, 3 decls
+vkpddi: per frame: vk present 13.41 ms, d3d present 0.00 ms, rest of the frame 3.26 ms
+vkpddi: driver: submit 61 x 98.2 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.6 ms, descriptor sets 249 x 0.1 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 4.1, begin 0.1 ms
+vkpddi: 61 fps (worst frame 19.9 ms, 0 hitches), 610 clears (549 as load ops), 2013 passes, acquire 4505 us, present 2594 us; 3676 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 4461 writes 1382 KB), 491 textures (+0, 67 uploads 6144 KB), 656 shaders, 3 decls
+vkpddi: per frame: vk present 13.82 ms, d3d present 0.00 ms, rest of the frame 2.84 ms
+vkpddi: driver: submit 61 x 101.3 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.9 ms, descriptor sets 285 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 4.6, begin 0.3 ms
+vkpddi: 61 fps (worst frame 20.5 ms, 0 hitches), 610 clears (549 as load ops), 2013 passes, acquire 3785 us, present 2484 us; 3874 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 4759 writes 1181 KB), 491 textures (+0, 61 uploads 0 KB), 656 shaders, 3 decls
+ngfx: pipeline cache saved (14713 KB, 23 new pipelines)
+perf hud: GPU load counter not readable
+vkpddi: per frame: vk present 14.11 ms, d3d present 0.00 ms, rest of the frame 2.54 ms
+vkpddi: driver: submit 60 x 77.4 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.6 ms, descriptor sets 240 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 3.8, begin 0.1 ms
+vkpddi: 60 fps (worst frame 21.5 ms, 0 hitches), 600 clears (540 as load ops), 1980 passes, acquire 3348 us, present 2279 us; 3620 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 4420 writes 1156 KB), 491 textures (+0, 60 uploads 0 KB), 656 shaders, 3 decls
+vkpddi: per frame: vk present 13.94 ms, d3d present 0.00 ms, rest of the frame 2.73 ms
+vkpddi: driver: submit 60 x 165.0 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.6 ms, descriptor sets 240 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 4.3, begin 0.2 ms
+vkpddi: 60 fps (worst frame 21.6 ms, 0 hitches), 600 clears (540 as load ops), 1980 passes, acquire 3382 us, present 2184 us; 3832 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 4724 writes 1162 KB), 491 textures (+0, 60 uploads 0 KB), 656 shaders, 3 decls
+vkpddi: per frame: vk present 13.47 ms, d3d present 0.00 ms, rest of the frame 3.19 ms
+vkpddi: driver: submit 61 x 146.3 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.7 ms, descriptor sets 244 x 0.1 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 4.2, begin 0.2 ms
+vkpddi: 61 fps (worst frame 26.6 ms, 1 hitches), 610 clears (549 as load ops), 2013 passes, acquire 4307 us, present 2472 us; 3662 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 4455 writes 1175 KB), 491 textures (+0, 61 uploads 0 KB), 656 shaders, 3 decls
+vkpddi: per frame: vk present 14.01 ms, d3d present 0.00 ms, rest of the frame 2.64 ms
+vkpddi: driver: submit 61 x 250.0 ms, GPU waits 0 x 0.0 ms, new command buffers 123 x 0.5 ms, descriptor sets 285 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 3.8, begin 0.1 ms
+vkpddi: 61 fps (worst frame 24.2 ms, 0 hitches), 610 clears (549 as load ops), 2013 passes, acquire 2819 us, present 1980 us; 3904 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 4819 writes 1182 KB), 491 textures (+0, 62 uploads 0 KB), 656 shaders, 3 decls
+vkpddi: per frame: vk present 14.82 ms, d3d present 0.00 ms, rest of the frame 1.84 ms
+vkpddi: driver: submit 61 x 287.9 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 256 x 0.1 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 3.3, begin 0.1 ms
+vkpddi: 61 fps (worst frame 28.5 ms, 1 hitches), 610 clears (549 as load ops), 2013 passes, acquire 1840 us, present 2147 us; 4313 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3012 buffers (+0, 5705 writes 1298 KB), 491 textures (+0, 65 uploads 5120 KB), 656 shaders, 3 decls
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-B.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-B.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-C.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-C.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-D.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-D.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-E.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-E.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-F.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-F.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-G.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-G.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-H.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-H.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-I.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-I.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-J.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-J.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-K.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-K.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-L.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-L.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-M.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-M.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-N.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-N.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-O.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-O.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-P.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-P.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-Q.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-Q.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-R.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-R.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-S.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-S.bin
+file not found: C:\Users\Player\Documents\Activision\Prototype 2\slot-T.bin -> /storage/emulated/0/Prototype2/game/drive_c/Users/Player/Documents/Activision/Prototype 2/slot-T.bin
+game state: state 5 target 2 stack [ 3 ]
+socket(2, 2) -> fails
+game state: state 5 target 2 stack [ ]
+abilities locked: POWER WHEEL
+abilities locked: POWER WHEEL, PACK LEADER, PACK ATTACK
+abilities locked: POWER WHEEL, BIO-BOMB, PACK LEADER, PACK ATTACK
+abilities locked: POWER WHEEL, HUNT, BIO-BOMB, PACK LEADER, PACK ATTACK
+abilities locked: SHAPESHIFT, POWER WHEEL, HUNT, BIO-BOMB, PACK LEADER, PACK ATTACK
+abilities locked: SHAPESHIFT, POWER WHEEL, HUNT, BIO-BOMB, DEVASTATOR, PACK LEADER, PACK ATTACK
+vkpddi: per frame: vk present 14.95 ms, d3d present 0.00 ms, rest of the frame 1.75 ms
+game state: state 6 target 2 stack [ 2 ]
+game state: state 0 target 2 stack [ 2 ]
+vkpddi: shader cd5c819fe2983485: effect off (graphics LOW)
+vkpddi: shader 0a60bef1ac574728: effect off (graphics LOW)
+vkpddi: driver: submit 60 x 236.4 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.4 ms, descriptor sets 250 x 0.1 ms (0 new pools, 0 resets), memory allocations 18 x 0.0 ms; command buffers: lock 0.0, reset 2.6, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.9 ms, 1 hitches), 582 clears (524 as load ops), 1920 passes, acquire 1240 us, present 4117 us; 5316 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 3089 buffers (+77, 8021 writes 1548 KB), 508 textures (+17, 89 uploads 15720 KB), 656 shaders, 5 decls
+native logic 108608d0: 300 calls match the original (21 words the last): native from now on
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 44.5 ms on the render thread at 84303.625 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+vkpddi: hitch 66 ms at 84303.745 s (monotonic): render thread busy 24.1 ms, game frames 1 (23.3 ms, waited for the render thread 21.2 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 0 (0.0 ms), texture uploads 1 (0.0 ms)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 65.0 ms on the render thread at 84303.746 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+vkpddi: render target 02000422 1536x1536 d3d format 32 (vk 37)
+vkpddi: standalone surface 02061a00: 1536x1536 format 32 as a render target texture
+graphics: shadow casters not walked (VERY LOW)
+vkpddi: format 130 cannot be filtered linearly: nearest
+vkpddi: shader 84221f18fc4b8d76: effect off (graphics LOW)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 34.3 ms on the render thread at 84303.833 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+vkpddi: hitch 170 ms at 84304.016 s (monotonic): render thread busy 21.8 ms, game frames 1 (15.4 ms, waited for the render thread 13.0 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 19 (0.1 ms), texture uploads 177 (0.2 ms)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 164.6 ms on the render thread at 84304.017 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+vkpddi: shader 9b0e0019b995934f: effect off (graphics LOW)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 33.2 ms on the render thread at 84304.058 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+vkpddi: per frame: vk present 21.02 ms, d3d present 0.00 ms, rest of the frame 2.49 ms
+native skinning: 300 calls match the original (worst relative 2.38419e-07): native from now on
+vkpddi: driver: submit 42 x 595.6 ms, GPU waits 0 x 0.0 ms, new command buffers 84 x 0.3 ms, descriptor sets 285 x 0.1 ms (0 new pools, 0 resets), memory allocations 739 x 5.3 ms; command buffers: lock 0.0, reset 3.6, begin 0.0 ms
+vkpddi: 42 fps (worst frame 170.1 ms, 8 hitches), 420 clears (378 as load ops), 1511 passes, acquire 1386 us, present 1154 us; 10907 draws, 84 skipped (84 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms; 4808 buffers (+1719, 14326 writes 33205 KB), 1245 textures (+737, 11307 uploads 74793 KB), 656 shaders, 10 decls
+native math 10847230: 300 calls match the original (16 words the last): native from now on
+vkpddi: shader 34e378282bfe261c: effect off (graphics LOW)
+vkpddi: shader 9202c96be597518b: effect off (graphics LOW)
+vkpddi: shader ea156e131965da21: effect off (graphics LOW)
+vkpddi: shader 1fe0e0a51da88ead: effect off (graphics LOW)
+vkpddi: shader b78b1796cae59b50: effect off (graphics LOW)
+vkpddi: shader 526e65c5fa747ce7: effect off (graphics LOW)
+vkpddi: shader 24dd64943ed1873d: effect off (graphics LOW)
+vkpddi: shader 1e71ce6dc956bdb3: effect off (graphics LOW)
+vkpddi: shader 7a50c98032cf7dce: effect off (graphics LOW)
+vkpddi: shader 1906ee650eb4fce0: effect off (graphics LOW)
+vkpddi: shader 764eef4bd848d92b: effect off (graphics LOW)
+vkpddi: shader c8827aa53259285b: effect off (graphics LOW)
+vkpddi: shader 075b6c76a2a057f4: effect off (graphics LOW)
+vkpddi: shader 04bc4a78f75146c5: effect off (graphics LOW)
+native logic 10939ef0: 300 calls match the original (1 words the last): native from now on
+vkpddi: shader 6daff1ad7b4a302e: effect off (graphics LOW)
+vkpddi: shader b933d5e999098700: effect off (graphics LOW)
+vkpddi: shader 6d3dc6814afec813: effect off (graphics LOW)
+vkpddi: shader cb6c6b556a9866ef: effect off (graphics LOW)
+vkpddi: per frame: vk present 12.27 ms, d3d present 0.00 ms, rest of the frame 4.69 ms
+vkpddi: driver: submit 59 x 265.1 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.3 ms, descriptor sets 2073 x 0.3 ms (0 new pools, 2 resets), memory allocations 566 x 0.1 ms; command buffers: lock 0.0, reset 9.9, begin 0.1 ms
+vkpddi: 59 fps (worst frame 26.4 ms, 1 hitches), 1091 clears (531 as load ops), 2294 passes, acquire 1708 us, present 1535 us; 106902 draws, 118 skipped (118 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 12072 buffers (+7579, 29661 writes 73518 KB), 1808 textures (+563, 3578 uploads 12029 KB), 656 shaders, 20 decls
+vkpddi: shader e7c01e36dfbe861f: effect off (graphics LOW)
+native occlusion culling: 500 calls match the original: native from now on
+vkpddi: shader fe1054105969baa4: effect off (graphics LOW)
+native logic 1084e6b0: 300 calls match the original (7 words the last): native from now on
+vkpddi: shader 6c4a798e6da02047: effect off (graphics LOW)
+vkpddi: shader 6abeda1d421e3803: effect off (graphics LOW)
+native kernel 109941c0: 300 calls match the original (72 words the last): native from now on
+native logic 10994510: 300 calls match the original (66 words the last): native from now on
+vkpddi: shader c5042bc45407b572: effect off (graphics LOW)
+vkpddi: shader 84e276f361ba40db: light variant
+vkpddi: shader 1224a66379cf7de3: effect off (graphics LOW)
+vkpddi: shader d096ee148807701f: effect off (graphics LOW)
+vkpddi: per frame: vk present 10.19 ms, d3d present 0.00 ms, rest of the frame 6.48 ms
+vkpddi: driver: submit 60 x 183.7 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 3068 x 0.2 ms (0 new pools, 3 resets), memory allocations 259 x 10.3 ms; command buffers: lock 0.0, reset 12.2, begin 0.1 ms
+vkpddi: 60 fps (worst frame 29.2 ms, 2 hitches), 1352 clears (540 as load ops), 2358 passes, acquire 1706 us, present 1548 us; 159465 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 13290 buffers (+1820, 32726 writes 118008 KB), 2028 textures (+255, 2524 uploads 19081 KB), 656 shaders, 21 decls
+native character heading 108cb560: 300 calls match the original (28 words the last): native from now on
+native solver: 300 calls match the original (260 words the last): native from now on
+vkpddi: per frame: vk present 10.25 ms, d3d present 0.00 ms, rest of the frame 6.44 ms
+vkpddi: driver: submit 60 x 108.7 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.3 ms, descriptor sets 2045 x 0.1 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 14.9, begin 0.1 ms
+vkpddi: 60 fps (worst frame 21.5 ms, 0 hitches), 1440 clears (540 as load ops), 2400 passes, acquire 1923 us, present 1589 us; 180427 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 13377 buffers (+99, 39193 writes 303028 KB), 2028 textures (+0, 61 uploads 0 KB), 656 shaders, 21 decls
+vkpddi: per frame: vk present 10.43 ms, d3d present 0.00 ms, rest of the frame 6.23 ms
+vkpddi: driver: submit 61 x 400.0 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.3 ms, descriptor sets 2028 x 0.1 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 16.7, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.2 ms, 3 hitches), 1464 clears (549 as load ops), 2440 passes, acquire 1853 us, present 1382 us; 182131 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 13383 buffers (+21, 39256 writes 315013 KB), 2028 textures (+0, 68 uploads 7168 KB), 656 shaders, 21 decls
+vkpddi: per frame: vk present 10.34 ms, d3d present 0.00 ms, rest of the frame 6.31 ms
+vkpddi: driver: submit 61 x 112.4 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.3 ms, descriptor sets 2007 x 0.1 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 16.9, begin 0.1 ms
+vkpddi: 61 fps (worst frame 24.9 ms, 0 hitches), 1473 clears (549 as load ops), 2440 passes, acquire 2118 us, present 1534 us; 180351 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 13385 buffers (+2, 38984 writes 325104 KB), 2028 textures (+0, 60 uploads 0 KB), 656 shaders, 21 decls
+vkpddi: per frame: vk present 10.24 ms, d3d present 0.00 ms, rest of the frame 6.43 ms
+vkpddi: driver: submit 60 x 345.9 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 2010 x 0.1 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 15.5, begin 0.1 ms
+vkpddi: 60 fps (worst frame 24.8 ms, 0 hitches), 1500 clears (540 as load ops), 2400 passes, acquire 1771 us, present 1160 us; 178218 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 13382 buffers (+30, 38849 writes 322535 KB), 2028 textures (+0, 67 uploads 7168 KB), 656 shaders, 21 decls
+vkpddi: per frame: vk present 10.05 ms, d3d present 0.00 ms, rest of the frame 6.60 ms
+vkpddi: driver: submit 60 x 102.2 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.3 ms, descriptor sets 1156 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 16.6, begin 0.1 ms
+vkpddi: 60 fps (worst frame 24.8 ms, 0 hitches), 1443 clears (540 as load ops), 2400 passes, acquire 1971 us, present 1621 us; 178611 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 13382 buffers (+18, 38148 writes 323111 KB), 2028 textures (+0, 60 uploads 0 KB), 656 shaders, 21 decls
+vkpddi: per frame: vk present 9.85 ms, d3d present 0.00 ms, rest of the frame 6.79 ms
+vkpddi: driver: submit 60 x 214.5 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.3 ms, descriptor sets 2007 x 0.1 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 18.6, begin 0.1 ms
+vkpddi: 60 fps (worst frame 26.7 ms, 1 hitches), 1440 clears (540 as load ops), 2400 passes, acquire 1849 us, present 1566 us; 180312 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 13384 buffers (+2, 38271 writes 325521 KB), 2028 textures (+0, 67 uploads 6144 KB), 656 shaders, 21 decls
+vkpddi: shader eed935999fee8708: effect off (graphics LOW)
+game state: state 5 target 21 stack [ 2 ]
+game state: state 6 target 21 stack [ 2 21 ]
+keyboard: forward key binding present
+game state: state 0 target 21 stack [ 2 21 ]
+touch layout: MENU
+vkpddi: per frame: vk present 11.75 ms, d3d present 0.00 ms, rest of the frame 4.94 ms
+vkpddi: driver: submit 61 x 124.7 ms, GPU waits 0 x 0.0 ms, new command buffers 93 x 0.3 ms, descriptor sets 2029 x 0.1 ms (0 new pools, 2 resets), memory allocations 86 x 0.0 ms; command buffers: lock 0.0, reset 8.4, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.8 ms, 1 hitches), 751 clears (293 as load ops), 1192 passes, acquire 2100 us, present 1501 us; 93581 draws, 94 skipped (94 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms; 13392 buffers (+26, 31832 writes 325915 KB), 2096 textures (+84, 131 uploads 20765 KB), 656 shaders, 21 decls
+vkpddi: per frame: vk present 9.14 ms, d3d present 0.00 ms, rest of the frame 7.50 ms
+vkpddi: driver: submit 61 x 629.4 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.3 ms, descriptor sets 2094 x 0.1 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 21.1, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.9 ms, 2 hitches), 1525 clears (549 as load ops), 2440 passes, acquire 1440 us, present 1306 us; 191625 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13398 buffers (+18, 43289 writes 336249 KB), 2096 textures (+0, 61 uploads 0 KB), 656 shaders, 21 decls
+vkpddi: per frame: vk present 9.52 ms, d3d present 0.00 ms, rest of the frame 7.17 ms
+vkpddi: driver: submit 61 x 159.0 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.3 ms, descriptor sets 2990 x 0.2 ms (0 new pools, 3 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 17.2, begin 0.1 ms
+vkpddi: 61 fps (worst frame 21.8 ms, 0 hitches), 1527 clears (549 as load ops), 2440 passes, acquire 2045 us, present 1759 us; 193528 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13413 buffers (+15, 43279 writes 335250 KB), 2096 textures (+0, 63 uploads 2048 KB), 656 shaders, 21 decls
+touch controls: layouts saved
+vkpddi: per frame: vk present 9.28 ms, d3d present 0.00 ms, rest of the frame 7.38 ms
+game state: state 5 target 21 stack [ 2 21 ]
+vkpddi: driver: submit 61 x 145.5 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.3 ms, descriptor sets 2108 x 0.1 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 19.3, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.1 ms, 1 hitches), 1568 clears (549 as load ops), 2440 passes, acquire 2001 us, present 1710 us; 197654 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13435 buffers (+28, 44298 writes 332241 KB), 2096 textures (+0, 61 uploads 0 KB), 656 shaders, 22 decls
+game state: state 6 target 21 stack [ 2 ]
+game state: state 0 target 21 stack [ 2 ]
+touch layout: ON FOOT
+game binding MOVE FWD    : index 17 device 1 (kind 7)
+game binding MOVE BACK   : index 31 device 1 (kind 7)
+game binding MOVE RIGHT  : index 32 device 1 (kind 6)
+game binding MOVE LEFT   : index 30 device 1 (kind 6)
+game binding HELLER FORM : index 34 device 1 (kind 10)
+game binding SHAPESHIFT  : index 33 device 1 (kind 10)
+game binding MAP         : index 50 device 1 (kind -1)
+game binding PAUSE       : index 1 device 1 (kind -1)
+game binding ATTACK 1    : index 3 device 2 (kind -1)
+game binding ATTACK 2    : index 4 device 2 (kind -1)
+game binding GRAB        : index 18 device 1 (kind -1)
+game binding JUMP        : index 57 device 1 (kind -1)
+game binding SPRINT      : index 42 device 1 (kind -1)
+game binding BLOCK       : index 29 device 1 (kind -1)
+game binding TARGET      : index 19 device 1 (kind -1)
+game binding POWER WHEEL : index 4 device 1 (kind -1)
+game binding WALK        : index 56 device 1 (kind -1)
+game binding HUNT        : index 16 device 1 (kind -1)
+game binding BIO-BOMB    : index 45 device 1 (kind -1)
+game binding AUTO-SPRINT : index 44 device 1 (kind -1)
+game binding DEVASTATOR  : index 47 device 1 (kind -1)
+game binding PACK LEADER : index 48 device 1 (kind -1)
+game binding PACK ATTACK : index 46 device 1 (kind -1)
+vkpddi: per frame: vk present 13.26 ms, d3d present 0.00 ms, rest of the frame 3.69 ms
+vkpddi: driver: submit 60 x 262.1 ms, GPU waits 0 x 0.0 ms, new command buffers 104 x 0.3 ms, descriptor sets 1052 x 0.1 ms (0 new pools, 1 resets), memory allocations 444 x 0.0 ms; command buffers: lock 0.0, reset 6.9, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.5 ms, 2 hitches), 420 clears (180 as load ops), 645 passes, acquire 1333 us, present 1440 us; 48049 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 12636 buffers (+1873, 14986 writes 174217 KB), 2297 textures (+444, 1335 uploads 5355 KB), 656 shaders, 22 decls
+vkpddi: hitch 54 ms at 84317.671 s (monotonic): render thread busy 17.6 ms, game frames 1 (17.6 ms, waited for the render thread 16.5 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 0 (0.0 ms), texture uploads 1 (0.0 ms)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 41.7 ms on the render thread at 84317.672 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+hud key label /mb1/
+hud key label /mb0/
+hud key label [3]
+hud key label [3]
+hud key label /mb1/
+hud key label /mb0/
+hud key label [F]
+hud key label [F]
+hud key label /mb1/
+hud key label /mb0/
+vkpddi: per frame: vk present 14.82 ms, d3d present 0.00 ms, rest of the frame 2.61 ms
+hud key label /mb1/
+hud key label /mb0/
+vkpddi: driver: submit 56 x 360.6 ms, GPU waits 0 x 0.0 ms, new command buffers 105 x 0.3 ms, descriptor sets 126 x 0.0 ms (0 new pools, 1 resets), memory allocations 376 x 0.1 ms; command buffers: lock 0.0, reset 0.9, begin 0.1 ms
+vkpddi: 56 fps (worst frame 53.6 ms, 5 hitches), 56 clears (56 as load ops), 56 passes, acquire 1280 us, present 1471 us; 584 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, 0 ; 12883 buffers (+1614, 3185 writes 41919 KB), 2420 textures (+376, 3487 uploads 31207 KB), 656 shaders, 22 decls
+game state: state 5 target 10 stack [ 2 ]
+game state: state 6 target 10 stack [ 2 10 ]
+game state: state 0 target 10 stack [ 2 10 ]
+vkpddi: render target 0200072a 1600x900 d3d format 32 (vk 37)
+vkpddi: shader d428e49d822d7aa6: effect off (graphics LOW)
+vkpddi: shader 86d2e2c7f1fa4cee: effect off (graphics LOW)
+vkpddi: shader 30fd8b465b9681fe: effect off (graphics LOW)
+touch layout: VIDEO
+vkpddi: per frame: vk present 11.76 ms, d3d present 0.00 ms, rest of the frame 4.93 ms
+vkpddi: driver: submit 61 x 181.3 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.4 ms, descriptor sets 2875 x 0.2 ms (0 new pools, 2 resets), memory allocations 19 x 0.0 ms; command buffers: lock 0.0, reset 8.3, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.2 ms, 1 hitches), 889 clears (502 as load ops), 2217 passes, acquire 1871 us, present 1766 us; 76598 draws, 98 skipped (98 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms; 13673 buffers (+1901, 19142 writes 294050 KB), 2423 textures (+19, 206 uploads 1446 KB), 656 shaders, 23 decls
+touch: skip video (Esc, then M)
+game state: state 5 target 15 stack [ 2 10 ]
+game state: state 6 target 15 stack [ 2 10 15 ]
+game state: state 0 target 15 stack [ 2 10 15 ]
+vkpddi: render target 020007c6 1600x900 d3d format 32 (vk 37)
+touch layout: VIDEO PAUSED
+vkpddi: per frame: vk present 10.10 ms, d3d present 0.00 ms, rest of the frame 6.59 ms
+game state: state 6 target 15 stack [ 2 10 ]
+vkpddi: driver: submit 61 x 102.9 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.3 ms, descriptor sets 1103 x 0.1 ms (0 new pools, 1 resets), memory allocations 4 x 2.9 ms; command buffers: lock 0.0, reset 16.6, begin 0.1 ms
+vkpddi: 61 fps (worst frame 20.8 ms, 0 hitches), 1451 clears (610 as load ops), 2826 passes, acquire 2387 us, present 1605 us; 143051 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 13712 buffers (+339, 31524 writes 433643 KB), 2426 textures (+3, 63 uploads 2048 KB), 656 shaders, 23 decls
+game state: state 0 target 15 stack [ 2 10 ]
+touch layout: VIDEO
+game state: state 6 target 10 stack [ 2 ]
+vkpddi: shader 6b363deec11c652c: effect off (graphics LOW)
+game state: state 0 target 10 stack [ 2 ]
+touch layout: ON FOOT
+vkpddi: per frame: vk present 9.62 ms, d3d present 0.00 ms, rest of the frame 7.04 ms
+vkpddi: driver: submit 60 x 333.2 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 5856 x 0.3 ms (1 new pools, 5 resets), memory allocations 119 x 0.0 ms; command buffers: lock 0.0, reset 14.7, begin 0.1 ms
+vkpddi: 60 fps (worst frame 26.6 ms, 2 hitches), 1554 clears (570 as load ops), 2728 passes, acquire 1939 us, present 1805 us; 120559 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 13891 buffers (+2391, 29263 writes 359155 KB), 2436 textures (+119, 770 uploads 2224 KB), 656 shaders, 23 decls
+vkpddi: per frame: vk present 10.91 ms, d3d present 0.00 ms, rest of the frame 5.75 ms
+vkpddi: driver: submit 60 x 264.9 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 8338 x 0.3 ms (0 new pools, 8 resets), memory allocations 119 x 0.0 ms; command buffers: lock 0.0, reset 11.7, begin 0.1 ms
+vkpddi: 60 fps (worst frame 20.3 ms, 0 hitches), 1653 clears (540 as load ops), 2400 passes, acquire 1827 us, present 1479 us; 96709 draws, 12 skipped (12 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms; 14074 buffers (+858, 24442 writes 378828 KB), 2408 textures (+119, 1513 uploads 4704 KB), 656 shaders, 24 decls
+hud key label /mb1/
+hud key label /mb1/
+hud key label /mb1/
+vkpddi: per frame: vk present 11.19 ms, d3d present 0.00 ms, rest of the frame 5.46 ms
+vkpddi: driver: submit 61 x 242.2 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.3 ms, descriptor sets 872 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 13.5, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.2 ms, 1 hitches), 1697 clears (549 as load ops), 2463 passes, acquire 2250 us, present 1833 us; 99043 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14059 buffers (+15, 24175 writes 409420 KB), 2408 textures (+0, 99 uploads 2336 KB), 656 shaders, 24 decls
+vkpddi: per frame: vk present 11.35 ms, d3d present 0.00 ms, rest of the frame 5.29 ms
+vkpddi: driver: submit 60 x 555.0 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.7 ms, descriptor sets 285 x 0.1 ms (0 new pools, 0 resets), memory allocations 1 x 0.0 ms; command buffers: lock 0.0, reset 14.0, begin 0.4 ms
+vkpddi: 60 fps (worst frame 25.0 ms, 0 hitches), 1609 clears (571 as load ops), 2494 passes, acquire 1777 us, present 1184 us; 88333 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14099 buffers (+200, 20923 writes 371012 KB), 2409 textures (+1, 60 uploads 0 KB), 656 shaders, 25 decls
+vkpddi: per frame: vk present 11.57 ms, d3d present 0.00 ms, rest of the frame 5.14 ms
+vkpddi: driver: submit 61 x 137.7 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.3 ms, descriptor sets 801 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 10.7, begin 0.1 ms
+vkpddi: 61 fps (worst frame 20.4 ms, 0 hitches), 1222 clears (549 as load ops), 2536 passes, acquire 2234 us, present 1592 us; 76904 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14086 buffers (+17, 23967 writes 357248 KB), 2409 textures (+0, 61 uploads 1024 KB), 656 shaders, 25 decls
+hud key label [SPACE]
+vkpddi: per frame: vk present 11.44 ms, d3d present 0.00 ms, rest of the frame 5.19 ms
+vkpddi: driver: submit 60 x 147.5 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 243 x 0.1 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 10.9, begin 0.1 ms
+vkpddi: 60 fps (worst frame 25.2 ms, 1 hitches), 1233 clears (596 as load ops), 2652 passes, acquire 2141 us, present 1682 us; 77175 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14086 buffers (+0, 26868 writes 346747 KB), 2409 textures (+0, 70 uploads 9216 KB), 656 shaders, 25 decls
+hud key label [E]
+hud key label /mb0/
+hud key label [E]
+hud key label /mb0/
+hud key label [E]
+hud key label /mb0/
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitleBlur.txtTitle.htmlText asks for E
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitle.txtTitle.htmlText asks for E
+vkpddi: per frame: vk present 10.89 ms, d3d present 0.00 ms, rest of the frame 5.79 ms
+vkpddi: driver: submit 61 x 240.0 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.3 ms, descriptor sets 806 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 10.7, begin 0.1 ms
+vkpddi: 61 fps (worst frame 24.8 ms, 0 hitches), 1239 clears (610 as load ops), 2736 passes, acquire 2681 us, present 2130 us; 76742 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14101 buffers (+120, 24672 writes 360472 KB), 2409 textures (+0, 140 uploads 80896 KB), 656 shaders, 25 decls
+vkpddi: per frame: vk present 10.62 ms, d3d present 0.00 ms, rest of the frame 6.03 ms
+vkpddi: driver: submit 60 x 247.5 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 1025 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 12.9, begin 0.1 ms
+vkpddi: 60 fps (worst frame 25.0 ms, 1 hitches), 1638 clears (561 as load ops), 2562 passes, acquire 2435 us, present 1642 us; 99733 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14102 buffers (+61, 29038 writes 383763 KB), 2409 textures (+0, 60 uploads 0 KB), 656 shaders, 25 decls
+vkpddi: shader 742d0186e8bd1003: effect off (graphics LOW)
+vkpddi: render target 02000742 1600x900 d3d format 113 (vk 97)
+vkpddi: shader 08bfa2c32a832f22: effect off (graphics LOW)
+vkpddi: shader 74d69e840918d164: effect off (graphics LOW)
+vkpddi: shader 2d6069aeca26ed2c: effect off (graphics LOW)
+vkpddi: shader 1decb774e08abc14: effect off (graphics LOW)
+vkpddi: per frame: vk present 10.60 ms, d3d present 0.00 ms, rest of the frame 6.09 ms
+vkpddi: driver: submit 61 x 395.0 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.3 ms, descriptor sets 1109 x 0.1 ms (0 new pools, 1 resets), memory allocations 9 x 0.0 ms; command buffers: lock 0.0, reset 14.2, begin 0.1 ms
+vkpddi: 61 fps (worst frame 28.6 ms, 4 hitches), 1846 clears (594 as load ops), 2638 passes, acquire 2318 us, present 1393 us; 111254 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14475 buffers (+447, 29548 writes 378455 KB), 2410 textures (+9, 124 uploads 607 KB), 656 shaders, 27 decls
+vkpddi: per frame: vk present 9.97 ms, d3d present 0.00 ms, rest of the frame 6.70 ms
+vkpddi: driver: submit 60 x 210.8 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 889 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 12.3, begin 0.1 ms
+vkpddi: 60 fps (worst frame 25.1 ms, 1 hitches), 1768 clears (555 as load ops), 2512 passes, acquire 2693 us, present 1568 us; 124632 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14340 buffers (+75, 28639 writes 363679 KB), 2410 textures (+0, 62 uploads 2048 KB), 656 shaders, 27 decls
+vkpddi: per frame: vk present 10.13 ms, d3d present 0.00 ms, rest of the frame 6.54 ms
+vkpddi: driver: submit 60 x 514.8 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 254 x 0.1 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 16.9, begin 0.1 ms
+vkpddi: 60 fps (worst frame 27.0 ms, 1 hitches), 1449 clears (540 as load ops), 2460 passes, acquire 1921 us, present 1805 us; 125049 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14145 buffers (+24, 27915 writes 355766 KB), 2410 textures (+0, 60 uploads 0 KB), 656 shaders, 27 decls
+hud key label [SPACE]
+mouse reads (5 s): GetDeviceState 299 (moved 11), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 11.05 ms, d3d present 0.00 ms, rest of the frame 5.94 ms
+vkpddi: driver: submit 58 x 435.6 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.3 ms, descriptor sets 866 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 13.4, begin 0.1 ms
+vkpddi: 58 fps (worst frame 28.5 ms, 3 hitches), 1392 clears (522 as load ops), 2402 passes, acquire 2420 us, present 1620 us; 100867 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14115 buffers (+0, 26393 writes 334882 KB), 2410 textures (+0, 61 uploads 2048 KB), 656 shaders, 27 decls
+hud key label [SPACE]
+vkpddi: per frame: vk present 10.43 ms, d3d present 0.00 ms, rest of the frame 6.27 ms
+vkpddi: driver: submit 61 x 182.2 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.4 ms, descriptor sets 892 x 0.2 ms (0 new pools, 1 resets), memory allocations 4 x 0.0 ms; command buffers: lock 0.0, reset 14.5, begin 0.1 ms
+vkpddi: 61 fps (worst frame 22.7 ms, 0 hitches), 1524 clears (609 as load ops), 2712 passes, acquire 2547 us, present 7477 us; 106650 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14105 buffers (+5, 28242 writes 352281 KB), 2402 textures (+4, 67 uploads 4864 KB), 656 shaders, 27 decls
+vkpddi: per frame: vk present 10.46 ms, d3d present 0.00 ms, rest of the frame 6.21 ms
+vkpddi: driver: submit 60 x 147.6 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 1105 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 12.9, begin 0.1 ms
+vkpddi: 60 fps (worst frame 20.7 ms, 0 hitches), 1444 clears (597 as load ops), 2665 passes, acquire 2962 us, present 1510 us; 109829 draws, 16 skipped (16 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 13980 buffers (+643, 27012 writes 353566 KB), 2402 textures (+0, 63 uploads 3072 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 9.86 ms, d3d present 0.00 ms, rest of the frame 6.81 ms
+vkpddi: driver: submit 60 x 253.1 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 1146 x 0.1 ms (0 new pools, 1 resets), memory allocations 8 x 0.0 ms; command buffers: lock 0.0, reset 14.2, begin 0.1 ms
+vkpddi: 60 fps (worst frame 20.5 ms, 0 hitches), 1450 clears (574 as load ops), 2434 passes, acquire 2694 us, present 1440 us; 129679 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 14262 buffers (+656, 24353 writes 398846 KB), 2402 textures (+8, 124 uploads 607 KB), 656 shaders, 28 decls
+vkpddi: shader 0ba7a82f147044da: effect off (graphics LOW)
+vkpddi: per frame: vk present 10.25 ms, d3d present 0.00 ms, rest of the frame 6.37 ms
+vkpddi: driver: submit 61 x 198.6 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.3 ms, descriptor sets 960 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 13.5, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.1 ms, 1 hitches), 1555 clears (549 as load ops), 2440 passes, acquire 2872 us, present 1836 us; 126561 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0; 14268 buffers (+174, 24159 writes 398985 KB), 2402 textures (+0, 61 uploads 0 KB), 656 shaders, 28 decls
+mouse reads (5 s): GetDeviceState 300 (moved 5), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: shader c7faa7d4e2fa04c2: effect off (graphics LOW)
+vkpddi: per frame: vk present 9.93 ms, d3d present 0.00 ms, rest of the frame 6.75 ms
+vkpddi: driver: submit 60 x 449.3 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.4 ms, descriptor sets 3604 x 0.2 ms (0 new pools, 4 resets), memory allocations 40 x 0.0 ms; command buffers: lock 0.0, reset 12.1, begin 0.1 ms
+vkpddi: 60 fps (worst frame 26.9 ms, 2 hitches), 1289 clears (599 as load ops), 2458 passes, acquire 2241 us, present 1585 us; 97234 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ; 14010 buffers (+484, 22278 writes 374307 KB), 2402 textures (+40, 381 uploads 3034 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 12.55 ms, d3d present 0.00 ms, rest of the frame 4.18 ms
+vkpddi: driver: submit 60 x 653.3 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 3164 x 0.2 ms (0 new pools, 3 resets), memory allocations 48 x 0.0 ms; command buffers: lock 0.0, reset 8.2, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.5 ms, 1 hitches), 660 clears (600 as load ops), 2400 passes, acquire 1717 us, present 1417 us; 34765 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ; 13871 buffers (+456, 9232 writes 222783 KB), 2410 textures (+48, 444 uploads 3641 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 12.67 ms, d3d present 0.00 ms, rest of the frame 4.29 ms
+vkpddi: driver: submit 60 x 647.1 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 288 x 0.1 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 8.4, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.2 ms, 5 hitches), 662 clears (600 as load ops), 2400 passes, acquire 2141 us, present 1387 us; 38698 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ; 14048 buffers (+555, 9696 writes 235106 KB), 2410 textures (+0, 60 uploads 0 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 12.49 ms, d3d present 0.00 ms, rest of the frame 4.19 ms
+vkpddi: driver: submit 61 x 563.9 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.4 ms, descriptor sets 713 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 8.5, begin 0.1 ms
+vkpddi: 61 fps (worst frame 27.9 ms, 1 hitches), 709 clears (610 as load ops), 2464 passes, acquire 1963 us, present 1290 us; 48837 draws, 122 skipped (122 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ; 14171 buffers (+180, 10849 writes 243293 KB), 2410 textures (+0, 61 uploads 0 KB), 656 shaders, 28 decls
+hud key label [SHIFT]
+hud key label [SHIFT]
+hud key label [SHIFT]
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitleBlur.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitle.txtTitle.htmlText asks for L SHIFT
+vkpddi: per frame: vk present 11.77 ms, d3d present 0.00 ms, rest of the frame 5.21 ms
+vkpddi: driver: submit 60 x 722.5 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 5270 x 0.2 ms (0 new pools, 5 resets), memory allocations 40 x 0.0 ms; command buffers: lock 0.0, reset 9.2, begin 0.1 ms
+vkpddi: 60 fps (worst frame 29.2 ms, 2 hitches), 826 clears (600 as load ops), 2460 passes, acquire 1743 us, present 1390 us; 64526 draws, 94 skipped (94 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms; 14154 buffers (+292, 16847 writes 232005 KB), 2402 textures (+40, 463 uploads 76326 KB), 656 shaders, 28 decls
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitleBlur.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitle.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitleBlur.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitle.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitleBlur.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitle.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitleBlur.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitle.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitle.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitleBlur.txtTitle.htmlText asks for L SHIFT
+vkpddi: per frame: vk present 9.39 ms, d3d present 0.00 ms, rest of the frame 7.25 ms
+vkpddi: driver: submit 60 x 318.7 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 2153 x 0.1 ms (0 new pools, 2 resets), memory allocations 12 x 0.0 ms; command buffers: lock 0.0, reset 13.2, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.8 ms, 4 hitches), 1359 clears (600 as load ops), 2460 passes, acquire 1955 us, present 1954 us; 133366 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14418 buffers (+998, 33100 writes 267657 KB), 2383 textures (+10, 158 uploads 2672 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 9.08 ms, d3d present 0.00 ms, rest of the frame 7.59 ms
+vkpddi: driver: submit 60 x 379.3 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 4209 x 0.2 ms (0 new pools, 4 resets), memory allocations 79 x 0.0 ms; command buffers: lock 0.0, reset 12.9, begin 0.1 ms
+vkpddi: 60 fps (worst frame 24.7 ms, 0 hitches), 1133 clears (558 as load ops), 2413 passes, acquire 1721 us, present 1596 us; 103115 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14903 buffers (+2566, 31848 writes 278970 KB), 2424 textures (+80, 1009 uploads 4760 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 7.70 ms, d3d present 0.00 ms, rest of the frame 9.33 ms
+vkpddi: driver: submit 59 x 406.9 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.4 ms, descriptor sets 3265 x 0.2 ms (0 new pools, 3 resets), memory allocations 66 x 0.0 ms; command buffers: lock 0.0, reset 14.7, begin 0.1 ms
+vkpddi: 59 fps (worst frame 36.6 ms, 3 hitches), 1389 clears (531 as load ops), 2360 passes, acquire 2518 us, present 2061 us; 148352 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14309 buffers (+724, 37393 writes 362042 KB), 2426 textures (+66, 972 uploads 2733 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 7.42 ms, d3d present 0.00 ms, rest of the frame 9.56 ms
+vkpddi: driver: submit 60 x 341.4 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.5 ms, descriptor sets 3017 x 0.2 ms (0 new pools, 3 resets), memory allocations 2 x 0.0 ms; command buffers: lock 0.0, reset 16.5, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.5 ms, 4 hitches), 1824 clears (593 as load ops), 2453 passes, acquire 2635 us, present 1934 us; 164288 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14305 buffers (+407, 39415 writes 358844 KB), 2417 textures (+0, 59 uploads 0 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 6.86 ms, d3d present 0.00 ms, rest of the frame 9.76 ms
+vkpddi: driver: submit 60 x 380.8 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.4 ms, descriptor sets 3147 x 0.2 ms (0 new pools, 3 resets), memory allocations 16 x 0.0 ms; command buffers: lock 0.0, reset 18.2, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.8 ms, 3 hitches), 1867 clears (600 as load ops), 2471 passes, acquire 2501 us, present 2199 us; 180923 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14450 buffers (+773, 41121 writes 312995 KB), 2433 textures (+16, 197 uploads 534 KB), 656 shaders, 28 decls
+vkpddi: shader bfa5711338098ac3: effect off (graphics LOW)
+vkpddi: per frame: vk present 6.70 ms, d3d present 0.00 ms, rest of the frame 10.35 ms
+vkpddi: driver: submit 60 x 494.5 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.5 ms, descriptor sets 7177 x 0.3 ms (0 new pools, 7 resets), memory allocations 24 x 0.0 ms; command buffers: lock 0.0, reset 20.0, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.6 ms, 4 hitches), 1772 clears (587 as load ops), 2467 passes, acquire 2241 us, present 1781 us; 191507 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13995 buffers (+336, 43167 writes 303398 KB), 2430 textures (+24, 385 uploads 8844 KB), 656 shaders, 28 decls
+vkpddi: shader 1afc413ee3b804d9: effect off (graphics LOW)
+vkpddi: per frame: vk present 6.75 ms, d3d present 0.00 ms, rest of the frame 9.93 ms
+vkpddi: driver: submit 61 x 158.2 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.5 ms, descriptor sets 5855 x 0.3 ms (0 new pools, 6 resets), memory allocations 43 x 0.0 ms; command buffers: lock 0.0, reset 18.2, begin 0.1 ms
+vkpddi: 61 fps (worst frame 27.4 ms, 2 hitches), 1391 clears (610 as load ops), 2501 passes, acquire 2852 us, present 7584 us; 164525 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14577 buffers (+1021, 41036 writes 280468 KB), 2430 textures (+43, 668 uploads 1486 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 6.80 ms, d3d present 0.00 ms, rest of the frame 9.87 ms
+vkpddi: driver: submit 60 x 495.3 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.4 ms, descriptor sets 1851 x 0.2 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 17.5, begin 0.1 ms
+vkpddi: 60 fps (worst frame 25.3 ms, 1 hitches), 1293 clears (600 as load ops), 2460 passes, acquire 2577 us, present 1646 us; 130010 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14373 buffers (+510, 40102 writes 300194 KB), 2430 textures (+0, 62 uploads 8 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 4.06 ms, d3d present 0.00 ms, rest of the frame 12.57 ms
+vkpddi: driver: submit 61 x 386.2 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 20951 x 0.7 ms (0 new pools, 20 resets), memory allocations 107 x 0.2 ms; command buffers: lock 0.0, reset 21.1, begin 0.1 ms
+vkpddi: 61 fps (worst frame 29.0 ms, 1 hitches), 2062 clears (610 as load ops), 2501 passes, acquire 2881 us, present 2499 us; 200944 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13911 buffers (+1845, 45675 writes 321296 KB), 2413 textures (+105, 671 uploads 544 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 6.04 ms, d3d present 0.00 ms, rest of the frame 10.64 ms
+vkpddi: driver: submit 61 x 133.1 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.5 ms, descriptor sets 6957 x 0.3 ms (0 new pools, 7 resets), memory allocations 16 x 0.0 ms; command buffers: lock 0.0, reset 18.9, begin 0.1 ms
+vkpddi: 61 fps (worst frame 22.7 ms, 0 hitches), 2475 clears (597 as load ops), 2495 passes, acquire 2848 us, present 2817 us; 190722 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14125 buffers (+579, 41778 writes 268709 KB), 2413 textures (+16, 242 uploads 1638 KB), 656 shaders, 28 decls
+mouse reads (5 s): GetDeviceState 300 (moved 128), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 8.03 ms, d3d present 0.00 ms, rest of the frame 9.01 ms
+vkpddi: driver: submit 59 x 561.2 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.4 ms, descriptor sets 3149 x 0.2 ms (0 new pools, 3 resets), memory allocations 28 x 0.0 ms; command buffers: lock 0.0, reset 18.2, begin 0.1 ms
+vkpddi: 59 fps (worst frame 29.2 ms, 4 hitches), 2451 clears (590 as load ops), 2437 passes, acquire 2248 us, present 2073 us; 162660 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14542 buffers (+1211, 38036 writes 223284 KB), 2413 textures (+26, 378 uploads 1048 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 6.72 ms, d3d present 0.00 ms, rest of the frame 9.93 ms
+vkpddi: driver: submit 60 x 437.6 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 2040 x 0.2 ms (0 new pools, 2 resets), memory allocations 1 x 0.0 ms; command buffers: lock 0.0, reset 22.3, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.9 ms, 3 hitches), 1924 clears (600 as load ops), 2460 passes, acquire 2568 us, present 1915 us; 171993 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14438 buffers (+331, 38714 writes 232422 KB), 2413 textures (+0, 60 uploads 0 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 6.19 ms, d3d present 0.00 ms, rest of the frame 11.08 ms
+vkpddi: driver: submit 58 x 535.2 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.5 ms, descriptor sets 3219 x 0.3 ms (0 new pools, 3 resets), memory allocations 35 x 0.0 ms; command buffers: lock 0.0, reset 25.9, begin 0.1 ms
+vkpddi: 58 fps (worst frame 29.5 ms, 6 hitches), 1346 clears (580 as load ops), 2395 passes, acquire 2283 us, present 2029 us; 168675 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14249 buffers (+473, 37601 writes 261698 KB), 2424 textures (+33, 518 uploads 1081 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 5.36 ms, d3d present 0.00 ms, rest of the frame 11.73 ms
+vkpddi: driver: submit 59 x 480.7 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.6 ms, descriptor sets 4872 x 0.4 ms (0 new pools, 5 resets), memory allocations 46 x 0.0 ms; command buffers: lock 0.0, reset 22.3, begin 0.2 ms
+vkpddi: 59 fps (worst frame 28.9 ms, 2 hitches), 924 clears (590 as load ops), 2419 passes, acquire 2225 us, present 2656 us; 101001 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13870 buffers (+1652, 33999 writes 218576 KB), 2413 textures (+46, 557 uploads 2570 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 1.88 ms, d3d present 0.00 ms, rest of the frame 14.92 ms
+vkpddi: driver: submit 60 x 560.6 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.7 ms, descriptor sets 2027 x 0.3 ms (0 new pools, 2 resets), memory allocations 55 x 0.0 ms; command buffers: lock 0.0, reset 28.8, begin 0.2 ms
+vkpddi: 60 fps (worst frame 27.1 ms, 2 hitches), 1743 clears (600 as load ops), 2460 passes, acquire 2379 us, present 3369 us; 145893 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13996 buffers (+510, 36807 writes 211781 KB), 2424 textures (+55, 824 uploads 1933 KB), 656 shaders, 28 decls
+hud key label [SHIFT]
+hud key label [SHIFT]
+hud key label /mb1/
+hud key label /mb0/
+hud key label [SHIFT]
+abilities locked: POWER WHEEL, HUNT, BIO-BOMB, DEVASTATOR, PACK LEADER, PACK ATTACK
+mouse reads (5 s): GetDeviceState 294 (moved 116), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 4.40 ms, d3d present 0.00 ms, rest of the frame 12.93 ms
+vkpddi: driver: submit 58 x 706.8 ms, GPU waits 0 x 0.0 ms, new command buffers 116 x 0.7 ms, descriptor sets 3826 x 0.4 ms (0 new pools, 4 resets), memory allocations 40 x 0.0 ms; command buffers: lock 0.0, reset 20.6, begin 0.2 ms
+vkpddi: 58 fps (worst frame 33.5 ms, 6 hitches), 855 clears (558 as load ops), 2355 passes, acquire 2769 us, present 2527 us; 81609 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13904 buffers (+1029, 28419 writes 181978 KB), 2424 textures (+40, 398 uploads 22490 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 8.90 ms, d3d present 0.00 ms, rest of the frame 7.75 ms
+vkpddi: driver: submit 62 x 228.5 ms, GPU waits 0 x 0.0 ms, new command buffers 123 x 0.5 ms, descriptor sets 252 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 16.1, begin 0.1 ms
+vkpddi: 62 fps (worst frame 25.0 ms, 1 hitches), 656 clears (594 as load ops), 2620 passes, acquire 2781 us, present 2687 us; 69181 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13919 buffers (+15, 31706 writes 236837 KB), 2424 textures (+0, 68 uploads 7168 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 8.40 ms, d3d present 0.00 ms, rest of the frame 8.41 ms
+vkpddi: driver: submit 59 x 579.4 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.5 ms, descriptor sets 3210 x 0.3 ms (0 new pools, 3 resets), memory allocations 22 x 0.0 ms; command buffers: lock 0.0, reset 18.9, begin 0.2 ms
+vkpddi: 59 fps (worst frame 28.7 ms, 2 hitches), 889 clears (556 as load ops), 2467 passes, acquire 2148 us, present 2066 us; 102000 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14150 buffers (+924, 34063 writes 271699 KB), 2407 textures (+22, 357 uploads 1031 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 4.86 ms, d3d present 0.00 ms, rest of the frame 11.62 ms
+vkpddi: driver: submit 61 x 454.9 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.6 ms, descriptor sets 1133 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 25.0, begin 0.2 ms
+vkpddi: 61 fps (worst frame 29.2 ms, 2 hitches), 1839 clears (549 as load ops), 2440 passes, acquire 3075 us, present 2607 us; 167439 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14183 buffers (+249, 43675 writes 343053 KB), 2407 textures (+0, 61 uploads 1024 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 5.87 ms, d3d present 0.00 ms, rest of the frame 10.81 ms
+vkpddi: driver: submit 61 x 190.2 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.5 ms, descriptor sets 1033 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 25.0, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.8 ms, 1 hitches), 1784 clears (549 as load ops), 2440 passes, acquire 3344 us, present 2868 us; 158834 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14136 buffers (+58, 41779 writes 321896 KB), 2407 textures (+0, 61 uploads 0 KB), 656 shaders, 28 decls
+mouse reads (5 s): GetDeviceState 300 (moved 24), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 5.50 ms, d3d present 0.00 ms, rest of the frame 11.16 ms
+vkpddi: driver: submit 60 x 316.7 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 1051 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 23.5, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.7 ms, 2 hitches), 1821 clears (552 as load ops), 2523 passes, acquire 2706 us, present 2574 us; 156539 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14196 buffers (+120, 41660 writes 341275 KB), 2407 textures (+0, 61 uploads 0 KB), 656 shaders, 28 decls
+hud key label [SPACE]
+vkpddi: per frame: vk present 5.66 ms, d3d present 0.00 ms, rest of the frame 11.66 ms
+vkpddi: driver: submit 58 x 475.9 ms, GPU waits 0 x 0.0 ms, new command buffers 116 x 0.5 ms, descriptor sets 1864 x 0.3 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 26.3, begin 0.2 ms
+vkpddi: 58 fps (worst frame 28.6 ms, 4 hitches), 1960 clears (580 as load ops), 2594 passes, acquire 2643 us, present 9099 us; 160824 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14196 buffers (+0, 41208 writes 333023 KB), 2407 textures (+0, 67 uploads 9216 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 5.16 ms, d3d present 0.00 ms, rest of the frame 11.68 ms
+vkpddi: driver: submit 60 x 627.2 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 1.2 ms, descriptor sets 1134 x 0.2 ms (0 new pools, 1 resets), memory allocations 2 x 0.0 ms; command buffers: lock 0.0, reset 29.4, begin 0.2 ms
+vkpddi: 60 fps (worst frame 28.5 ms, 6 hitches), 2089 clears (600 as load ops), 2700 passes, acquire 2389 us, present 2359 us; 170744 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14196 buffers (+9, 42965 writes 344428 KB), 2407 textures (+0, 60 uploads 0 KB), 656 shaders, 28 decls
+hud key label [SPACE]
+vkpddi: per frame: vk present 2.83 ms, d3d present 0.00 ms, rest of the frame 13.66 ms
+vkpddi: driver: submit 60 x 288.6 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.6 ms, descriptor sets 1123 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 26.0, begin 0.2 ms
+vkpddi: 60 fps (worst frame 32.3 ms, 1 hitches), 2100 clears (600 as load ops), 2700 passes, acquire 3457 us, present 3012 us; 171315 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14196 buffers (+9, 42895 writes 343937 KB), 2407 textures (+0, 61 uploads 1024 KB), 656 shaders, 28 decls
+hud key label /mb1/
+hud key label /mb0/
+vkpddi: per frame: vk present 2.87 ms, d3d present 0.00 ms, rest of the frame 14.11 ms
+vkpddi: driver: submit 59 x 527.5 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.7 ms, descriptor sets 1941 x 0.3 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 28.2, begin 0.2 ms
+vkpddi: 59 fps (worst frame 29.2 ms, 5 hitches), 2067 clears (590 as load ops), 2651 passes, acquire 2660 us, present 2560 us; 167179 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14142 buffers (+69, 42142 writes 334101 KB), 2407 textures (+0, 61 uploads 2048 KB), 656 shaders, 28 decls
+vkpddi: shader c08ff8e6ecdf559c: effect off (graphics LOW)
+mouse reads (5 s): GetDeviceState 295 (moved 41), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 4.28 ms, d3d present 0.00 ms, rest of the frame 12.97 ms
+vkpddi: driver: submit 59 x 384.9 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.7 ms, descriptor sets 2784 x 0.4 ms (0 new pools, 3 resets), memory allocations 39 x 0.0 ms; command buffers: lock 0.0, reset 21.0, begin 0.2 ms
+vkpddi: 59 fps (worst frame 35.7 ms, 4 hitches), 1395 clears (536 as load ops), 2352 passes, acquire 3376 us, present 3085 us; 109722 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13908 buffers (+1548, 32420 writes 233479 KB), 2424 textures (+39, 595 uploads 2352 KB), 656 shaders, 28 decls
+hud key label [SHIFT]
+hud key label [SHIFT]
+hud key label [SHIFT]
+vkpddi: per frame: vk present 8.38 ms, d3d present 0.00 ms, rest of the frame 8.32 ms
+vkpddi: driver: submit 60 x 161.5 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 918 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 14.8, begin 0.2 ms
+vkpddi: 60 fps (worst frame 22.8 ms, 0 hitches), 654 clears (540 as load ops), 2386 passes, acquire 3018 us, present 2658 us; 73984 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13960 buffers (+760, 25312 writes 170616 KB), 2424 textures (+0, 64 uploads 3072 KB), 656 shaders, 28 decls
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitleBlur.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitle.txtTitle.htmlText asks for L SHIFT
+vkpddi: per frame: vk present 6.46 ms, d3d present 0.00 ms, rest of the frame 10.83 ms
+vkpddi: driver: submit 58 x 501.5 ms, GPU waits 0 x 0.0 ms, new command buffers 115 x 0.6 ms, descriptor sets 1487 x 0.3 ms (0 new pools, 1 resets), memory allocations 2 x 0.0 ms; command buffers: lock 0.0, reset 25.0, begin 0.2 ms
+vkpddi: 58 fps (worst frame 28.8 ms, 5 hitches), 2171 clears (567 as load ops), 2365 passes, acquire 2286 us, present 2534 us; 146697 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14189 buffers (+1138, 32614 writes 182395 KB), 2424 textures (+0, 108 uploads 52224 KB), 656 shaders, 28 decls
+vkpddi: per frame: vk present 7.03 ms, d3d present 0.00 ms, rest of the frame 9.64 ms
+vkpddi: driver: submit 60 x 201.4 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.6 ms, descriptor sets 1856 x 0.2 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 17.8, begin 0.1 ms
+vkpddi: 60 fps (worst frame 24.0 ms, 0 hitches), 1871 clears (571 as load ops), 2413 passes, acquire 2762 us, present 2785 us; 114828 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14279 buffers (+1134, 30837 writes 179494 KB), 2424 textures (+0, 63 uploads 2048 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 7.25 ms, d3d present 0.00 ms, rest of the frame 9.94 ms
+vkpddi: driver: submit 58 x 703.0 ms, GPU waits 0 x 0.0 ms, new command buffers 116 x 0.5 ms, descriptor sets 956 x 0.3 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 30.3, begin 0.1 ms
+vkpddi: 58 fps (worst frame 28.9 ms, 5 hitches), 2552 clears (580 as load ops), 2378 passes, acquire 1953 us, present 1950 us; 151514 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14186 buffers (+18, 34902 writes 191219 KB), 2424 textures (+0, 58 uploads 0 KB), 656 shaders, 29 decls
+hud key label [F]
+mouse reads (5 s): GetDeviceState 296 (moved 120), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 6.37 ms, d3d present 0.00 ms, rest of the frame 10.66 ms
+vkpddi: driver: submit 60 x 524.7 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.8 ms, descriptor sets 1186 x 0.3 ms (0 new pools, 1 resets), memory allocations 22 x 0.0 ms; command buffers: lock 0.0, reset 26.3, begin 0.2 ms
+vkpddi: 60 fps (worst frame 29.0 ms, 4 hitches), 2150 clears (600 as load ops), 2460 passes, acquire 2797 us, present 2236 us; 150087 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14029 buffers (+224, 34884 writes 197079 KB), 2413 textures (+22, 366 uploads 1773 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 6.15 ms, d3d present 0.00 ms, rest of the frame 10.51 ms
+vkpddi: driver: submit 60 x 471.4 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 2663 x 0.3 ms (0 new pools, 3 resets), memory allocations 16 x 0.0 ms; command buffers: lock 0.0, reset 25.1, begin 0.2 ms
+vkpddi: 60 fps (worst frame 27.8 ms, 2 hitches), 1264 clears (600 as load ops), 2471 passes, acquire 2756 us, present 2227 us; 129550 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13719 buffers (+983, 31960 writes 188915 KB), 2413 textures (+16, 189 uploads 1214 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 10.32 ms, d3d present 0.00 ms, rest of the frame 6.68 ms
+vkpddi: driver: submit 60 x 363.7 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.5 ms, descriptor sets 6137 x 0.4 ms (0 new pools, 6 resets), memory allocations 88 x 0.1 ms; command buffers: lock 0.0, reset 13.1, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.8 ms, 4 hitches), 662 clears (600 as load ops), 2422 passes, acquire 2394 us, present 2588 us; 51892 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14089 buffers (+1061, 21787 writes 149244 KB), 2413 textures (+88, 776 uploads 7263 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 6.53 ms, d3d present 0.00 ms, rest of the frame 10.49 ms
+vkpddi: driver: submit 60 x 382.4 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.5 ms, descriptor sets 2468 x 0.3 ms (0 new pools, 2 resets), memory allocations 4 x 0.0 ms; command buffers: lock 0.0, reset 23.1, begin 0.1 ms
+vkpddi: 60 fps (worst frame 26.5 ms, 3 hitches), 1256 clears (600 as load ops), 2460 passes, acquire 2601 us, present 2490 us; 158389 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13997 buffers (+771, 32755 writes 188891 KB), 2413 textures (+0, 59 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 5.09 ms, d3d present 0.00 ms, rest of the frame 11.60 ms
+vkpddi: driver: submit 60 x 549.2 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.8 ms, descriptor sets 3143 x 0.6 ms (0 new pools, 3 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 28.3, begin 0.2 ms
+vkpddi: 60 fps (worst frame 28.0 ms, 3 hitches), 1472 clears (600 as load ops), 2460 passes, acquire 2612 us, present 2221 us; 190644 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13887 buffers (+259, 35256 writes 202512 KB), 2413 textures (+0, 61 uploads 1024 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 297 (moved 73), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 4.05 ms, d3d present 0.00 ms, rest of the frame 12.59 ms
+vkpddi: driver: submit 60 x 251.7 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.6 ms, descriptor sets 5017 x 0.4 ms (0 new pools, 5 resets), memory allocations 8 x 0.0 ms; command buffers: lock 0.0, reset 25.0, begin 0.2 ms
+vkpddi: 60 fps (worst frame 23.1 ms, 0 hitches), 1244 clears (600 as load ops), 2488 passes, acquire 3666 us, present 3146 us; 191743 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13775 buffers (+398, 34448 writes 196679 KB), 2413 textures (+8, 125 uploads 607 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 1.76 ms, d3d present 0.00 ms, rest of the frame 15.27 ms
+vkpddi: driver: submit 60 x 454.4 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.7 ms, descriptor sets 3178 x 0.3 ms (0 new pools, 3 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 27.5, begin 0.2 ms
+vkpddi: 60 fps (worst frame 28.5 ms, 3 hitches), 1388 clears (600 as load ops), 2460 passes, acquire 3053 us, present 9401 us; 203235 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13843 buffers (+530, 34093 writes 210408 KB), 2413 textures (+0, 59 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: shader 365cbad2e5b8533d: effect off (graphics LOW)
+vkpddi: per frame: vk present 0.77 ms, d3d present 0.00 ms, rest of the frame 17.30 ms
+vkpddi: driver: submit 56 x 447.9 ms, GPU waits 0 x 0.0 ms, new command buffers 113 x 0.7 ms, descriptor sets 6095 x 0.6 ms (0 new pools, 6 resets), memory allocations 65 x 0.0 ms; command buffers: lock 0.0, reset 26.9, begin 0.2 ms
+vkpddi: 56 fps (worst frame 29.1 ms, 4 hitches), 1364 clears (560 as load ops), 2296 passes, acquire 2733 us, present 2980 us; 196193 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13834 buffers (+291, 32480 writes 189862 KB), 2414 textures (+65, 970 uploads 2337 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 1.48 ms, d3d present 0.00 ms, rest of the frame 14.92 ms
+vkpddi: driver: submit 61 x 324.0 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.6 ms, descriptor sets 4099 x 0.4 ms (0 new pools, 4 resets), memory allocations 9 x 0.0 ms; command buffers: lock 0.0, reset 27.3, begin 0.1 ms
+vkpddi: 61 fps (worst frame 20.9 ms, 0 hitches), 1537 clears (602 as load ops), 2512 passes, acquire 3395 us, present 2992 us; 204665 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13747 buffers (+671, 35953 writes 201128 KB), 2407 textures (+9, 136 uploads 352 KB), 656 shaders, 29 decls
+vkpddi: shader 6f16385731026981: effect off (graphics LOW)
+vkpddi: shader bac88e126f787b6c: effect off (graphics LOW)
+vkpddi: shader 090c7df37ad113f3: effect off (graphics LOW)
+vkpddi: per frame: vk present 0.22 ms, d3d present 0.00 ms, rest of the frame 18.13 ms
+vkpddi: driver: submit 55 x 212.4 ms, GPU waits 0 x 0.0 ms, new command buffers 109 x 0.7 ms, descriptor sets 4064 x 0.5 ms (0 new pools, 4 resets), memory allocations 16 x 0.0 ms; command buffers: lock 0.0, reset 19.1, begin 0.2 ms
+vkpddi: 55 fps (worst frame 28.6 ms, 2 hitches), 1056 clears (550 as load ops), 2255 passes, acquire 3933 us, present 3933 us; 146907 draws, 86 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 86 no pipeline, 0 no constants), 3 new pipelines (3 in the background, 0 where drawn: 0.0 m; 13759 buffers (+1458, 29644 writes 216347 KB), 2403 textures (+16, 185 uploads 1230 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 291 (moved 122), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 0.64 ms, d3d present 0.00 ms, rest of the frame 15.88 ms
+vkpddi: driver: submit 61 x 193.7 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.7 ms, descriptor sets 2977 x 0.4 ms (0 new pools, 3 resets), memory allocations 16 x 0.0 ms; command buffers: lock 0.0, reset 21.7, begin 0.2 ms
+vkpddi: 61 fps (worst frame 22.0 ms, 0 hitches), 1768 clears (610 as load ops), 2501 passes, acquire 3716 us, present 3304 us; 148211 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13692 buffers (+375, 33009 writes 232078 KB), 2403 textures (+16, 189 uploads 1214 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 3.75 ms, d3d present 0.00 ms, rest of the frame 13.36 ms
+vkpddi: driver: submit 58 x 687.3 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.7 ms, descriptor sets 5246 x 0.4 ms (0 new pools, 5 resets), memory allocations 57 x 0.0 ms; command buffers: lock 0.0, reset 23.3, begin 0.2 ms
+vkpddi: 58 fps (worst frame 29.3 ms, 4 hitches), 1266 clears (580 as load ops), 2379 passes, acquire 2025 us, present 2538 us; 128699 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14015 buffers (+1302, 29935 writes 258511 KB), 2393 textures (+57, 668 uploads 4271 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 5.14 ms, d3d present 0.00 ms, rest of the frame 12.04 ms
+vkpddi: driver: submit 59 x 516.1 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.6 ms, descriptor sets 9215 x 0.6 ms (0 new pools, 9 resets), memory allocations 150 x 0.1 ms; command buffers: lock 0.0, reset 20.8, begin 0.2 ms
+vkpddi: 59 fps (worst frame 28.7 ms, 4 hitches), 1079 clears (573 as load ops), 2421 passes, acquire 2483 us, present 2864 us; 137780 draws, 1 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 1 no pipeline, 0 no constants), 1 new pipelines (1 in the background, 0 where drawn: 0.0 ms,; 14334 buffers (+2410, 30752 writes 303696 KB), 2415 textures (+150, 979 uploads 2366 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 6.09 ms, d3d present 0.00 ms, rest of the frame 10.57 ms
+vkpddi: driver: submit 60 x 330.2 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 7129 x 0.4 ms (0 new pools, 7 resets), memory allocations 101 x 0.0 ms; command buffers: lock 0.0, reset 20.5, begin 0.1 ms
+vkpddi: 60 fps (worst frame 21.4 ms, 0 hitches), 1219 clears (600 as load ops), 2481 passes, acquire 2674 us, present 2934 us; 153398 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13972 buffers (+1354, 29713 writes 285781 KB), 2394 textures (+101, 654 uploads 559 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 3.88 ms, d3d present 0.00 ms, rest of the frame 13.13 ms
+vkpddi: driver: submit 59 x 640.8 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.6 ms, descriptor sets 23620 x 1.1 ms (0 new pools, 23 resets), memory allocations 90 x 0.1 ms; command buffers: lock 0.0, reset 27.6, begin 0.2 ms
+vkpddi: 59 fps (worst frame 29.7 ms, 2 hitches), 1798 clears (590 as load ops), 2419 passes, acquire 2850 us, present 1978 us; 188321 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13975 buffers (+1265, 35803 writes 294792 KB), 2414 textures (+88, 1163 uploads 5004 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 294 (moved 125), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 0.45 ms, d3d present 0.00 ms, rest of the frame 17.32 ms
+vkpddi: driver: submit 57 x 283.7 ms, GPU waits 0 x 0.0 ms, new command buffers 114 x 0.6 ms, descriptor sets 19299 x 1.6 ms (0 new pools, 19 resets), memory allocations 56 x 0.0 ms; command buffers: lock 0.0, reset 26.0, begin 0.2 ms
+vkpddi: 57 fps (worst frame 29.2 ms, 2 hitches), 1598 clears (570 as load ops), 2337 passes, acquire 3510 us, present 2622 us; 182220 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13608 buffers (+1276, 33751 writes 172738 KB), 2411 textures (+56, 768 uploads 2693 KB), 656 shaders, 29 decls
+ngfx: pipeline cache saved (14845 KB, 4 new pipelines)
+vkpddi: per frame: vk present 1.33 ms, d3d present 0.00 ms, rest of the frame 15.36 ms
+vkpddi: driver: submit 61 x 347.2 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.7 ms, descriptor sets 3040 x 0.3 ms (0 new pools, 3 resets), memory allocations 8 x 0.0 ms; command buffers: lock 0.0, reset 21.8, begin 0.2 ms
+vkpddi: 61 fps (worst frame 20.1 ms, 0 hitches), 1357 clears (610 as load ops), 2501 passes, acquire 2866 us, present 3568 us; 146833 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13801 buffers (+1177, 35697 writes 239269 KB), 2411 textures (+8, 124 uploads 607 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 3.75 ms, d3d present 0.00 ms, rest of the frame 13.56 ms
+vkpddi: driver: submit 58 x 241.7 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.7 ms, descriptor sets 8860 x 0.6 ms (0 new pools, 9 resets), memory allocations 101 x 0.1 ms; command buffers: lock 0.0, reset 15.8, begin 0.2 ms
+vkpddi: 58 fps (worst frame 24.9 ms, 0 hitches), 882 clears (580 as load ops), 2378 passes, acquire 3109 us, present 2419 us; 77742 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14030 buffers (+1907, 25251 writes 153959 KB), 2417 textures (+101, 1000 uploads 6703 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 9.95 ms, d3d present 0.00 ms, rest of the frame 6.74 ms
+vkpddi: driver: submit 61 x 289.2 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.6 ms, descriptor sets 979 x 0.2 ms (0 new pools, 1 resets), memory allocations 8 x 0.0 ms; command buffers: lock 0.0, reset 13.4, begin 0.1 ms
+vkpddi: 61 fps (worst frame 26.2 ms, 2 hitches), 671 clears (610 as load ops), 2501 passes, acquire 2386 us, present 3026 us; 54368 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13664 buffers (+280, 21605 writes 131847 KB), 2417 textures (+8, 125 uploads 607 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 11.61 ms, d3d present 0.00 ms, rest of the frame 5.07 ms
+vkpddi: driver: submit 61 x 112.8 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 263 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 11.6, begin 0.1 ms
+vkpddi: 61 fps (worst frame 23.2 ms, 0 hitches), 671 clears (610 as load ops), 2466 passes, acquire 3409 us, present 2663 us; 39698 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13303 buffers (+63, 20367 writes 135450 KB), 2417 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 296 (moved 83), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 12.71 ms, d3d present 0.00 ms, rest of the frame 4.03 ms
+vkpddi: driver: submit 59 x 602.3 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.4 ms, descriptor sets 242 x 0.1 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 7.8, begin 0.1 ms
+vkpddi: 59 fps (worst frame 28.5 ms, 2 hitches), 649 clears (590 as load ops), 2360 passes, acquire 1685 us, present 1303 us; 27951 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13447 buffers (+216, 18939 writes 116948 KB), 2417 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 13.19 ms, d3d present 0.00 ms, rest of the frame 3.67 ms
+vkpddi: driver: submit 61 x 292.3 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.4 ms, descriptor sets 3145 x 0.2 ms (0 new pools, 3 resets), memory allocations 88 x 0.0 ms; command buffers: lock 0.0, reset 6.5, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.2 ms, 1 hitches), 663 clears (602 as load ops), 2432 passes, acquire 2002 us, present 6778 us; 28305 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13221 buffers (+406, 19101 writes 112745 KB), 2413 textures (+88, 776 uploads 7263 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 13.20 ms, d3d present 0.00 ms, rest of the frame 3.44 ms
+vkpddi: driver: submit 61 x 80.1 ms, GPU waits 0 x 0.0 ms, new command buffers 123 x 0.6 ms, descriptor sets 484 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 6.3, begin 0.3 ms
+vkpddi: 61 fps (worst frame 25.0 ms, 1 hitches), 670 clears (609 as load ops), 2439 passes, acquire 2126 us, present 2499 us; 27272 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13167 buffers (+46, 19018 writes 104714 KB), 2413 textures (+0, 62 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 12.60 ms, d3d present 0.00 ms, rest of the frame 4.04 ms
+vkpddi: driver: submit 60 x 644.6 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 262 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 9.4, begin 0.1 ms
+vkpddi: 60 fps (worst frame 24.8 ms, 0 hitches), 660 clears (600 as load ops), 2403 passes, acquire 2506 us, present 1996 us; 26867 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13198 buffers (+212, 19529 writes 104148 KB), 2413 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 10.89 ms, d3d present 0.00 ms, rest of the frame 6.07 ms
+vkpddi: driver: submit 60 x 501.6 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.4 ms, descriptor sets 2402 x 0.2 ms (0 new pools, 2 resets), memory allocations 2 x 0.0 ms; command buffers: lock 0.0, reset 13.1, begin 0.1 ms
+vkpddi: 60 fps (worst frame 29.3 ms, 3 hitches), 1211 clears (590 as load ops), 2417 passes, acquire 1810 us, present 1552 us; 118332 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13902 buffers (+1293, 27523 writes 123400 KB), 2413 textures (+0, 59 uploads 0 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 298 (moved 20), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 8.72 ms, d3d present 0.00 ms, rest of the frame 8.00 ms
+vkpddi: driver: submit 61 x 98.9 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.4 ms, descriptor sets 6934 x 0.3 ms (0 new pools, 7 resets), memory allocations 55 x 0.0 ms; command buffers: lock 0.0, reset 16.2, begin 0.1 ms
+vkpddi: 61 fps (worst frame 22.8 ms, 0 hitches), 1257 clears (610 as load ops), 2518 passes, acquire 2450 us, present 2229 us; 147103 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14249 buffers (+1849, 33156 writes 184740 KB), 2374 textures (+55, 363 uploads 142 KB), 656 shaders, 29 decls
+vkpddi: shader e583bd50af401604: effect off (graphics LOW)
+vkpddi: per frame: vk present 8.04 ms, d3d present 0.00 ms, rest of the frame 8.76 ms
+vkpddi: driver: submit 59 x 589.9 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.5 ms, descriptor sets 8262 x 0.5 ms (0 new pools, 8 resets), memory allocations 185 x 0.0 ms; command buffers: lock 0.0, reset 22.4, begin 0.1 ms
+vkpddi: 59 fps (worst frame 29.3 ms, 2 hitches), 1698 clears (590 as load ops), 2419 passes, acquire 1815 us, present 1551 us; 151066 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13964 buffers (+1415, 34983 writes 194179 KB), 2420 textures (+185, 1094 uploads 617 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 6.04 ms, d3d present 0.00 ms, rest of the frame 10.47 ms
+vkpddi: driver: submit 62 x 284.9 ms, GPU waits 0 x 0.0 ms, new command buffers 123 x 0.4 ms, descriptor sets 5195 x 0.4 ms (0 new pools, 5 resets), memory allocations 54 x 0.0 ms; command buffers: lock 0.0, reset 22.3, begin 0.1 ms
+vkpddi: 62 fps (worst frame 22.8 ms, 0 hitches), 2172 clears (620 as load ops), 2542 passes, acquire 3318 us, present 2384 us; 181392 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14106 buffers (+1205, 38294 writes 211717 KB), 2413 textures (+52, 395 uploads 538 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 5.54 ms, d3d present 0.00 ms, rest of the frame 11.10 ms
+vkpddi: driver: submit 60 x 369.1 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.6 ms, descriptor sets 2921 x 0.2 ms (0 new pools, 3 resets), memory allocations 11 x 0.0 ms; command buffers: lock 0.0, reset 20.5, begin 0.2 ms
+vkpddi: 60 fps (worst frame 21.4 ms, 0 hitches), 1507 clears (600 as load ops), 2460 passes, acquire 3018 us, present 2498 us; 137701 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14691 buffers (+1014, 33483 writes 198634 KB), 2420 textures (+11, 156 uploads 323 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 4.66 ms, d3d present 0.00 ms, rest of the frame 12.02 ms
+vkpddi: driver: submit 61 x 177.4 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.6 ms, descriptor sets 3076 x 0.3 ms (0 new pools, 3 resets), memory allocations 2 x 0.0 ms; command buffers: lock 0.0, reset 25.1, begin 0.2 ms
+vkpddi: 61 fps (worst frame 25.2 ms, 1 hitches), 1661 clears (610 as load ops), 2501 passes, acquire 3543 us, present 3043 us; 169057 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14734 buffers (+723, 34554 writes 166799 KB), 2420 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 300 (moved 51), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 4.06 ms, d3d present 0.00 ms, rest of the frame 12.71 ms
+vkpddi: driver: submit 59 x 564.6 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.8 ms, descriptor sets 7373 x 0.4 ms (0 new pools, 7 resets), memory allocations 132 x 0.1 ms; command buffers: lock 0.0, reset 29.4, begin 0.2 ms
+vkpddi: 59 fps (worst frame 28.8 ms, 1 hitches), 1292 clears (590 as load ops), 2419 passes, acquire 2078 us, present 2514 us; 136085 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14666 buffers (+2946, 31266 writes 162208 KB), 2411 textures (+130, 793 uploads 513 KB), 656 shaders, 29 decls
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitleBlur.txtTitle.htmlText asks for L SHIFT
+hud prompt: mcAnchor.mcObjectiveHintHUD.mcTitle.txtTitle.htmlText asks for L SHIFT
+vkpddi: per frame: vk present 3.42 ms, d3d present 0.00 ms, rest of the frame 13.45 ms
+vkpddi: driver: submit 60 x 592.7 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.8 ms, descriptor sets 5124 x 0.4 ms (0 new pools, 5 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 35.5, begin 0.2 ms
+vkpddi: 60 fps (worst frame 28.9 ms, 3 hitches), 1874 clears (593 as load ops), 2453 passes, acquire 2590 us, present 2222 us; 178945 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14361 buffers (+901, 35891 writes 177130 KB), 2411 textures (+0, 119 uploads 2504 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 5.36 ms, d3d present 0.00 ms, rest of the frame 11.28 ms
+vkpddi: driver: submit 61 x 292.2 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.6 ms, descriptor sets 1916 x 0.3 ms (0 new pools, 2 resets), memory allocations 2 x 0.0 ms; command buffers: lock 0.0, reset 25.4, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.1 ms, 1 hitches), 1695 clears (549 as load ops), 2440 passes, acquire 2895 us, present 3548 us; 167692 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13748 buffers (+381, 34510 writes 167898 KB), 2411 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 4.57 ms, d3d present 0.00 ms, rest of the frame 12.07 ms
+vkpddi: driver: submit 60 x 618.2 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.7 ms, descriptor sets 1175 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 31.1, begin 0.2 ms
+vkpddi: 60 fps (worst frame 28.3 ms, 1 hitches), 1565 clears (586 as load ops), 2446 passes, acquire 2696 us, present 2270 us; 174359 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13913 buffers (+543, 34491 writes 203029 KB), 2411 textures (+0, 61 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 7.29 ms, d3d present 0.00 ms, rest of the frame 10.04 ms
+vkpddi: driver: submit 59 x 523.3 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.6 ms, descriptor sets 1047 x 0.3 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 25.5, begin 0.2 ms
+vkpddi: 59 fps (worst frame 28.2 ms, 4 hitches), 1185 clears (551 as load ops), 2379 passes, acquire 2707 us, present 2129 us; 137279 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13923 buffers (+401, 25766 writes 142984 KB), 2411 textures (+0, 59 uploads 1024 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 298 (moved 35), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 6.89 ms, d3d present 0.00 ms, rest of the frame 10.07 ms
+vkpddi: driver: submit 59 x 337.2 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.5 ms, descriptor sets 3917 x 0.3 ms (0 new pools, 3 resets), memory allocations 39 x 0.0 ms; command buffers: lock 0.0, reset 26.0, begin 0.1 ms
+vkpddi: 59 fps (worst frame 28.4 ms, 2 hitches), 1588 clears (581 as load ops), 2409 passes, acquire 2838 us, present 2748 us; 170545 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14079 buffers (+622, 32619 writes 156466 KB), 2418 textures (+37, 540 uploads 1099 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 3.34 ms, d3d present 0.00 ms, rest of the frame 13.44 ms
+vkpddi: driver: submit 59 x 522.5 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.6 ms, descriptor sets 17166 x 0.9 ms (0 new pools, 17 resets), memory allocations 139 x 0.0 ms; command buffers: lock 0.0, reset 29.9, begin 0.2 ms
+vkpddi: 59 fps (worst frame 29.2 ms, 5 hitches), 2209 clears (590 as load ops), 2423 passes, acquire 2506 us, present 7602 us; 223211 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14054 buffers (+1483, 45466 writes 212560 KB), 2425 textures (+139, 881 uploads 46490 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 1.33 ms, d3d present 0.00 ms, rest of the frame 15.61 ms
+vkpddi: driver: submit 60 x 532.7 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.8 ms, descriptor sets 30830 x 1.6 ms (0 new pools, 30 resets), memory allocations 33 x 0.0 ms; command buffers: lock 0.0, reset 38.4, begin 0.2 ms
+vkpddi: 60 fps (worst frame 27.2 ms, 4 hitches), 2375 clears (600 as load ops), 2477 passes, acquire 3496 us, present 2472 us; 251877 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14019 buffers (+302, 47047 writes 208115 KB), 2424 textures (+33, 505 uploads 1731 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.00 ms, d3d present 0.00 ms, rest of the frame 19.00 ms
+vkpddi: driver: submit 53 x 197.9 ms, GPU waits 0 x 0.0 ms, new command buffers 106 x 0.8 ms, descriptor sets 8440 x 0.8 ms (0 new pools, 8 resets), memory allocations 30 x 0.0 ms; command buffers: lock 0.0, reset 24.3, begin 0.2 ms
+vkpddi: 53 fps (worst frame 28.5 ms, 2 hitches), 1673 clears (530 as load ops), 2173 passes, acquire 2511 us, present 2670 us; 200282 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13826 buffers (+334, 40272 writes 184318 KB), 2413 textures (+30, 435 uploads 2468 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.22 ms, d3d present 0.00 ms, rest of the frame 17.82 ms
+vkpddi: driver: submit 56 x 300.2 ms, GPU waits 0 x 0.0 ms, new command buffers 113 x 0.8 ms, descriptor sets 4112 x 0.5 ms (0 new pools, 4 resets), memory allocations 16 x 0.0 ms; command buffers: lock 0.0, reset 26.9, begin 0.2 ms
+vkpddi: 56 fps (worst frame 24.1 ms, 0 hitches), 1146 clears (560 as load ops), 2296 passes, acquire 3301 us, present 2615 us; 176431 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14053 buffers (+703, 32087 writes 171280 KB), 2413 textures (+16, 185 uploads 1214 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 283 (moved 81), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 0.20 ms, d3d present 0.00 ms, rest of the frame 18.24 ms
+vkpddi: driver: submit 54 x 278.7 ms, GPU waits 0 x 0.0 ms, new command buffers 108 x 0.6 ms, descriptor sets 6100 x 0.6 ms (0 new pools, 6 resets), memory allocations 38 x 0.0 ms; command buffers: lock 0.0, reset 25.9, begin 0.2 ms
+vkpddi: 54 fps (worst frame 28.8 ms, 2 hitches), 1266 clears (540 as load ops), 2214 passes, acquire 2423 us, present 3491 us; 186535 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14001 buffers (+488, 31429 writes 182117 KB), 2413 textures (+38, 488 uploads 2065 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 1.18 ms, d3d present 0.00 ms, rest of the frame 16.11 ms
+vkpddi: driver: submit 59 x 471.0 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 1.0 ms, descriptor sets 7101 x 0.7 ms (0 new pools, 7 resets), memory allocations 65 x 0.0 ms; command buffers: lock 0.0, reset 29.5, begin 0.2 ms
+vkpddi: 59 fps (worst frame 33.4 ms, 3 hitches), 1629 clears (590 as load ops), 2419 passes, acquire 2987 us, present 2548 us; 188143 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14069 buffers (+642, 35157 writes 227013 KB), 2424 textures (+65, 773 uploads 3509 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 3.14 ms, d3d present 0.00 ms, rest of the frame 13.55 ms
+vkpddi: driver: submit 60 x 173.3 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 2134 x 0.2 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 23.3, begin 0.1 ms
+vkpddi: 60 fps (worst frame 27.2 ms, 1 hitches), 1843 clears (600 as load ops), 2460 passes, acquire 3294 us, present 3067 us; 162455 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14169 buffers (+900, 34456 writes 225856 KB), 2408 textures (+0, 61 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 5.76 ms, d3d present 0.00 ms, rest of the frame 10.88 ms
+vkpddi: driver: submit 61 x 584.0 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.6 ms, descriptor sets 3878 x 0.3 ms (0 new pools, 4 resets), memory allocations 29 x 0.0 ms; command buffers: lock 0.0, reset 20.8, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.6 ms, 1 hitches), 1182 clears (574 as load ops), 2465 passes, acquire 2673 us, present 2429 us; 128606 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14617 buffers (+1475, 31093 writes 234482 KB), 2420 textures (+29, 301 uploads 1625 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 4.08 ms, d3d present 0.01 ms, rest of the frame 12.58 ms
+vkpddi: driver: submit 60 x 556.5 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.7 ms, descriptor sets 5903 x 0.4 ms (0 new pools, 6 resets), memory allocations 42 x 0.0 ms; command buffers: lock 0.0, reset 22.8, begin 0.2 ms
+vkpddi: 60 fps (worst frame 28.9 ms, 4 hitches), 1516 clears (540 as load ops), 2400 passes, acquire 3550 us, present 2827 us; 145632 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14717 buffers (+1284, 40564 writes 373357 KB), 2403 textures (+40, 605 uploads 1806 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 295 (moved 139), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 5.77 ms, d3d present 0.00 ms, rest of the frame 11.10 ms
+vkpddi: driver: submit 60 x 756.3 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.6 ms, descriptor sets 1539 x 0.2 ms (0 new pools, 1 resets), memory allocations 8 x 0.0 ms; command buffers: lock 0.0, reset 24.6, begin 0.2 ms
+vkpddi: 60 fps (worst frame 28.6 ms, 2 hitches), 1211 clears (540 as load ops), 2400 passes, acquire 2116 us, present 1723 us; 117650 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14585 buffers (+511, 39706 writes 391791 KB), 2403 textures (+8, 124 uploads 607 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 4.40 ms, d3d present 0.00 ms, rest of the frame 12.08 ms
+vkpddi: driver: submit 62 x 547.3 ms, GPU waits 0 x 0.0 ms, new command buffers 123 x 0.7 ms, descriptor sets 2918 x 0.4 ms (0 new pools, 3 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 25.4, begin 0.3 ms
+vkpddi: 62 fps (worst frame 24.9 ms, 0 hitches), 1279 clears (558 as load ops), 2480 passes, acquire 2818 us, present 2446 us; 138912 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14589 buffers (+628, 40053 writes 387807 KB), 2403 textures (+0, 61 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 4.91 ms, d3d present 0.00 ms, rest of the frame 11.74 ms
+game state: state 5 target 11 stack [ 2 ]
+vkpddi: driver: submit 60 x 672.5 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.8 ms, descriptor sets 2957 x 0.3 ms (0 new pools, 3 resets), memory allocations 8 x 0.0 ms; command buffers: lock 0.0, reset 26.6, begin 0.2 ms
+vkpddi: 60 fps (worst frame 27.9 ms, 1 hitches), 1261 clears (589 as load ops), 2447 passes, acquire 1993 us, present 2290 us; 135273 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14647 buffers (+1014, 36463 writes 345146 KB), 2403 textures (+8, 125 uploads 607 KB), 656 shaders, 29 decls
+game state: state 6 target 11 stack [ 2 11 ]
+GetProcAddress(KERNEL32, GetLogicalProcessorInformation): not available
+game state: state 0 target 11 stack [ 2 11 ]
+touch layout: VIDEO
+vkpddi: per frame: vk present 12.92 ms, d3d present 0.00 ms, rest of the frame 4.14 ms
+vkpddi: driver: submit 60 x 206.5 ms, GPU waits 0 x 0.0 ms, new command buffers 85 x 0.6 ms, descriptor sets 116 x 0.1 ms (0 new pools, 0 resets), memory allocations 6 x 0.0 ms; command buffers: lock 0.0, reset 1.6, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.4 ms, 1 hitches), 185 clears (76 as load ops), 138 passes, acquire 2484 us, present 1796 us; 2425 draws, 133 skipped (133 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 14631 buffers (+2, 2015 writes 54362 KB), 2409 textures (+6, 76 uploads 25500 KB), 656 shaders, 29 decls
+touch: skip video (Esc, then M)
+game state: state 6 target 15 stack [ 2 11 15 ]
+game state: state 0 target 15 stack [ 2 11 15 ]
+touch layout: VIDEO PAUSED
+vkpddi: per frame: vk present 13.33 ms, d3d present 0.00 ms, rest of the frame 3.31 ms
+game state: state 5 target 11 stack [ 2 11 15 ]
+vkpddi: driver: submit 60 x 56.6 ms, GPU waits 0 x 0.0 ms, new command buffers 83 x 0.5 ms, descriptor sets 122 x 0.1 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 0.6, begin 0.1 ms
+vkpddi: 60 fps (worst frame 27.0 ms, 1 hitches), 177 clears (60 as load ops), 60 passes, acquire 2537 us, present 3596 us; 307 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms; 14631 buffers (+0, 629 writes 85 KB), 2409 textures (+0, 68 uploads 24488 KB), 656 shaders, 29 decls
+game state: state 6 target 11 stack [ 2 15 ]
+game state: state 6 target 15 stack [ 2 ]
+game state: state 0 target 15 stack [ 2 ]
+mouse reads (5 s): GetDeviceState 300 (moved 17), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+touch layout: ON FOOT
+steam: achievement ACH_2
+vkpddi: per frame: vk present 13.08 ms, d3d present 0.00 ms, rest of the frame 3.61 ms
+vkpddi: driver: submit 60 x 25.8 ms, GPU waits 0 x 0.0 ms, new command buffers 78 x 0.2 ms, descriptor sets 857 x 0.1 ms (0 new pools, 1 resets), memory allocations 32 x 0.0 ms; command buffers: lock 0.0, reset 2.7, begin 0.1 ms
+vkpddi: 60 fps (worst frame 19.8 ms, 0 hitches), 277 clears (148 as load ops), 489 passes, acquire 1771 us, present 2011 us; 22424 draws, 120 skipped (120 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ; 14326 buffers (+1590, 9630 writes 204495 KB), 2403 textures (+32, 263 uploads 2434 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 9.48 ms, d3d present 0.00 ms, rest of the frame 7.17 ms
+vkpddi: driver: submit 60 x 217.9 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 2101 x 0.2 ms (0 new pools, 2 resets), memory allocations 1 x 0.0 ms; command buffers: lock 0.0, reset 16.6, begin 0.1 ms
+vkpddi: 60 fps (worst frame 22.9 ms, 0 hitches), 1521 clears (572 as load ops), 2432 passes, acquire 2331 us, present 7836 us; 150672 draws, 28 skipped (28 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 m; 14505 buffers (+444, 39161 writes 377069 KB), 2404 textures (+1, 76 uploads 15376 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 9.57 ms, d3d present 0.00 ms, rest of the frame 7.10 ms
+vkpddi: driver: submit 60 x 99.7 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 1077 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 20.6, begin 0.1 ms
+vkpddi: 60 fps (worst frame 25.0 ms, 1 hitches), 1365 clears (540 as load ops), 2400 passes, acquire 1885 us, present 1862 us; 159550 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14463 buffers (+48, 43065 writes 416440 KB), 2404 textures (+0, 61 uploads 1024 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 9.80 ms, d3d present 0.00 ms, rest of the frame 6.87 ms
+vkpddi: driver: submit 60 x 407.8 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.3 ms, descriptor sets 1032 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 17.4, begin 0.1 ms
+vkpddi: 60 fps (worst frame 22.5 ms, 0 hitches), 1270 clears (540 as load ops), 2400 passes, acquire 2633 us, present 1284 us; 143919 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14397 buffers (+45, 41112 writes 404169 KB), 2404 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 8.63 ms, d3d present 0.00 ms, rest of the frame 8.04 ms
+vkpddi: driver: submit 60 x 108.3 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 1066 x 0.1 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 18.8, begin 0.1 ms
+vkpddi: 60 fps (worst frame 25.0 ms, 0 hitches), 1290 clears (559 as load ops), 2419 passes, acquire 3134 us, present 2268 us; 143043 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14489 buffers (+110, 40685 writes 400604 KB), 2404 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 5.10 ms, d3d present 0.00 ms, rest of the frame 11.61 ms
+vkpddi: driver: submit 60 x 737.7 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 3057 x 0.3 ms (0 new pools, 3 resets), memory allocations 18 x 0.0 ms; command buffers: lock 0.0, reset 25.6, begin 0.1 ms
+vkpddi: 60 fps (worst frame 26.9 ms, 2 hitches), 1434 clears (600 as load ops), 2480 passes, acquire 1817 us, present 2007 us; 137524 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14487 buffers (+561, 42330 writes 405468 KB), 2396 textures (+18, 311 uploads 791 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 1.42 ms, d3d present 0.00 ms, rest of the frame 17.28 ms
+vkpddi: driver: submit 54 x 232.5 ms, GPU waits 0 x 0.0 ms, new command buffers 107 x 1.1 ms, descriptor sets 3134 x 0.4 ms (0 new pools, 3 resets), memory allocations 72 x 0.1 ms; command buffers: lock 0.0, reset 13.5, begin 0.2 ms
+vkpddi: 54 fps (worst frame 35.1 ms, 7 hitches), 933 clears (540 as load ops), 2214 passes, acquire 4090 us, present 2395 us; 89278 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14322 buffers (+1155, 30359 writes 316091 KB), 2417 textures (+71, 845 uploads 3755 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.00 ms, d3d present 0.00 ms, rest of the frame 22.40 ms
+vkpddi: driver: submit 46 x 215.3 ms, GPU waits 0 x 0.0 ms, new command buffers 92 x 0.8 ms, descriptor sets 1853 x 0.3 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 13.5, begin 0.2 ms
+vkpddi: 46 fps (worst frame 30.9 ms, 7 hitches), 1195 clears (460 as load ops), 1886 passes, acquire 3485 us, present 3204 us; 121684 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14335 buffers (+274, 27932 writes 253693 KB), 2417 textures (+0, 47 uploads 1024 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.00 ms, d3d present 0.00 ms, rest of the frame 17.73 ms
+vkpddi: driver: submit 56 x 270.0 ms, GPU waits 0 x 0.0 ms, new command buffers 112 x 0.7 ms, descriptor sets 4240 x 0.5 ms (0 new pools, 4 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 19.3, begin 0.2 ms
+vkpddi: 56 fps (worst frame 23.4 ms, 0 hitches), 1778 clears (513 as load ops), 2249 passes, acquire 3606 us, present 3983 us; 183979 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14249 buffers (+687, 36133 writes 307346 KB), 2417 textures (+0, 56 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.00 ms, d3d present 0.00 ms, rest of the frame 19.92 ms
+vkpddi: driver: submit 51 x 262.6 ms, GPU waits 0 x 0.0 ms, new command buffers 102 x 0.8 ms, descriptor sets 3125 x 0.7 ms (0 new pools, 3 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 19.2, begin 0.2 ms
+vkpddi: 51 fps (worst frame 25.6 ms, 1 hitches), 1633 clears (471 as load ops), 2052 passes, acquire 5630 us, present 4113 us; 170582 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14211 buffers (+395, 34249 writes 298481 KB), 2417 textures (+0, 51 uploads 0 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 261 (moved 54), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 0.00 ms, d3d present 0.00 ms, rest of the frame 19.39 ms
+vkpddi: driver: submit 52 x 244.7 ms, GPU waits 0 x 0.0 ms, new command buffers 104 x 0.7 ms, descriptor sets 5095 x 0.6 ms (0 new pools, 5 resets), memory allocations 31 x 0.0 ms; command buffers: lock 0.0, reset 15.6, begin 0.2 ms
+vkpddi: 52 fps (worst frame 28.5 ms, 3 hitches), 1487 clears (520 as load ops), 2145 passes, acquire 4547 us, present 2408 us; 144303 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14504 buffers (+939, 34916 writes 316333 KB), 2401 textures (+31, 420 uploads 1654 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.88 ms, d3d present 0.00 ms, rest of the frame 16.43 ms
+vkpddi: driver: submit 59 x 223.4 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.7 ms, descriptor sets 3924 x 0.4 ms (0 new pools, 4 resets), memory allocations 24 x 0.0 ms; command buffers: lock 0.0, reset 15.4, begin 0.2 ms
+vkpddi: 59 fps (worst frame 26.8 ms, 1 hitches), 1172 clears (585 as load ops), 2414 passes, acquire 3796 us, present 4301 us; 134738 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14602 buffers (+1012, 32729 writes 313629 KB), 2404 textures (+24, 259 uploads 1140 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 2.82 ms, d3d present 0.00 ms, rest of the frame 13.65 ms
+vkpddi: driver: submit 60 x 229.4 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.6 ms, descriptor sets 1124 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 20.5, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.0 ms, 1 hitches), 1669 clears (540 as load ops), 2400 passes, acquire 3116 us, present 2869 us; 156629 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14556 buffers (+190, 37470 writes 316175 KB), 2404 textures (+0, 61 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 1.07 ms, d3d present 0.00 ms, rest of the frame 16.21 ms
+vkpddi: driver: submit 59 x 413.8 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.8 ms, descriptor sets 2982 x 0.3 ms (0 new pools, 3 resets), memory allocations 31 x 0.0 ms; command buffers: lock 0.0, reset 20.1, begin 0.2 ms
+vkpddi: 59 fps (worst frame 20.7 ms, 0 hitches), 1640 clears (531 as load ops), 2360 passes, acquire 3360 us, present 2529 us; 158192 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14410 buffers (+205, 36984 writes 347461 KB), 2398 textures (+31, 441 uploads 2227 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.33 ms, d3d present 0.00 ms, rest of the frame 18.42 ms
+vkpddi: driver: submit 53 x 294.6 ms, GPU waits 0 x 0.0 ms, new command buffers 106 x 0.9 ms, descriptor sets 2126 x 0.4 ms (0 new pools, 2 resets), memory allocations 22 x 0.0 ms; command buffers: lock 0.0, reset 16.4, begin 0.2 ms
+vkpddi: 53 fps (worst frame 28.4 ms, 2 hitches), 1381 clears (477 as load ops), 2120 passes, acquire 3801 us, present 2985 us; 140052 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14218 buffers (+352, 33827 writes 320573 KB), 2387 textures (+22, 359 uploads 749 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 284 (moved 98), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 2.82 ms, d3d present 0.00 ms, rest of the frame 14.01 ms
+vkpddi: driver: submit 60 x 553.2 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.9 ms, descriptor sets 2952 x 0.4 ms (0 new pools, 3 resets), memory allocations 61 x 0.0 ms; command buffers: lock 0.0, reset 19.6, begin 0.2 ms
+vkpddi: 60 fps (worst frame 28.5 ms, 2 hitches), 897 clears (595 as load ops), 2455 passes, acquire 5259 us, present 3259 us; 119080 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14601 buffers (+862, 27459 writes 316494 KB), 2387 textures (+61, 902 uploads 2077 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 4.23 ms, d3d present 0.00 ms, rest of the frame 12.37 ms
+vkpddi: driver: submit 61 x 168.0 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.6 ms, descriptor sets 1106 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 21.9, begin 0.1 ms
+vkpddi: 61 fps (worst frame 21.8 ms, 0 hitches), 912 clears (599 as load ops), 2490 passes, acquire 3976 us, present 3018 us; 117929 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14787 buffers (+527, 29158 writes 338615 KB), 2387 textures (+0, 61 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 6.86 ms, d3d present 0.00 ms, rest of the frame 9.81 ms
+vkpddi: driver: submit 61 x 132.6 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.5 ms, descriptor sets 1149 x 0.2 ms (0 new pools, 1 resets), memory allocations 8 x 0.0 ms; command buffers: lock 0.0, reset 19.2, begin 0.1 ms
+vkpddi: 61 fps (worst frame 22.8 ms, 0 hitches), 701 clears (577 as load ops), 2468 passes, acquire 4098 us, present 8031 us; 104512 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 15136 buffers (+1351, 31477 writes 349100 KB), 2387 textures (+8, 126 uploads 1631 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 7.79 ms, d3d present 0.00 ms, rest of the frame 8.86 ms
+vkpddi: driver: submit 60 x 139.4 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 1786 x 0.2 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 17.5, begin 0.1 ms
+vkpddi: 60 fps (worst frame 22.9 ms, 0 hitches), 730 clears (540 as load ops), 2400 passes, acquire 3541 us, present 3212 us; 86738 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14509 buffers (+502, 27764 writes 331308 KB), 2387 textures (+0, 61 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 5.92 ms, d3d present 0.00 ms, rest of the frame 10.79 ms
+vkpddi: driver: submit 60 x 402.6 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.5 ms, descriptor sets 1201 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 22.3, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.9 ms, 2 hitches), 1697 clears (540 as load ops), 2400 passes, acquire 3687 us, present 2211 us; 145615 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14370 buffers (+391, 35416 writes 377854 KB), 2387 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 301 (moved 149), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 5.31 ms, d3d present 0.00 ms, rest of the frame 11.32 ms
+vkpddi: driver: submit 61 x 524.4 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 1130 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 27.8, begin 0.1 ms
+vkpddi: 61 fps (worst frame 21.5 ms, 0 hitches), 2044 clears (549 as load ops), 2440 passes, acquire 2420 us, present 2271 us; 154910 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14185 buffers (+298, 36876 writes 385436 KB), 2387 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 4.63 ms, d3d present 0.00 ms, rest of the frame 12.02 ms
+vkpddi: driver: submit 60 x 169.7 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.6 ms, descriptor sets 2930 x 0.3 ms (0 new pools, 3 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 20.6, begin 0.2 ms
+vkpddi: 60 fps (worst frame 22.3 ms, 0 hitches), 1795 clears (540 as load ops), 2400 passes, acquire 3070 us, present 2567 us; 136721 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14284 buffers (+821, 36653 writes 392612 KB), 2387 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 5.00 ms, d3d present 0.00 ms, rest of the frame 12.33 ms
+vkpddi: driver: submit 59 x 609.9 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.6 ms, descriptor sets 6033 x 0.5 ms (0 new pools, 6 resets), memory allocations 94 x 0.1 ms; command buffers: lock 0.0, reset 21.0, begin 0.2 ms
+vkpddi: 59 fps (worst frame 33.9 ms, 3 hitches), 1236 clears (531 as load ops), 2360 passes, acquire 2845 us, present 2919 us; 120653 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14412 buffers (+1244, 33265 writes 367879 KB), 2388 textures (+94, 1310 uploads 4818 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 3.99 ms, d3d present 0.00 ms, rest of the frame 13.15 ms
+vkpddi: driver: submit 58 x 662.2 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 1.1 ms, descriptor sets 2103 x 0.3 ms (0 new pools, 2 resets), memory allocations 25 x 0.0 ms; command buffers: lock 0.0, reset 25.1, begin 0.2 ms
+vkpddi: 58 fps (worst frame 28.3 ms, 4 hitches), 1307 clears (522 as load ops), 2320 passes, acquire 2614 us, present 2261 us; 132177 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14300 buffers (+890, 34246 writes 377691 KB), 2391 textures (+25, 411 uploads 1836 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 3.38 ms, d3d present 0.00 ms, rest of the frame 13.51 ms
+vkpddi: driver: submit 60 x 280.3 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.6 ms, descriptor sets 4260 x 0.5 ms (0 new pools, 4 resets), memory allocations 52 x 0.0 ms; command buffers: lock 0.0, reset 24.2, begin 0.2 ms
+vkpddi: 60 fps (worst frame 42.9 ms, 1 hitches), 1360 clears (574 as load ops), 2434 passes, acquire 2864 us, present 3977 us; 153147 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14276 buffers (+864, 35664 writes 367515 KB), 2404 textures (+50, 677 uploads 1952 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 296 (moved 218), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 1.47 ms, d3d present 0.00 ms, rest of the frame 16.58 ms
+vkpddi: driver: submit 56 x 458.5 ms, GPU waits 0 x 0.0 ms, new command buffers 112 x 0.7 ms, descriptor sets 4077 x 0.5 ms (0 new pools, 4 resets), memory allocations 68 x 0.0 ms; command buffers: lock 0.0, reset 21.9, begin 0.2 ms
+vkpddi: 56 fps (worst frame 33.9 ms, 6 hitches), 934 clears (547 as load ops), 2283 passes, acquire 2689 us, present 2525 us; 131785 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14296 buffers (+2389, 31792 writes 333105 KB), 2404 textures (+64, 1006 uploads 66652 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 1.43 ms, d3d present 0.00 ms, rest of the frame 15.85 ms
+vkpddi: driver: submit 59 x 556.6 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.7 ms, descriptor sets 8147 x 0.7 ms (0 new pools, 8 resets), memory allocations 150 x 0.1 ms; command buffers: lock 0.0, reset 23.3, begin 0.2 ms
+vkpddi: 59 fps (worst frame 26.0 ms, 2 hitches), 1442 clears (531 as load ops), 2360 passes, acquire 2733 us, present 2778 us; 146043 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14526 buffers (+3070, 38653 writes 355027 KB), 2405 textures (+150, 1286 uploads 11276 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 1.06 ms, d3d present 0.00 ms, rest of the frame 16.03 ms
+vkpddi: driver: submit 59 x 536.8 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.8 ms, descriptor sets 7226 x 0.6 ms (0 new pools, 7 resets), memory allocations 55 x 0.0 ms; command buffers: lock 0.0, reset 28.3, begin 0.2 ms
+vkpddi: 59 fps (worst frame 28.0 ms, 3 hitches), 1263 clears (531 as load ops), 2360 passes, acquire 3182 us, present 2510 us; 164978 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14591 buffers (+1201, 35569 writes 341316 KB), 2413 textures (+53, 616 uploads 2341 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 2.41 ms, d3d present 0.00 ms, rest of the frame 14.23 ms
+vkpddi: driver: submit 61 x 179.2 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.6 ms, descriptor sets 7030 x 0.5 ms (0 new pools, 7 resets), memory allocations 93 x 0.0 ms; command buffers: lock 0.0, reset 23.0, begin 0.2 ms
+vkpddi: 61 fps (worst frame 20.9 ms, 0 hitches), 1386 clears (589 as load ops), 2501 passes, acquire 3034 us, present 3438 us; 151862 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14626 buffers (+1815, 36030 writes 342449 KB), 2434 textures (+91, 593 uploads 519 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 2.86 ms, d3d present 0.00 ms, rest of the frame 14.01 ms
+vkpddi: driver: submit 59 x 625.0 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.7 ms, descriptor sets 6288 x 0.5 ms (0 new pools, 6 resets), memory allocations 53 x 0.0 ms; command buffers: lock 0.0, reset 24.1, begin 0.2 ms
+vkpddi: 59 fps (worst frame 28.4 ms, 3 hitches), 1054 clears (590 as load ops), 2419 passes, acquire 2328 us, present 2152 us; 123739 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13686 buffers (+825, 32024 writes 311954 KB), 2431 textures (+53, 457 uploads 3325 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 292 (moved 119), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 4.88 ms, d3d present 0.00 ms, rest of the frame 11.60 ms
+vkpddi: driver: submit 62 x 388.5 ms, GPU waits 0 x 0.0 ms, new command buffers 123 x 0.6 ms, descriptor sets 1835 x 0.3 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 21.2, begin 0.2 ms
+vkpddi: 62 fps (worst frame 23.6 ms, 0 hitches), 973 clears (620 as load ops), 2542 passes, acquire 2803 us, present 2563 us; 123009 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13703 buffers (+191, 27805 writes 299779 KB), 2431 textures (+0, 97 uploads 288 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 6.10 ms, d3d present 0.00 ms, rest of the frame 10.61 ms
+vkpddi: driver: submit 60 x 384.8 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 2212 x 0.3 ms (0 new pools, 2 resets), memory allocations 26 x 0.0 ms; command buffers: lock 0.0, reset 23.4, begin 0.1 ms
+vkpddi: 60 fps (worst frame 25.9 ms, 1 hitches), 951 clears (600 as load ops), 2460 passes, acquire 2490 us, present 2280 us; 133172 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13761 buffers (+301, 27016 writes 270063 KB), 2421 textures (+26, 366 uploads 771 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 7.30 ms, d3d present 0.01 ms, rest of the frame 9.29 ms
+vkpddi: driver: submit 61 x 695.0 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.6 ms, descriptor sets 1940 x 0.3 ms (0 new pools, 2 resets), memory allocations 17 x 0.0 ms; command buffers: lock 0.0, reset 22.8, begin 0.2 ms
+vkpddi: 61 fps (worst frame 25.7 ms, 1 hitches), 891 clears (610 as load ops), 2501 passes, acquire 2445 us, present 7885 us; 118598 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13679 buffers (+331, 25782 writes 256366 KB), 2426 textures (+17, 177 uploads 628 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 9.09 ms, d3d present 0.00 ms, rest of the frame 7.62 ms
+vkpddi: driver: submit 61 x 339.0 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 4892 x 0.3 ms (0 new pools, 5 resets), memory allocations 32 x 0.0 ms; command buffers: lock 0.0, reset 19.2, begin 0.1 ms
+vkpddi: 61 fps (worst frame 25.8 ms, 3 hitches), 1031 clears (610 as load ops), 2529 passes, acquire 2125 us, present 2445 us; 113569 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13619 buffers (+386, 25435 writes 242341 KB), 2425 textures (+32, 294 uploads 1839 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 8.09 ms, d3d present 0.00 ms, rest of the frame 8.67 ms
+vkpddi: driver: submit 58 x 348.5 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.5 ms, descriptor sets 10443 x 0.5 ms (0 new pools, 10 resets), memory allocations 203 x 0.1 ms; command buffers: lock 0.0, reset 20.3, begin 0.1 ms
+vkpddi: 58 fps (worst frame 28.9 ms, 1 hitches), 1061 clears (580 as load ops), 2378 passes, acquire 2242 us, present 2265 us; 113603 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13379 buffers (+1872, 26435 writes 226980 KB), 2474 textures (+203, 1598 uploads 3519 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 300 (moved 23), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 7.61 ms, d3d present 0.00 ms, rest of the frame 9.55 ms
+vkpddi: driver: submit 60 x 482.1 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.5 ms, descriptor sets 3121 x 0.3 ms (0 new pools, 3 resets), memory allocations 22 x 0.0 ms; command buffers: lock 0.0, reset 19.8, begin 0.1 ms
+vkpddi: 60 fps (worst frame 34.2 ms, 3 hitches), 996 clears (600 as load ops), 2460 passes, acquire 2317 us, present 2149 us; 105834 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 13729 buffers (+683, 27377 writes 285160 KB), 2476 textures (+22, 279 uploads 1704 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 8.04 ms, d3d present 0.00 ms, rest of the frame 8.50 ms
+vkpddi: driver: submit 61 x 697.4 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.5 ms, descriptor sets 7913 x 0.4 ms (0 new pools, 8 resets), memory allocations 169 x 0.1 ms; command buffers: lock 0.0, reset 20.5, begin 0.1 ms
+vkpddi: 61 fps (worst frame 26.5 ms, 2 hitches), 970 clears (598 as load ops), 2489 passes, acquire 1790 us, present 2379 us; 88449 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13980 buffers (+1232, 28014 writes 291964 KB), 2431 textures (+169, 1585 uploads 6675 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 9.36 ms, d3d present 0.01 ms, rest of the frame 7.29 ms
+vkpddi: driver: submit 60 x 585.4 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.5 ms, descriptor sets 10200 x 0.4 ms (0 new pools, 10 resets), memory allocations 145 x 0.1 ms; command buffers: lock 0.0, reset 13.8, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.6 ms, 1 hitches), 668 clears (600 as load ops), 2460 passes, acquire 2211 us, present 2108 us; 53496 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13803 buffers (+934, 21554 writes 231740 KB), 2409 textures (+145, 1167 uploads 8403 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 9.92 ms, d3d present 0.00 ms, rest of the frame 7.06 ms
+vkpddi: driver: submit 60 x 566.4 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.5 ms, descriptor sets 2069 x 0.3 ms (0 new pools, 2 resets), memory allocations 50 x 0.0 ms; command buffers: lock 0.0, reset 16.3, begin 0.1 ms
+vkpddi: 60 fps (worst frame 33.5 ms, 1 hitches), 1006 clears (600 as load ops), 2460 passes, acquire 2473 us, present 2156 us; 76912 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14004 buffers (+314, 24951 writes 250387 KB), 2409 textures (+50, 786 uploads 2423 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 10.27 ms, d3d present 0.00 ms, rest of the frame 6.38 ms
+vkpddi: driver: submit 60 x 305.2 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.5 ms, descriptor sets 259 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 17.3, begin 0.1 ms
+vkpddi: 60 fps (worst frame 29.0 ms, 2 hitches), 940 clears (600 as load ops), 2460 passes, acquire 2157 us, present 2863 us; 80323 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14129 buffers (+145, 25238 writes 263358 KB), 2409 textures (+0, 61 uploads 1024 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 299 (moved 30), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: driver: submit 59 x 611.0 ms, GPU waits 0 x 0.0 ms, new command buffers 118 x 0.5 ms, descriptor sets 789 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 14.3, begin 0.1 ms
+vkpddi: 59 fps (worst frame 28.7 ms, 2 hitches), 771 clears (590 as load ops), 2395 passes, acquire 1508 us, present 1723 us; 61320 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14057 buffers (+824, 22202 writes 240320 KB), 2409 textures (+0, 59 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 10.88 ms, d3d present 0.00 ms, rest of the frame 5.92 ms
+vkpddi: driver: submit 61 x 236.1 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.4 ms, descriptor sets 258 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 11.4, begin 0.1 ms
+vkpddi: 61 fps (worst frame 24.8 ms, 0 hitches), 671 clears (610 as load ops), 2440 passes, acquire 2632 us, present 2077 us; 43815 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 13947 buffers (+158, 21263 writes 247011 KB), 2409 textures (+0, 61 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 11.82 ms, d3d present 0.00 ms, rest of the frame 4.72 ms
+vkpddi: driver: submit 60 x 182.8 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 2028 x 0.2 ms (0 new pools, 2 resets), memory allocations 8 x 0.0 ms; command buffers: lock 0.0, reset 10.6, begin 0.1 ms
+vkpddi: 60 fps (worst frame 19.8 ms, 0 hitches), 871 clears (600 as load ops), 2437 passes, acquire 2395 us, present 1951 us; 67108 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14042 buffers (+998, 23646 writes 245890 KB), 2411 textures (+8, 102 uploads 19 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 11.11 ms, d3d present 0.00 ms, rest of the frame 5.55 ms
+vkpddi: driver: submit 61 x 185.6 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.4 ms, descriptor sets 1210 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 16.0, begin 0.1 ms
+vkpddi: 61 fps (worst frame 19.5 ms, 0 hitches), 1065 clears (610 as load ops), 2501 passes, acquire 2659 us, present 2241 us; 117562 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14366 buffers (+1076, 32411 writes 334219 KB), 2411 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 8.19 ms, d3d present 0.00 ms, rest of the frame 8.50 ms
+vkpddi: driver: submit 60 x 445.6 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.5 ms, descriptor sets 1991 x 0.3 ms (0 new pools, 2 resets), memory allocations 19 x 0.0 ms; command buffers: lock 0.0, reset 19.2, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.0 ms, 1 hitches), 1119 clears (600 as load ops), 2460 passes, acquire 2957 us, present 2232 us; 107571 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14653 buffers (+1352, 29289 writes 287571 KB), 2409 textures (+19, 313 uploads 605 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 6.58 ms, d3d present 0.00 ms, rest of the frame 10.06 ms
+mouse reads (5 s): GetDeviceState 300 (moved 104), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: driver: submit 61 x 630.1 ms, GPU waits 0 x 0.0 ms, new command buffers 122 x 0.5 ms, descriptor sets 1881 x 0.3 ms (0 new pools, 2 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 21.7, begin 0.2 ms
+vkpddi: 61 fps (worst frame 28.7 ms, 2 hitches), 1391 clears (610 as load ops), 2501 passes, acquire 1951 us, present 2239 us; 135570 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14534 buffers (+707, 33886 writes 329341 KB), 2409 textures (+0, 61 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 6.21 ms, d3d present 0.01 ms, rest of the frame 10.46 ms
+vkpddi: driver: submit 60 x 387.7 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.5 ms, descriptor sets 3281 x 0.3 ms (0 new pools, 3 resets), memory allocations 39 x 0.0 ms; command buffers: lock 0.0, reset 26.2, begin 0.1 ms
+vkpddi: 60 fps (worst frame 24.8 ms, 0 hitches), 1664 clears (579 as load ops), 2458 passes, acquire 2942 us, present 2579 us; 172506 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14228 buffers (+264, 35136 writes 298349 KB), 2417 textures (+35, 501 uploads 2011 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 4.41 ms, d3d present 0.00 ms, rest of the frame 12.32 ms
+vkpddi: driver: submit 60 x 361.6 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.8 ms, descriptor sets 8062 x 0.6 ms (0 new pools, 8 resets), memory allocations 72 x 0.1 ms; command buffers: lock 0.0, reset 22.7, begin 0.2 ms
+vkpddi: 60 fps (worst frame 34.3 ms, 3 hitches), 1840 clears (600 as load ops), 2460 passes, acquire 3330 us, present 9976 us; 170839 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14339 buffers (+1329, 38424 writes 353776 KB), 2425 textures (+72, 980 uploads 3279 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 1.13 ms, d3d present 0.00 ms, rest of the frame 15.76 ms
+vkpddi: per frame: vk present 0.33 ms, d3d present 0.00 ms, rest of the frame 19.33 ms
+vkpddi: driver: submit 52 x 349.6 ms, GPU waits 0 x 0.0 ms, new command buffers 103 x 0.7 ms, descriptor sets 6241 x 0.9 ms (0 new pools, 6 resets), memory allocations 72 x 0.1 ms; command buffers: lock 0.0, reset 22.3, begin 0.2 ms
+vkpddi: 52 fps (worst frame 35.7 ms, 4 hitches), 1543 clears (520 as load ops), 2132 passes, acquire 3315 us, present 2874 us; 153205 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14206 buffers (+1095, 32412 writes 266983 KB), 2423 textures (+70, 1002 uploads 3330 KB), 656 shaders, 29 decls
+vkpddi: driver: submit 59 x 251.9 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 1.1 ms, descriptor sets 4163 x 0.4 ms (0 new pools, 4 resets), memory allocations 12 x 0.0 ms; command buffers: lock 0.0, reset 23.2, begin 0.2 ms
+vkpddi: 59 fps (worst frame 23.6 ms, 0 hitches), 1523 clears (590 as load ops), 2419 passes, acquire 3259 us, present 3479 us; 165971 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14336 buffers (+573, 33697 writes 279499 KB), 2426 textures (+12, 146 uploads 624 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.17 ms, d3d present 0.00 ms, rest of the frame 16.77 ms
+mouse reads (5 s): GetDeviceState 289 (moved 122), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 5.46 ms, d3d present 0.00 ms, rest of the frame 11.02 ms
+vkpddi: driver: submit 62 x 723.9 ms, GPU waits 0 x 0.0 ms, new command buffers 123 x 0.7 ms, descriptor sets 12312 x 0.8 ms (0 new pools, 13 resets), memory allocations 92 x 0.1 ms; command buffers: lock 0.0, reset 24.0, begin 0.2 ms
+vkpddi: 62 fps (worst frame 21.4 ms, 0 hitches), 853 clears (620 as load ops), 2546 passes, acquire 2463 us, present 1970 us; 88955 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14051 buffers (+878, 25903 writes 233027 KB), 2426 textures (+92, 803 uploads 7273 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 9.85 ms, d3d present 0.00 ms, rest of the frame 6.84 ms
+vkpddi: driver: submit 60 x 263.3 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.5 ms, descriptor sets 753 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 15.7, begin 0.1 ms
+vkpddi: 60 fps (worst frame 27.6 ms, 1 hitches), 689 clears (550 as load ops), 2426 passes, acquire 3070 us, present 2212 us; 61934 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14125 buffers (+451, 23939 writes 242691 KB), 2426 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: driver: submit 60 x 371.4 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.4 ms, descriptor sets 717 x 0.2 ms (0 new pools, 1 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 15.9, begin 0.1 ms
+vkpddi: 60 fps (worst frame 28.1 ms, 2 hitches), 660 clears (600 as load ops), 2460 passes, acquire 3093 us, present 2243 us; 56853 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14337 buffers (+355, 22877 writes 241002 KB), 2426 textures (+0, 61 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 10.64 ms, d3d present 0.00 ms, rest of the frame 6.00 ms
+vkpddi: per frame: vk present 11.06 ms, d3d present 0.00 ms, rest of the frame 5.63 ms
+vkpddi: driver: submit 61 x 296.0 ms, GPU waits 0 x 0.0 ms, new command buffers 121 x 0.4 ms, descriptor sets 295 x 0.2 ms (0 new pools, 0 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 14.5, begin 0.1 ms
+vkpddi: 61 fps (worst frame 20.4 ms, 0 hitches), 667 clears (606 as load ops), 2497 passes, acquire 2773 us, present 2158 us; 53060 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14230 buffers (+266, 21443 writes 233257 KB), 2426 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: driver: submit 60 x 128.4 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 1263 x 0.2 ms (0 new pools, 1 resets), memory allocations 1 x 0.0 ms; command buffers: lock 0.0, reset 13.5, begin 0.1 ms
+vkpddi: 60 fps (worst frame 20.5 ms, 0 hitches), 1040 clears (599 as load ops), 2459 passes, acquire 3417 us, present 1666 us; 103550 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14573 buffers (+772, 23720 writes 232612 KB), 2426 textures (+0, 60 uploads 0 KB), 656 shaders, 29 decls
+mouse reads (5 s): GetDeviceState 301 (moved 32), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: per frame: vk present 9.81 ms, d3d present 0.00 ms, rest of the frame 6.86 ms
+vkpddi: driver: submit 60 x 450.1 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.4 ms, descriptor sets 3028 x 0.2 ms (0 new pools, 3 resets), memory allocations 20 x 0.0 ms; command buffers: lock 0.0, reset 19.2, begin 0.1 ms
+vkpddi: 60 fps (worst frame 25.1 ms, 1 hitches), 1673 clears (594 as load ops), 2458 passes, acquire 2324 us, present 1362 us; 170706 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14372 buffers (+700, 33487 writes 252770 KB), 2423 textures (+16, 143 uploads 13 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 7.55 ms, d3d present 0.00 ms, rest of the frame 9.11 ms
+vkpddi: driver: submit 59 x 364.5 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.6 ms, descriptor sets 18366 x 0.7 ms (0 new pools, 18 resets), memory allocations 114 x 0.1 ms; command buffers: lock 0.0, reset 26.5, begin 0.1 ms
+vkpddi: 59 fps (worst frame 28.6 ms, 3 hitches), 1796 clears (581 as load ops), 2437 passes, acquire 2783 us, present 2499 us; 213208 draws, 4 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 4 no pipeline, 0 no constants), 1 new pipelines (1 in the background, 0 where drawn: 0.0 ms,; 14057 buffers (+1272, 34638 writes 272186 KB), 2383 textures (+114, 920 uploads 2175 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 4.03 ms, d3d present 0.00 ms, rest of the frame 12.76 ms
+vkpddi: driver: submit 59 x 569.4 ms, GPU waits 0 x 0.0 ms, new command buffers 117 x 0.7 ms, descriptor sets 9261 x 0.5 ms (0 new pools, 9 resets), memory allocations 6 x 0.0 ms; command buffers: lock 0.0, reset 28.9, begin 0.3 ms
+vkpddi: 59 fps (worst frame 26.1 ms, 1 hitches), 1699 clears (589 as load ops), 2416 passes, acquire 3397 us, present 3609 us; 181482 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14190 buffers (+728, 39769 writes 296726 KB), 2387 textures (+4, 129 uploads 409 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 1.97 ms, d3d present 0.00 ms, rest of the frame 15.56 ms
+vkpddi: driver: submit 53 x 310.9 ms, GPU waits 0 x 0.0 ms, new command buffers 106 x 0.6 ms, descriptor sets 6188 x 0.6 ms (0 new pools, 6 resets), memory allocations 60 x 0.0 ms; command buffers: lock 0.0, reset 25.9, begin 0.2 ms
+vkpddi: 53 fps (worst frame 35.3 ms, 3 hitches), 1373 clears (530 as load ops), 2173 passes, acquire 2664 us, present 2532 us; 186196 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14121 buffers (+333, 34096 writes 264208 KB), 2394 textures (+60, 890 uploads 1963 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.29 ms, d3d present 0.00 ms, rest of the frame 18.63 ms
+mouse reads (5 s): GetDeviceState 286 (moved 70), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: driver: submit 57 x 301.5 ms, GPU waits 0 x 0.0 ms, new command buffers 114 x 0.7 ms, descriptor sets 5151 x 0.5 ms (0 new pools, 5 resets), memory allocations 0 x 0.0 ms; command buffers: lock 0.0, reset 30.5, begin 0.2 ms
+vkpddi: 57 fps (worst frame 25.0 ms, 1 hitches), 1252 clears (570 as load ops), 2337 passes, acquire 3282 us, present 2447 us; 200431 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14117 buffers (+303, 35085 writes 276251 KB), 2394 textures (+0, 57 uploads 0 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.00 ms, d3d present 0.00 ms, rest of the frame 17.72 ms
+vkpddi: driver: submit 57 x 253.5 ms, GPU waits 0 x 0.0 ms, new command buffers 115 x 0.7 ms, descriptor sets 8158 x 0.7 ms (0 new pools, 8 resets), memory allocations 22 x 0.0 ms; command buffers: lock 0.0, reset 25.7, begin 0.2 ms
+vkpddi: 57 fps (worst frame 22.1 ms, 0 hitches), 1258 clears (570 as load ops), 2337 passes, acquire 2878 us, present 2825 us; 217518 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14160 buffers (+283, 36576 writes 285979 KB), 2394 textures (+22, 355 uploads 1031 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.07 ms, d3d present 0.00 ms, rest of the frame 17.68 ms
+vkpddi: driver: submit 57 x 410.6 ms, GPU waits 0 x 0.0 ms, new command buffers 113 x 0.8 ms, descriptor sets 6607 x 0.6 ms (0 new pools, 7 resets), memory allocations 49 x 0.0 ms; command buffers: lock 0.0, reset 25.5, begin 0.2 ms
+vkpddi: 57 fps (worst frame 29.8 ms, 2 hitches), 1270 clears (570 as load ops), 2356 passes, acquire 3792 us, present 3221 us; 194308 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14154 buffers (+947, 36539 writes 314934 KB), 2388 textures (+49, 651 uploads 1615 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.01 ms, d3d present 0.00 ms, rest of the frame 17.92 ms
+vkpddi: driver: submit 60 x 464.0 ms, GPU waits 0 x 0.0 ms, new command buffers 120 x 0.7 ms, descriptor sets 3587 x 0.4 ms (0 new pools, 3 resets), memory allocations 39 x 0.0 ms; command buffers: lock 0.0, reset 26.7, begin 0.2 ms
+vkpddi: 60 fps (worst frame 23.1 ms, 0 hitches), 1512 clears (600 as load ops), 2460 passes, acquire 3219 us, present 3977 us; 166196 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14147 buffers (+808, 40633 writes 265856 KB), 2410 textures (+38, 494 uploads 1963 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.89 ms, d3d present 0.00 ms, rest of the frame 15.78 ms
+vkpddi: driver: submit 58 x 348.7 ms, GPU waits 0 x 0.0 ms, new command buffers 116 x 1.1 ms, descriptor sets 3150 x 0.5 ms (0 new pools, 3 resets), memory allocations 53 x 0.0 ms; command buffers: lock 0.0, reset 22.6, begin 0.6 ms
+vkpddi: 58 fps (worst frame 30.6 ms, 3 hitches), 1385 clears (580 as load ops), 2378 passes, acquire 3652 us, present 12312 us; 163926 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14412 buffers (+1139, 34057 writes 255671 KB), 2421 textures (+49, 645 uploads 2295 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.56 ms, d3d present 0.00 ms, rest of the frame 16.73 ms
+mouse reads (5 s): GetDeviceState 290 (moved 137), GetDeviceData 0 (asked 0 events, got 0, up to 0 left waiting, 0 dropped)
+vkpddi: driver: submit 59 x 294.8 ms, GPU waits 0 x 0.0 ms, new command buffers 119 x 0.6 ms, descriptor sets 4098 x 0.4 ms (0 new pools, 4 resets), memory allocations 8 x 0.0 ms; command buffers: lock 0.0, reset 20.8, begin 0.2 ms
+vkpddi: 59 fps (worst frame 22.7 ms, 0 hitches), 1564 clears (582 as load ops), 2411 passes, acquire 2866 us, present 3490 us; 178200 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms,; 14480 buffers (+1099, 38692 writes 331766 KB), 2421 textures (+8, 124 uploads 607 KB), 656 shaders, 29 decls
+vkpddi: per frame: vk present 0.76 ms, d3d present 0.00 ms, rest of the frame 16.18 ms
+vkpddi: hitch 54 ms at 84488.177 s (monotonic): render thread busy 18.1 ms, game frames 1 (30.1 ms, waited for the render thread 2.1 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 0 (0.0 ms), texture uploads 1 (0.0 ms)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 36.8 ms on the render thread at 84488.229 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+vkpddi: hitch 161 ms at 84488.424 s (monotonic): render thread busy 10.6 ms, game frames 2 (34.8 ms, waited for the render thread 0.0 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 0 (0.0 ms), texture uploads 2 (0.0 ms)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 137.1 ms on the render thread at 84488.425 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+vkpddi: hitch 114 ms at 84488.539 s (monotonic): render thread busy 150.6 ms, game frames 1 (143.3 ms, waited for the render thread 131.4 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 0 (0.0 ms), texture uploads 1 (0.0 ms)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 106.1 ms on the render thread at 84488.540 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+vkpddi: hitch 140 ms at 84488.678 s (monotonic): render thread busy 117.8 ms, game frames 1 (113.8 ms, waited for the render thread 102.5 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 0 (0.0 ms), texture uploads 1 (0.0 ms)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 129.6 ms on the render thread at 84488.679 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+vkpddi: driver: submit 31 x 610.2 ms, GPU waits 2 x 243.0 ms, new command buffers 61 x 0.3 ms, descriptor sets 4989 x 0.3 ms (0 new pools, 5 resets), memory allocations 32 x 0.0 ms; command buffers: lock 0.0, reset 10.6, begin 0.1 ms
+vkpddi: 31 fps (worst frame 160.7 ms, 6 hitches), 720 clears (279 as load ops), 1240 passes, acquire 1525 us, present 3957 us; 84315 draws, 0 skipped (0 no shader/decl, 0 no buffer, 0 no pass, 0 no pipeline, 0 no constants), 0 new pipelines (0 in the background, 0 where drawn: 0.0 ms, ; 14494 buffers (+377, 18007 writes 152911 KB), 2421 textures (+32, 287 uploads 2427 KB), 656 shaders, 29 decls
+vkpddi: hitch 142 ms at 84488.821 s (monotonic): render thread busy 140.7 ms, game frames 1 (147.4 ms, waited for the render thread 128.3 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 0 (0.0 ms), texture uploads 1 (0.0 ms)
+vkpddi: per frame: vk present 21.21 ms, d3d present 0.00 ms, rest of the frame 14.21 ms
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 128.1 ms on the render thread at 84488.823 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+ngfx: pipeline cache saved (14845 KB, 1 new pipelines)
+vkpddi: hitch 144 ms at 84488.965 s (monotonic): render thread busy 144.3 ms, game frames 1 (149.0 ms, waited for the render thread 123.1 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 0 (0.0 ms), texture uploads 1 (0.0 ms)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 117.2 ms on the render thread at 84488.966 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
+vkpddi: hitch 99 ms at 84489.064 s (monotonic): render thread busy 137.0 ms, game frames 1 (129.5 ms, waited for the render thread 118.4 ms), pipelines compiled where drawn 0 (0.0 ms), texture creates 0 (0.0 ms), texture uploads 1 (0.0 ms)
+long wait: WaitForSingleObject(000010b0, 4294967295 ms) took 90.4 ms on the render thread at 84489.065 s (monotonic); stack: 106b289f 106c761d 106c7d3d 106c7da8 106e5b37 1069d377 106a6ed5 106e6af4
