@@ -1,0 +1,53 @@
+name: Inspect FH2 APK (report only: file list, library sizes, imported and exported symbols)
+# Downloads the FH2 Recompiled APK from Drive and uploads a small TEXT report. The report holds symbol names and sizes only, no game code and no APK.
+on:
+  push:
+    branches:
+      - chatgpt
+    paths:
+      - .github/workflows/inspect-fh2-apk.yml
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: Drive share link to FH2-Recompiled-0.4.4.apk
+        default: https://drive.google.com/file/d/1xwquLe8lXpUiegb9JEMGlXv4cAdtKpt3/view?usp=share_link
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK
+        env:
+          APK_URL: ${{ inputs.apk_url || 'https://drive.google.com/file/d/1xwquLe8lXpUiegb9JEMGlXv4cAdtKpt3/view?usp=share_link' }}
+        run: |
+          set -e
+          python3 -m venv .venv && . .venv/bin/activate && pip install -q gdown
+          ID=$(echo "$APK_URL" | sed -E 's#.*/d/([^/]+).*#\1#')
+          gdown "https://drive.google.com/uc?id=$ID" -O game.apk
+          unzip -tq game.apk >/dev/null || { echo "not a zip, first bytes:"; head -c 400 game.apk; exit 1; }
+          ls -l game.apk; sha256sum game.apk
+      - name: Build report
+        run: |
+          mkdir -p report libs
+          unzip -l game.apk > report/apk-contents.txt
+          unzip -o -j game.apk 'lib/arm64-v8a/*.so' -d libs || echo "no arm64-v8a libs found" | tee report/NO_LIBS.txt
+          for f in libs/*.so; do
+            [ -f "$f" ] || continue
+            n=$(basename "$f" .so)
+            {
+              echo "=== $n ==="; ls -l "$f"; sha256sum "$f"
+              echo "--- ELF header"; readelf -h "$f" | grep -E "Class|Machine|Type"
+              echo "--- NEEDED"; readelf -d "$f" | grep -E "NEEDED|SONAME|RUNPATH|RPATH"
+              echo "--- program headers"; readelf -lW "$f" | grep -E "LOAD|TLS|INTERP|GNU_RELRO"
+              echo "--- biggest sections"; readelf -SW "$f" | sed -n '1,60p'
+              echo "--- counts"; echo "undefined: $(nm -D --undefined-only "$f" 2>/dev/null | wc -l)"; echo "defined: $(nm -D --defined-only "$f" 2>/dev/null | wc -l)"; echo "JNI Java_ exports: $(nm -D --defined-only "$f" 2>/dev/null | grep -c ' Java_' || true)"
+              echo "--- local symbols (stripped?)"; nm "$f" 2>&1 | head -3
+            } > "report/$n-summary.txt" 2>&1 || true
+            nm -D --undefined-only "$f" 2>/dev/null | awk '{print $NF}' | sort -u > "report/$n-undefined.txt" || true
+            nm -D --defined-only "$f" 2>/dev/null | awk '{print $NF}' | sort -u > "report/$n-exports.txt" || true
+          done
+          echo "== report files =="; ls -l report
+          echo "== summaries =="; cat report/*-summary.txt | head -150
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fh2-apk-report
+          path: report/
