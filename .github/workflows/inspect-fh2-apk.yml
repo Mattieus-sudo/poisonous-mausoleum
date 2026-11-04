@@ -1,4 +1,4 @@
-name: Inspect FH2 APK (report only: file list, library sizes, imported and exported symbols)
+name: "Inspect FH2 APK (report only: file list, library sizes, imported and exported symbols)"
 # Downloads the FH2 Recompiled APK from Drive and uploads a small TEXT report. The report holds symbol names and sizes only, no game code and no APK.
 on:
   push:
