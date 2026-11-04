@@ -3,7 +3,7 @@ name: Inspect FH2 APK (report only: file list, library sizes, imported and expor
 on:
   push:
     branches:
-      - chatgpt
+      - main
     paths:
       - .github/workflows/inspect-fh2-apk.yml
   workflow_dispatch:
