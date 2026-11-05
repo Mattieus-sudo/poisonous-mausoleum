@@ -4218,7 +4218,7 @@ jobs:
           java-version: "21"
       - name: Download APK and extract libp2re.so
         env:
-          APK_URL: ${{ inputs.apk_url || 'https://drive.google.com/file/d/1cSoNW0PKW_WHhULqHcKUMzv3bOpOuPan/view?usp=share_link' }}
+          APK_URL: ${{ inputs.apk_url || 'https://drive.google.com/file/d/1POLOWhcb4e45GwrIG-r7woLz08jeJC4i/view?usp=share_link' }}
         run: |
           set -e
           python3 -m venv .venv && . .venv/bin/activate && pip install -q gdown
@@ -4228,11 +4228,11 @@ jobs:
           mkdir -p work && unzip -o -j game.apk lib/arm64-v8a/libp2re.so -d work
           SHA=$(sha256sum work/libp2re.so | cut -d' ' -f1)
           echo "libp2re sha256 $SHA  size $(stat -c %s work/libp2re.so)"
-          [ "$SHA" = "d904d2cba7869bb9feb800e0a80e77948cc9236203fcee9d332952f91ba90640" ] || { echo "Not build 1.0.3, stopping"; exit 1; }
+          [ "$SHA" = "e02ae310e5d83d495181b8a2a1b1c05de60446489d2859320dfdf12c3e5d7674" ] || { echo "Not build 1.0.3, stopping"; exit 1; }
       - name: Imports and Vulkan names (cheap, no Ghidra)
         run: |
           mkdir -p out
-          nm -D --undefined-only work/libp2re.so > out/imports.txt 2>out/imports.err || true
+          nm -D --undefined-only by work/libp2re.so > out/imports.txt 2>out/imports.err || true
           nm -D --defined-only -S -n work/libp2re.so 2>>out/imports.err | gzip -9 > out/zz-exports.txt.gz || true
           python3 - <<'EOF_VKNAMES'
           import re
