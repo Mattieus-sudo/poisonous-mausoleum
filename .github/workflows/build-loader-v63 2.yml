@@ -41,7 +41,7 @@ jobs:
           fi
       - name: Download APK and extract libp2re.so
         env:
-          APK_URL: ${{ inputs.apk_url || 'https://drive.google.com/file/d/1cSoNW0PKW_WHhULqHcKUMzv3bOpOuPan/view?usp=share_link' }}
+          APK_URL: ${{ inputs.apk_url || 'https://drive.google.com/file/d/1POLOWhcb4e45GwrIG-r7woLz08jeJC4i/view?usp=share_link' }}
         run: |
           set -e
           python3 -m venv .venv && . .venv/bin/activate && pip install -q gdown numpy
