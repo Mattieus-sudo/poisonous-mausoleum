@@ -4158,6 +4158,17 @@ jobs:
               return r;
           }
 
+          /* v66: Play is refused when the game files are not where the game looks (Documents/Prototype2/game) or the engine dll is not the expected build.
+             A game_folder.txt in Documents redirects the game to another folder, so the check steps aside then. */
+          static BOOL uiGameFilesOK(void) {
+              NSFileManager *fm = NSFileManager.defaultManager;
+              if ([fm fileExistsAtPath:[uiDocs() stringByAppendingPathComponent:@"game_folder.txt"]]) return YES;
+              NSString *g = [uiDocs() stringByAppendingPathComponent:@"Prototype2/game"];
+              for (NSString *n in @[@"prototype2.exe", @"prototype2engine.dll", @"binkw32.dll"])
+                  if (![fm fileExistsAtPath:[g stringByAppendingPathComponent:n]]) return NO;
+              return [[fm attributesOfItemAtPath:[g stringByAppendingPathComponent:@"prototype2engine.dll"] error:nil] fileSize] == 17336320ULL;
+          }
+
           typedef NS_ENUM(NSInteger, SKind) { SKSwitch, SKMenu, SKLink, SKButton, SKInfo };
 
           @interface SRow : NSObject
@@ -4206,30 +4217,33 @@ jobs:
           @property (nonatomic, copy) void (^onHz)(void);
           @property (nonatomic, copy) void (^onLogs)(void);
           @property (nonatomic, copy) BOOL (^isRunning)(void);
+          @property (nonatomic, strong) NSMutableSet<NSNumber *> *openSections;   /* dropdown sections currently expanded */
           @end
           @implementation SettingsVC
           - (instancetype)init {
               self = [super initWithStyle:UITableViewStyleInsetGrouped];
               self.title = @"Settings";
+              self.openSections = [NSMutableSet new];
               self.heads = @[@"Game", @"Performance", @"Diagnostics", @"Experiments", @"Maintenance"];
               self.rows = @[
                   @[ sMenu(@"Display refresh rate", @"Locks the screen to this rate. Applies immediately.",
                            @[@"iOS decides", @"60 Hz", @"90 Hz", @"120 Hz (default)"], @[@"hz_off", @"hz_60", @"hz_90", @""], nil),
-                     sSwitch(@"Skip splash and Disclaimer", @"Skips the autosave splash and the Disclaimer screen. On by default. The original port's author is credited on this screen instead.", @"nosplash", YES),
-                     sPlain(SKInfo, @"Credits", @"Original port by EliteMV (Reddit u/Lazy_Persimmon3059). Not for sale. Free to distribute with credits.") ],
+                     sSwitch(@"Skip splash and Disclaimer", @"Skips the autosave splash and the Disclaimer screen. On by default. The original port's author is credited on this screen instead.", @"nosplash", YES) ],
                   @[ sMenu(@"Wait spin", @"How long a game thread busy-waits before sleeping. Longer reacts faster but uses more CPU, battery and heat.",
                            @[@"Off (0 us)", @"250 us", @"1000 us (default)", @"2000 us", @"4000 us"], @[@"waitspin_0", @"waitspin_250", @"", @"waitspin_2000", @"waitspin_4000"], @"waitspin_"),
                      sMenu(@"Thread priority", @"Tells iOS how urgent the game's threads are. The default is the highest class.",
                            @[@"Highest (default)", @"High", @"iOS default"], @[@"", @"qos_initiated", @"qos_off"], nil),
-                     sMenu(@"Startup stability", @"Slows image creation during startup so launches do not go wrong. Turning it off brings the bad launches back.",
+                     sMenu(@"Startup stability", @"Slows image creation during startup so launches do not go wrong.",
                            @[@"On (default)", @"Off"], @[@"", @"imgdelay_0"], @"imgdelay_"),
-                     sSwitch(@"Render pass rewrite", @"Changes the game's \"leave untouched\" render pass values to plain load/store. Costs a little bandwidth. May no longer be needed on 1.0.6.", @"vk_loadop_fix_off", NO),
-                     sSwitch(@"Real futex", @"Lets waiting threads truly sleep instead of retrying in a loop. Leave on.", @"futex_off", NO) ],
+                     sSwitch(@"Render pass rewrite", @"Changes the game's \"leave untouched\" render pass values to plain load/store. Costs a little bandwidth.", @"vk_loadop_fix_off", NO),
+                     sSwitch(@"Real futex", @"Lets waiting threads truly sleep instead of retrying in a loop. Leave on.", @"futex_off", NO),
+                     sMenu(@"Shadow casters", @"Which objects cast shadows. \"Skip small ones\" is what the Low preset sets. \"Skip all\" is what the Very low preset sets.",
+                           @[@"Cast all (default)", @"Skip small ones", @"Skip all"], @[@"", @"setenv_P2RE_VKSHADOWMIN=64", @"setenv_P2RE_VKSHADOWMIN=40000000"], @"setenv_P2RE_VKSHADOWMIN="),
+                     sSwitch(@"Half-size shadow maps", @"Draws shadows at half the normal size. Less GPU work, shadows look less sharp. Not set by any preset.", @"setenv_P2RE_VKSHADOWHALF=1", YES) ],
                   @[ sSwitch(@"Render thread trace", @"Records what the render thread waits for. Measurement only, may cost a little speed. Keep on when sending logs.", @"rbtrace_off", NO),
                      sSwitch(@"Wait trace", @"Records how long each game thread is blocked. Measurement only.", @"waittrace_off", NO),
                      sSwitch(@"Texture trace", @"Hashes texture uploads to catch broken textures. Probably the costliest trace.", @"textrace_off", NO),
-                     sSwitch(@"Code sampler", @"Samples where game code is running about 100 times a second. Can cost fps.", @"pcprof_on", YES),
-                     sPlain(SKLink, @"View live logs", @"The loader's log while the game starts and runs.") ],
+                     sSwitch(@"Code sampler", @"Samples where game code is running about 100 times a second. Can cost fps.", @"pcprof_on", YES) ],
                   @[ sSwitch(@"Full-size textures only", @"Texture test: samplers use only the largest mip level. Costs fps, distant textures shimmer.", @"maxlod_0", YES),
                      sSwitch(@"Audio off", @"Turns the game's audio off.", @"audio_off", YES) ],
                   @[ sBtn(@"Clear caches", @"caches"), sBtn(@"Reset to defaults", @"reset") ],
@@ -4239,16 +4253,34 @@ jobs:
           - (void)viewDidLoad { [super viewDidLoad]; self.tableView.estimatedRowHeight = 60; self.tableView.rowHeight = UITableViewAutomaticDimension; }
           - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self.navigationController setNavigationBarHidden:YES animated:animated]; [self.tableView reloadData]; }
           - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return (NSInteger)self.rows.count; }
-          - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return (NSInteger)self.rows[s].count; }
+          - (BOOL)collapsible:(NSInteger)s { return s < (NSInteger)self.rows.count - 1; }   /* every section except the last (Maintenance) is a dropdown */
+          - (BOOL)expanded:(NSInteger)s { return ![self collapsible:s] || [self.openSections containsObject:@(s)]; }
+          - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return [self expanded:s] ? (NSInteger)self.rows[s].count : 0; }
+          - (void)headerTapped:(UITapGestureRecognizer *)g {
+              NSNumber *k = @(g.view.tag);
+              if ([self.openSections containsObject:k]) [self.openSections removeObject:k]; else [self.openSections addObject:k];
+              [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:(NSUInteger)g.view.tag] withRowAnimation:UITableViewRowAnimationFade];
+          }
           - (CGFloat)tableView:(UITableView *)tv heightForHeaderInSection:(NSInteger)s { return self.heads[s].length ? 52 : 16; }
           - (UIView *)tableView:(UITableView *)tv viewForHeaderInSection:(NSInteger)s {
               UIView *v = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tv.bounds.size.width, 52)];
               UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(20, 14, tv.bounds.size.width - 40, 30)];
               l.text = self.heads[s]; l.font = [UIFont systemFontOfSize:22 weight:UIFontWeightSemibold]; l.textColor = UIColor.secondaryLabelColor;
-              l.autoresizingMask = UIViewAutoresizingFlexibleWidth; [v addSubview:l]; return v;
+              l.autoresizingMask = UIViewAutoresizingFlexibleWidth; [v addSubview:l];
+              if ([self collapsible:s]) {
+                  l.frame = CGRectMake(20, 14, tv.bounds.size.width - 80, 30);
+                  UIImageView *ch = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:[self expanded:s] ? @"chevron.down" : @"chevron.right"]];
+                  ch.tintColor = UIColor.secondaryLabelColor; ch.contentMode = UIViewContentModeCenter;
+                  ch.frame = CGRectMake(tv.bounds.size.width - 56, 14, 36, 30); ch.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+                  [v addSubview:ch];
+                  v.tag = s; v.isAccessibilityElement = YES; v.accessibilityLabel = self.heads[s]; v.accessibilityTraits = UIAccessibilityTraitButton;
+                  [v addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(headerTapped:)]];
+              }
+              return v;
           }
           - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
-              if (s == 0) return @"There are also graphics presets inside the hexagon icon shown during play.";
+              if (![self expanded:s]) return nil;
+              if (s == 0) return @"Graphics presets and mods are in the Android devs' in-game menu (the hexagon at the top of the screen). Resolution is set in Prototype 2's own in-game menu.";
           if (s == 1) return @"Changes apply the next time the app starts: fully close it (swipe it away) and open it again. Only the display refresh rate applies right away.";
               if (s == 4) return @"Clear caches deletes the spirv and vkpddi_cache folders (the shader and pipeline caches). Try it if the game crashes or looks wrong after an update. They are rebuilt on the next start, so that launch can take longer. Your game files are not touched.";
               if (s == 2) return @"Traces only measure. Turn them off for normal play and on when you need to send logs.";
@@ -4392,13 +4424,13 @@ jobs:
               self.icon.layer.cornerCurve = kCACornerCurveContinuous; [self.menu addSubview:self.icon];
               self.name = [self label:@"Prototype 2" size:34 weight:UIFontWeightBold color:UIColor.whiteColor];
               NSString *v = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-              self.ver = [self label:[NSString stringWithFormat:@"Version %@ (loader v66)", v ? v : @"?"] size:17 weight:UIFontWeightRegular color:UIColor.secondaryLabelColor];
+              self.ver = [self label:[NSString stringWithFormat:@"Version %@", v ? v : @"?"] size:17 weight:UIFontWeightRegular color:UIColor.secondaryLabelColor];
               UIButtonConfiguration *cf = [UIButtonConfiguration filledButtonConfiguration];
               cf.cornerStyle = UIButtonConfigurationCornerStyleCapsule; cf.baseBackgroundColor = [UIColor colorWithRed:0.26 green:0.55 blue:0.98 alpha:1]; cf.baseForegroundColor = UIColor.whiteColor;
               self.play = [UIButton buttonWithConfiguration:cf primaryAction:nil];
               [self setPlayTitle:@"Play"];
               [self.play addTarget:self action:@selector(playTapped) forControlEvents:UIControlEventTouchUpInside]; [self.menu addSubview:self.play];
-              self.credit = [self label:@"Original port by EliteMV\nNot for sale. Free to distribute with credits." size:12 weight:UIFontWeightRegular color:UIColor.secondaryLabelColor];
+              self.credit = [self label:@"iOS port by Lestat\nOriginal port by EliteMV\nNot for sale. Free to distribute with credits." size:12 weight:UIFontWeightRegular color:UIColor.secondaryLabelColor];
               self.hint = [self label:@"Tap with four fingers during the game to come back here." size:12 weight:UIFontWeightRegular color:UIColor.tertiaryLabelColor];
 
               SettingsVC *sv = [SettingsVC new]; sv.onHz = self.onHz;
@@ -4430,6 +4462,11 @@ jobs:
               self.hint.frame = CGRectMake(cx - w / 2, y, w, hs.height);
           }
           - (void)playTapped {
+              if (!self.started && !uiGameFilesOK()) {
+                  UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Game files not found" message:@"Game files not found or hashes don't match the expected version. Unpacked game files go in On My iPhone > Prototype 2 > Prototype2 > game, so that prototype2.exe, prototype2engine.dll, woi.rcf, etc. all land in /game/." preferredStyle:UIAlertControllerStyleAlert];
+                  [al addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                  [self presentViewController:al animated:YES completion:nil]; return;
+              }
               if (!self.started) { self.started = YES; [self setPlayTitle:@"Resume"]; if (self.onPlay) self.onPlay(); }
               self.menu.hidden = YES; [self setNeedsStatusBarAppearanceUpdate]; [self setNeedsUpdateOfHomeIndicatorAutoHidden];
           }
