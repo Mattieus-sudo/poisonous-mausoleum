@@ -4543,7 +4543,7 @@ jobs:
           if [ -d mvk/fw/MoltenVK.framework ]; then cp -R mvk/fw/MoltenVK.framework $APP/Frameworks/ && echo "MoltenVK: dynamic framework embedded";
           elif [ -f mvk/static/libMoltenVK.a ]; then MVK_LINK="-Wl,-force_load,mvk/static/libMoltenVK.a -lc++ -framework CoreGraphics -framework IOSurface"; echo "MoltenVK: static library linked";
           else echo "MoltenVK missing"; exit 1; fi
-          clang -target arm64-apple-ios15.0 -isysroot "$SDK" -fobjc-arc -O1 -framework UIKit -framework Foundation -framework Metal -framework QuartzCore -framework AudioToolbox -framework AVFoundation $MVK_LINK main.m p2core.c p2imports.c p2stubs.s p2asm.s -o $APP/P2Loader
+          clang -target arm64-apple-ios15.0 -isysroot "$SDK" -fobjc-arc -O1 -framework UIKit -framework Foundation -framework Metal -framework QuartzCore -framework AudioToolbox -framework AVFoundation -framework CoreGraphics $MVK_LINK main.m p2core.c p2imports.c p2stubs.s p2asm.s -o $APP/P2Loader
           cp P2Code $APP/Frameworks/P2Code.framework/P2Code
           cp p2data.bin p2relocs.bin p2names.bin p2tls.bin p2phdr.bin $APP/
           unzip -q -o ../game.apk 'assets/*' -d $APP/ && du -sh $APP/assets || echo 'no assets in apk'
