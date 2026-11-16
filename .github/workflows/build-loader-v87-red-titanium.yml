@@ -5083,7 +5083,7 @@ jobs:
           static void p2StyleGlassView(UIVisualEffectView *v, CGFloat radius) {
               v.clipsToBounds = YES; v.layer.cornerRadius = radius; v.layer.cornerCurve = kCACornerCurveContinuous;v.layer.borderWidth = 1.0;
               v.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.24].CGColor;
-              v.contentView.backgroundColor = [UIColor colorWithWhite:1 alpha:0.025];
+              v.contentView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.07];
               v.layer.shadowColor = [UIColor colorWithWhite:1 alpha:0.18].CGColor;
               v.layer.shadowOpacity = 0.22; v.layer.shadowRadius = 14; v.layer.shadowOffset = CGSizeMake(0, 2);
               /* A narrow specular edge keeps the panel reading as glass, not frost. */
@@ -5266,9 +5266,9 @@ jobs:
               arc.frame = bgv.bounds;
               arc.fillColor = UIColor.clearColor.CGColor;
               arc.strokeColor = [UIColor colorWithRed:0.56 green:0.82 blue:1 alpha:0.92].CGColor;
-              arc.lineWidth = 2.0; arc.lineCap = kCALineCapRound; arc.lineJoin = kCALineJoinRound;
+              arc.lineWidth = 3.5; arc.lineCap = kCALineCapRound; arc.lineJoin = kCALineJoinRound;
               arc.shadowColor = [UIColor colorWithRed:0.18 green:0.55 blue:1 alpha:1].CGColor;
-              arc.shadowRadius = 12; arc.shadowOpacity = 0.9;
+              arc.shadowRadius = 18; arc.shadowOpacity = 1.0;
               UIBezierPath *bolt = [UIBezierPath bezierPath];
               [bolt moveToPoint:CGPointMake(bgv.bounds.size.width * 0.16, 0)];
               [bolt addLineToPoint:CGPointMake(bgv.bounds.size.width * 0.23, bgv.bounds.size.height * 0.18)];
@@ -5288,11 +5288,71 @@ jobs:
               flash.values = @[@0.0, @0.0, @1.0, @0.18, @0.0];
               flash.keyTimes = @[@0.0, @0.34, @0.42, @0.50, @1.0];
               CAAnimationGroup *pulse = [CAAnimationGroup animation]; pulse.animations = @[draw, flash];
-              pulse.duration = 6.2; pulse.repeatCount = HUGE_VALF;
+              pulse.duration = 3.2; pulse.repeatCount = HUGE_VALF;
               pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
               [arc addAnimation:pulse forKey:@"p2-lightning-flash"];
               UIView *bgd = [[UIView alloc] initWithFrame:bgv.bounds]; bgd.backgroundColor = [UIColor colorWithRed:0.075 green:0.008 blue:0.018 alpha:0.28];
               bgd.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [bgv addSubview:bgd];
+
+              /* One-time opening lightning strike: glow, white-hot core and screen flash. */
+              CALayer *launchFlash = [CALayer layer];
+              launchFlash.frame = bgv.bounds;
+              launchFlash.backgroundColor = [UIColor colorWithRed:0.72 green:0.88 blue:1 alpha:1].CGColor;
+              launchFlash.opacity = 0;
+              [bgv.layer addSublayer:launchFlash];
+
+              CAShapeLayer *launchGlow = [CAShapeLayer layer];
+              launchGlow.frame = bgv.bounds;
+              launchGlow.path = bolt.CGPath;
+              launchGlow.fillColor = UIColor.clearColor.CGColor;
+              launchGlow.strokeColor = [UIColor colorWithRed:0.18 green:0.58 blue:1 alpha:1].CGColor;
+              launchGlow.lineWidth = 13;
+              launchGlow.lineCap = kCALineCapRound;
+              launchGlow.lineJoin = kCALineJoinRound;
+              launchGlow.shadowColor = [UIColor colorWithRed:0.18 green:0.58 blue:1 alpha:1].CGColor;
+              launchGlow.shadowRadius = 28;
+              launchGlow.shadowOpacity = 1;
+              launchGlow.opacity = 0;
+              [bgv.layer addSublayer:launchGlow];
+
+              CAShapeLayer *launchCore = [CAShapeLayer layer];
+              launchCore.frame = bgv.bounds;
+              launchCore.path = bolt.CGPath;
+              launchCore.fillColor = UIColor.clearColor.CGColor;
+              launchCore.strokeColor = [UIColor colorWithRed:0.88 green:0.96 blue:1 alpha:1].CGColor;
+              launchCore.lineWidth = 8;
+              launchCore.lineCap = kCALineCapRound;
+              launchCore.lineJoin = kCALineJoinRound;
+              launchCore.shadowColor = UIColor.whiteColor.CGColor;
+              launchCore.shadowRadius = 16;
+              launchCore.shadowOpacity = 1;
+              launchCore.opacity = 0;
+              [bgv.layer addSublayer:launchCore];
+
+              CAKeyframeAnimation *openingDraw = [CAKeyframeAnimation animationWithKeyPath:@"strokeEnd"];
+              openingDraw.values = @[@0, @1, @1];
+              openingDraw.keyTimes = @[@0, @0.58, @1];
+
+              CAKeyframeAnimation *openingOpacity = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+              openingOpacity.values = @[@0, @1, @0];
+              openingOpacity.keyTimes = @[@0, @0.16, @1];
+
+              CAAnimationGroup *openingStrike = [CAAnimationGroup animation];
+              openingStrike.animations = @[openingDraw, openingOpacity];
+              openingStrike.duration = 1.15;
+              openingStrike.beginTime = CACurrentMediaTime() + 0.35;
+              openingStrike.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+              [launchGlow addAnimation:openingStrike forKey:@"p2-opening-lightning"];
+              [launchCore addAnimation:openingStrike forKey:@"p2-opening-core"];
+
+              CAKeyframeAnimation *openingFlash = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+              openingFlash.values = @[@0, @0.48, @0];
+              openingFlash.keyTimes = @[@0, @0.16, @1];
+              openingFlash.duration = 0.72;
+              openingFlash.beginTime = CACurrentMediaTime() + 0.35;
+              openingFlash.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+              [launchFlash addAnimation:openingFlash forKey:@"p2-opening-screen-flash"];
+
               self.panelGlass = [[UIVisualEffectView alloc] initWithEffect:p2GlassEffect()]; p2StyleGlassView(self.panelGlass, 32); [self.menu addSubview:self.panelGlass];
               self.listGlass = [[UIVisualEffectView alloc] initWithEffect:p2GlassEffect()]; p2StyleGlassView(self.listGlass, 32); [self.menu addSubview:self.listGlass];
 
