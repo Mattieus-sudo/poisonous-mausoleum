@@ -31,11 +31,6 @@ jobs:
     if: ${{ !inputs.skip_build }}
     runs-on: macos-latest
     steps:
-      - name: Refuse to run in a public repo
-        run: |
-          if [ "${{ github.event.repository.private }}" != "true" ]; then
-            echo "This repo is PUBLIC. Make it private first."; exit 1
-          fi
       - name: Download APK and extract libp2re.so
         env:
           APK_URL: ${{ inputs.apk_url || 'https://drive.google.com/file/d/1fRUv76Ykc6-sKM-qR2VDfQZgO9b8C1Sl/view?usp=share_link' }}
