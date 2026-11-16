@@ -5262,8 +5262,8 @@ jobs:
               bgi.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [bgv addSubview:bgi];UIVisualEffectView *bgb = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]]; bgb.frame = bgv.bounds;
               bgb.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [bgv addSubview:bgb];
               /* A brief electric filament moves behind the panels; controls remain unobstructed. */
-CAShapeLayer *arc = [CAShapeLayer layer];
-arc.frame = bgv.bounds;
+              CAShapeLayer *arc = [CAShapeLayer layer];
+              arc.frame = bgv.bounds;
               arc.fillColor = UIColor.clearColor.CGColor;
               arc.strokeColor = [UIColor colorWithRed:0.56 green:0.82 blue:1 alpha:0.92].CGColor;
               arc.lineWidth = 2.0; arc.lineCap = kCALineCapRound; arc.lineJoin = kCALineJoinRound;
