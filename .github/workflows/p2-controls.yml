@@ -262,6 +262,13 @@ jobs:
               float tvw = gTvW > 16.0f ? gTvW : (float)(p2_win_w > 0 ? p2_win_w : 1), tvh = gTvH > 16.0f ? gTvH : (float)(p2_win_h > 0 ? p2_win_h : 1);   /* v91 */
               int cx = (int)(fx * (float)gCliW / tvw), cy = (int)(fy * (float)gCliH / tvh);
               if (cx < 0) cx = 0; if (cy < 0) cy = 0; if (cx > gCliW - 1) cx = gCliW - 1; if (cy > gCliH - 1) cy = gCliH - 1;
+              /* v92d: the counters integrate in the game's RENDER space (the dev's "arrow 1442,144 of 1568x720"), not client space: client coordinates land client/render = 1.22 times too far right and down. */
+              static int bbDone, bbW, bbH;
+              if (!bbDone) { bbDone = 1; unsigned long r = ((unsigned long (*)(int, int))(gBase + 0x5a693f0UL))(gCliW, gCliH); int a = (int)(r & 0xffffffffu), b = (int)(r >> 32);
+                  L("MENUPLACE: GameBackBufferSize(%d,%d) returned 0x%lx -> %d x %d", gCliW, gCliH, r, a, b);
+                  if (a > 16 && b > 16 && a <= gCliW + 8 && b <= gCliH + 8) { bbW = a; bbH = b; } else { bbW = (int)(gCliW * 0.81667f); bbH = (int)(gCliH * 0.81448f); L("MENUPLACE: not usable, assuming render %dx%d (the 1568x720 of the dev's log, scaled)", bbW, bbH); } }
+              cx = (int)(fx * (float)bbW / tvw); cy = (int)(fy * (float)bbH / tvh);
+              if (cx < 0) cx = 0; if (cy < 0) cy = 0; if (cx > bbW - 1) cx = bbW - 1; if (cy > bbH - 1) cy = bbH - 1;
               if (doWarp && !held) { gPlX = cx; gPlY = cy; gPlStart = fx_now_ns(CLOCK_UPTIME_RAW); acc_write(-30000, -30000, 0); gPlPh = 1; }
               else if (doWarp) { acc_write(cx - gPlLastX, cy - gPlLastY, 1); gPlLastX = cx; gPlLastY = cy; }
               if (doPress || doRel) btn_push(0, doPress ? 1 : 0, gPlLastX, gPlLastY);
