@@ -1,4 +1,5 @@
 name: "P2 controls source"
+# (icons and layouts hook in here: the picture code is in p2-icons.yml, the per-layout code in p2-layouts.yml; both are joined into main.m around this piece)
 # CONTROLS: the touch input path in p2core.c (pan smoothing, right stick, swipe feed) and, in main.m, the own controls, the right stick and its menu, custom buttons and the add list.
 # Called by build-loader.yml (uses: ./.github/workflows/p2-controls.yml). It only writes source text and uploads it; the loader joins the pieces and compiles.
 on:
@@ -146,6 +147,7 @@ jobs:
           static double gMcDx, gMcDy;   /* pixels the stick still owes the cursor (client space), under gInMu */
           static volatile float gTvW, gTvH;   /* v91: the REAL size of the touch view in pixels (bounds x nativeScale), set by the UI thread from every touch. p2_win_w/h is a hardcoded 2556x1179 and is only right on that one phone. */
           void p2_touch_view(float w, float h) { if (w > 16.0f && h > 16.0f) { gTvW = w; gTvH = h; } }
+          static volatile int gCtxId = -1;   /* layouts: the touch layout the game is in (0 foot, 1 vehicle, 2 menu, 3 and up = the dev's other layouts), -1 = not read yet */
           static int menu_poll(void) {   /* 1 = the game is in a menu */
               unsigned scr = ((unsigned (*)(void))(gBase + EO_GAMESCREEN))();
               unsigned long veh = ((unsigned long (*)(void))(gBase + EO_GAMEINVEH))() & 1UL;
@@ -158,6 +160,7 @@ jobs:
                   pau = (int)(((unsigned long (*)(void))(gBase + EO_PAUSEOPEN))() & 1UL);
               }
               int menu = ctx == 2 || cur || pau;
+              gCtxId = menu ? 2 : ctx;
               { static unsigned lastScr = 0xffffffffu; static int lastCtx = -9, lastCur = -9, lastPau = -9, n;
                 if ((scr != lastScr || ctx != lastCtx || cur != lastCur || pau != lastPau) && n++ < 120) L("MENU: game screen %u, in vehicle %d -> touch layout %d, cursor shown %d, pause menu %d => %s", scr, (int)veh, ctx, cur, pau, menu ? "MENU (finger moves the cursor, stick moves the cursor)" : "gameplay");
                 lastScr = scr; lastCtx = ctx; lastCur = cur; lastPau = pau; }
@@ -175,6 +178,7 @@ jobs:
               if (now - gMenuAt > 40000000LL) { gMenuAt = now; gMenuAuto = menu_poll(); }
               return gMenuAuto;
           }
+          int p2_ctx(void) { int m = p2_menu_on(); return m ? 2 : (gCtxId < 0 ? 0 : gCtxId); }   /* layouts: any thread, same 40 ms freshness as p2_menu_on */
           static int cur_rd(int *x, int *y, int *left) {   /* the game's cursor and left-button state, 0 = unreadable */
               int a = 0, b = 0; uint8_t bt = 0;
               if (!safe_rd(gBase + EO_CURSX, &a, 4) || !safe_rd(gBase + EO_CURSY, &b, 4) || !safe_rd(gBase + EO_BTNST, &bt, 1)) return 0;
@@ -483,7 +487,7 @@ jobs:
                 p2_cam_cfg((int)gCamSx, (int)gCamSy); }
               if (!gOwnOn) return;
               NSString *dir = [d stringByAppendingPathComponent:@"own_layout"];
-              NSString *f = [dir stringByAppendingPathComponent:@"own_layout.txt"]; gOwnFile = f;   /* v78: the file lives INSIDE the own_layout folder */
+              NSString *rootF = [dir stringByAppendingPathComponent:@"own_layout.txt"]; gOwnFile = rootF; NSString *f = layPath(rootF, @"own_layout.txt", NO);   /* layouts: this layout's file, else the plain one */   /* v78: the file lives INSIDE the own_layout folder */
               NSString *oldf = [d stringByAppendingPathComponent:@"own_layout.txt"];   /* v76 wrote it next to the folder */
               NSString *oldDef = @"# own layout (v76). Fractions of the screen. KEY = DirectInput scancode in hex.\nstick 0.13 0.72 0.16\nbtn 39 0.84 0.72 0.11 0.20 JUMP\nbtn 2A 0.72 0.80 0.11 0.18 SPRINT\nbtn 12 0.84 0.48 0.11 0.18 USE\nbtn 1D 0.72 0.60 0.11 0.18 CROUCH\nblock 0.0 0.30 0.45 0.70\n";
               NSString *txt = [NSString stringWithContentsOfFile:f encoding:NSUTF8StringEncoding error:nil];
@@ -515,6 +519,7 @@ jobs:
               for (int i = 0; i < gOwnN; i++) if (gOwnLay[i]) {
                   { BOOL sel = gCbEdit && i == gSelOwn; gOwnLay[i].borderColor = sel ? UIColor.whiteColor.CGColor : edge; gOwnLay[i].borderWidth = sel ? 3 : 2; }
                   if (gOwn[i].kind == 0) gOwnLay[i].backgroundColor = [UIColor colorWithWhite:gOwn[i].down ? 1.0 : 0.0 alpha:gOwn[i].down ? 0.45 : 0.25].CGColor;
+                  if (gOwn[i].kind == 0) icoRefreshLayer(gOwnLay[i], gOwn[i].down != 0, gCbEdit, gCbEdit && i == gSelOwn);   /* icons: flat look, pressed look */
               }
               if (gOwnKnob2) for (int i = 0; i < gOwnN; i++) if (gOwn[i].kind == 3 && gOwnLay[i]) {
                   CGSize sz = gOwnView.bounds.size; float r = gOwn[i].w * sz.height;
@@ -536,6 +541,7 @@ jobs:
                   if (e->kind == 0) {
                       CGRect c = ownCircle(e, sz); l.frame = c; l.cornerRadius = c.size.width / 2;
                       for (CALayer *s2 in l.sublayers) if ([s2.name isEqualToString:@"label"]) s2.frame = CGRectMake(0, c.size.height / 2 - 9, c.size.width, 20);
+                      icoLayoutLayer(l);   /* icons: picture and caption */
                   } else {
                       float r = e->w * sz.height; l.frame = CGRectMake(e->x * sz.width - r, e->y * sz.height - r, 2 * r, 2 * r); l.cornerRadius = r;
                       for (CALayer *s2 in l.sublayers) if ([s2.name isEqualToString:@"ring"]) { s2.frame = CGRectInset(l.bounds, r * 0.25f, r * 0.25f); s2.cornerRadius = s2.bounds.size.width / 2; }   /* the sprint ring, 3/4 of the way out */
@@ -555,6 +561,7 @@ jobs:
                           NSString *name = cbShort(gOwn[i].dik);
                           CATextLayer *t = [CATextLayer layer]; t.string = name; t.fontSize = name.length > 5 ? 11 : 14; t.alignmentMode = kCAAlignmentCenter;
                           t.foregroundColor = UIColor.whiteColor.CGColor; t.contentsScale = UIScreen.mainScreen.scale; t.name = @"label"; [l addSublayer:t];
+                          icoDressLayer(l, gOwn[i].dik);   /* icons: a picture for this action hides the key name, a caption goes under the circle */
                       } else {
                           CALayer *kn = [CALayer layer]; kn.bounds = CGRectMake(0, 0, 48, 48); kn.cornerRadius = 24; kn.backgroundColor = (gOwn[i].kind == 3 ? [UIColor colorWithRed:0.45 green:0.8 blue:1 alpha:0.55] : [UIColor colorWithWhite:1 alpha:0.5]).CGColor;
                           [gOwnView.layer addSublayer:kn]; if (gOwn[i].kind == 3) gOwnKnob2 = kn; else gOwnKnob = kn;
@@ -590,7 +597,7 @@ jobs:
                   else if (e->kind == 0) [s appendFormat:@"btn %02X %.4f %.4f %.4f %.4f %s\n", e->dik, e->x, e->y, e->w, e->h, e->label[0] ? e->label : "KEY"];
                   else [s appendFormat:@"block %.4f %.4f %.4f %.4f\n", e->x, e->y, e->w, e->h];
               }
-              [s writeToFile:gOwnFile atomically:YES encoding:NSUTF8StringEncoding error:nil];
+              [s writeToFile:layPath(gOwnFile, @"own_layout.txt", YES) atomically:YES encoding:NSUTF8StringEncoding error:nil];
               p2_note("OWNLAYOUT: layout saved after a move");
           }
           static BOOL ownEditFeed(int ph, int s, CGPoint p, CGSize sz) {   /* Edit mode: a touch selects and drags the stick or button under it; nothing reaches the game. YES = the touch is on an element */
@@ -684,7 +691,7 @@ jobs:
           @interface GameView : UIView @end
           @implementation GameView
           + (Class)layerClass { return [CAMetalLayer class]; }
-          - (void)layoutSubviews { [super layoutSubviews]; ownLoad(); if (ownAny()) ownShow(self); }
+          - (void)layoutSubviews { [super layoutSubviews]; layStart(self); ownLoad(); if (ownAny()) ownShow(self); }
           static void *gSlot[10];
           static int slotFor(UITouch *t, BOOL create) {
               for (int i = 0; i < 10; i++) if (gSlot[i] == (__bridge void *)t) return i;
@@ -799,6 +806,8 @@ jobs:
           @property (nonatomic) CGFloat fx, fy, fw, fh;      /* position and size as fractions of the screen */
           @property (nonatomic) BOOL pressed, dragging;
           @property (nonatomic, strong) UILabel *tl;
+          @property (nonatomic, strong) UIImageView *iv;     /* icons: the button picture */
+          @property (nonatomic, strong) UILabel *cap;        /* icons: the caption under the circle */
           - (instancetype)initWithDik:(int)dik title:(NSString *)t fx:(CGFloat)fx fy:(CGFloat)fy fw:(CGFloat)fw fh:(CGFloat)fh;
           - (void)place;
           - (void)look;
@@ -814,11 +823,12 @@ jobs:
           static NSMutableArray<CbButton *> *gCbList;
           static UIView *gCbHost;
           static UIView *gCbGear, *gCbDone, *gCbPlus; static UIButton *gXBtn;
-          static NSString *cbPath(void) { return [uiDocs() stringByAppendingPathComponent:@"custom_buttons.txt"]; }
+          static NSString *cbRoot(void) { return [uiDocs() stringByAppendingPathComponent:@"custom_buttons.txt"]; }
+          static NSString *cbPath(void) { return layPath(cbRoot(), @"custom_buttons.txt", NO); }   /* layouts: this layout's file, else the plain one */
           static void cbSave(void) {
               NSMutableString *s = [NSMutableString stringWithString:@"# custom buttons (v79). btn KEY x y w h LABEL. KEY = DirectInput scancode in hex, x y w h are fractions of the screen.\n"];
               for (CbButton *b in gCbList) [s appendFormat:@"btn %02X %.4f %.4f %.4f %.4f %@\n", b.dik, b.fx, b.fy, b.fw, b.fh, b.title];
-              [s writeToFile:cbPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
+              [s writeToFile:layPath(cbRoot(), @"custom_buttons.txt", YES) atomically:YES encoding:NSUTF8StringEncoding error:nil];
           }
           static void cbSetEdit(BOOL on) {
               gCbEdit = on; ownReleaseAll(); cbSelClear();
@@ -995,12 +1005,16 @@ jobs:
               self.layer.borderWidth = 2;
               _tl = [UILabel new]; _tl.text = _title; _tl.font = [UIFont systemFontOfSize:14 weight:UIFontWeightBold]; _tl.textColor = UIColor.whiteColor;
               _tl.textAlignment = NSTextAlignmentCenter; _tl.adjustsFontSizeToFitWidth = YES; _tl.minimumScaleFactor = 0.5; _tl.userInteractionEnabled = NO;
+              _iv = [UIImageView new]; _iv.contentMode = UIViewContentModeScaleAspectFit; _iv.userInteractionEnabled = NO; [self addSubview:_iv];
+              _cap = [UILabel new]; _cap.font = [UIFont systemFontOfSize:10 weight:UIFontWeightBold]; _cap.textColor = [UIColor colorWithWhite:1 alpha:0.9]; _cap.textAlignment = NSTextAlignmentCenter; _cap.userInteractionEnabled = NO;
+              _cap.layer.shadowColor = UIColor.blackColor.CGColor; _cap.layer.shadowOpacity = 1; _cap.layer.shadowRadius = 2; _cap.layer.shadowOffset = CGSizeZero; [self addSubview:_cap];
               [self addSubview:_tl]; [self look];
               return self;
           }
           - (void)layoutSubviews {
               [super layoutSubviews]; CGFloat d = MIN(self.bounds.size.width, self.bounds.size.height);
-              self.layer.cornerRadius = d / 2; self.tl.frame = CGRectInset(self.bounds, d * 0.1, d * 0.1);
+              self.layer.cornerRadius = d / 2; self.tl.frame = CGRectInset(self.bounds, d * 0.1, d * 0.1); self.iv.frame = self.bounds;
+              self.cap.frame = CGRectMake(-d * 0.3, self.bounds.size.height + 1, self.bounds.size.width + d * 0.6, 14);
           }
           - (void)place {
               CGSize s = self.superview.bounds.size; if (self.dragging || s.width < 1 || s.height < 1) return;
@@ -1012,6 +1026,13 @@ jobs:
               self.backgroundColor = [UIColor colorWithWhite:self.pressed ? 1.0 : 0.0 alpha:self.pressed ? 0.45 : 0.25];
               self.layer.borderColor = (sel ? UIColor.whiteColor : gCbEdit ? UIColor.systemYellowColor : [UIColor colorWithWhite:1 alpha:0.8]).CGColor;
               self.layer.borderWidth = sel ? 3 : 2;
+              UIImage *ic = icoForDik(self.dik);   /* icons: a picture for this action replaces the key name (and, flat, the circle) */
+              self.iv.image = ic; self.iv.hidden = ic == nil; self.tl.hidden = ic != nil;
+              self.cap.text = icoCaption(self.dik); self.cap.hidden = self.cap.text == nil;
+              if (ic) {
+                  if (gIcoFlat) { self.backgroundColor = UIColor.clearColor; self.layer.borderWidth = gCbEdit ? (sel ? 3 : 2) : 0; }
+                  self.iv.alpha = self.pressed ? 0.65 : 1.0; self.iv.transform = self.pressed ? CGAffineTransformMakeScale(0.9, 0.9) : CGAffineTransformIdentity;
+              }
           }
           - (void)press:(BOOL)down {
               if (down == self.pressed) return;
@@ -1047,7 +1068,8 @@ jobs:
           }
           - (instancetype)init {
               self = [super initWithStyle:UITableViewStyleInsetGrouped];
-              _groups = [NSMutableArray arrayWithObjects:@"MOUSE", @"CAMERA", nil]; _idx = [NSMutableArray arrayWithObjects:[NSMutableArray arrayWithObjects:@(-1), @(-2), nil], [NSMutableArray arrayWithObject:@(-3)], nil];
+              NSMutableArray<NSNumber *> *acts = [NSMutableArray new]; for (int i = 0; i < ICO_NACT; i++) [acts addObject:@(-100 - i)];   /* icons: every game action, by name */
+              _groups = [NSMutableArray arrayWithObjects:@"GAME ACTIONS", @"MOUSE", @"CAMERA", nil]; _idx = [NSMutableArray arrayWithObjects:acts, [NSMutableArray arrayWithObjects:@(-1), @(-2), nil], [NSMutableArray arrayWithObject:@(-3)], nil];
               for (int i = 0; i < CB_N; i++) {
                   NSString *g = @(kCbK[i].g).uppercaseString; NSUInteger gi = [_groups indexOfObject:g];
                   if (gi == NSNotFound) { [_groups addObject:g]; [_idx addObject:[NSMutableArray new]]; gi = _groups.count - 1; }
@@ -1069,6 +1091,7 @@ jobs:
               UITableViewCell *c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
               c.backgroundColor = [UIColor colorWithWhite:1 alpha:0.035]; c.textLabel.textColor = UIColor.labelColor;
               int v = _idx[(NSUInteger)ip.section][(NSUInteger)ip.row].intValue;
+              if (v <= -100) { int dk = icoActDik(-100 - v); c.textLabel.text = [NSString stringWithFormat:@"%@  ·  %@", @(kAct[-100 - v].name), cbKeyName(dk)]; c.imageView.image = icoThumb(dk); return c; }
               c.textLabel.text = v == -1 ? @"Left Click" : v == -2 ? @"Right Click" : v == -3 ? @"Right stick" : @(kCbK[v].n);
               if (v < 0) { c.imageView.image = [UIImage systemImageNamed:v == -3 ? @"gamecontroller" : @"computermouse"]; c.imageView.tintColor = [UIColor colorWithRed:0.35 green:0.68 blue:1 alpha:1]; if (v == -3 && ownHasR()) c.accessoryType = UITableViewCellAccessoryCheckmark; }
               return c;
@@ -1076,7 +1099,7 @@ jobs:
           - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
               [tv deselectRowAtIndexPath:ip animated:YES];
               int v = _idx[(NSUInteger)ip.section][(NSUInteger)ip.row].intValue;
-              if (self.onPick) self.onPick(v == -1 ? CB_LMB : v == -2 ? CB_RMB : v == -3 ? CB_RSTICK : kCbK[v].d);
+              if (self.onPick) self.onPick(v <= -100 ? icoActDik(-100 - v) : v == -1 ? CB_LMB : v == -2 ? CB_RMB : v == -3 ? CB_RSTICK : kCbK[v].d);
           }
           @end
           EOF_CTL_MAIN_2_M
