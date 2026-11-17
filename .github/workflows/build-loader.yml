@@ -1,4 +1,4 @@
-name: "Build loader v90 (automatic menu mode: finger drives the game cursor, stick menu, real right click, swipe camera)"
+name: "Build loader v93 (layout check retries until the game is ready)"
 # PRIVATE REPOS ONLY. The IPA artifact contains the patched game code. Delete the artifact after downloading.
 # Pushes run the download/disassembly/prep inspection. A full IPA build requires manual dispatch with inspect_only=false.
 on:
@@ -2674,7 +2674,7 @@ jobs:
               static int ok = -1; if (!gBase) return;
               if (ok < 0) {
                   uintptr_t host = 0, cur = 0;
-                  if (!safe_rd(gBase + OVL_SLOT, &host, sizeof host) || !host || !safe_rd(host + 0x208, &cur, sizeof cur)) return;
+                  if (!safe_rd(gBase + OVL_SLOT, &host, sizeof host) || !host || !safe_rd(host + 0x208, &cur, sizeof cur) || !cur) return;   /* builder not set yet: retry on the next key */
                   ok = (cur == gBase + OVL_BUILDER || cur == (uintptr_t)ovl_wrap) ? 1 : 0;
                   L("OWNKEY: %s (g_host+0x208 = %p)", ok ? "1.0.7 layout confirmed, PushKey calls enabled" : "NOT the 1.0.7 layout, key injection disabled", (void *)cur);
               }
@@ -2684,11 +2684,12 @@ jobs:
           /* v89: the 1.0.7 layout check that p2_key does, shared. p2_mouse and the menu cursor (both in the controls piece, ctl_core.c) call it before they touch any elf address.
              p2_mouse moved there: it used to post the click with PostMouseMessage at x=0,y=0 and never set the game's own button state, which is why Left Click did nothing. */
           int p2_layout_ok(void) {
-              static int ok = -1; if (!gBase) return 0;
+              static int ok = -1, bad; if (!gBase) return 0;
               if (ok < 0) {
                   uintptr_t host = 0, cur = 0;
-                  if (!safe_rd(gBase + OVL_SLOT, &host, sizeof host) || !host || !safe_rd(host + 0x208, &cur, sizeof cur)) return 0;
+                  if (!safe_rd(gBase + OVL_SLOT, &host, sizeof host) || !host || !safe_rd(host + 0x208, &cur, sizeof cur) || !cur) return 0;   /* the dev has not set its builder yet: ask again next time, do not lock in "no" */
                   ok = (cur == gBase + OVL_BUILDER || cur == (uintptr_t)ovl_wrap) ? 1 : 0;
+                  if (!ok && ++bad < 300) { if (bad == 1) L("INPUT: g_host+0x208 = %p is not the 1.0.7 builder yet, checking again (not locked in)", (void *)cur); ok = -1; return 0; }
                   L("INPUT: %s (g_host+0x208 = %p)", ok ? "1.0.7 layout confirmed, mouse click and menu cursor calls enabled" : "NOT the 1.0.7 layout, mouse click and menu cursor calls disabled", (void *)cur);
               }
               return ok;
