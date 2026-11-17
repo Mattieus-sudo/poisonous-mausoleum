@@ -1,0 +1,100 @@
+name: "P2 layouts source"
+# LAYOUTS: a separate control layout for each part of the game (on foot, vehicle, menu, video ...), switched automatically from the game's own touch layout.
+# Called by build-loader.yml (uses: ./.github/workflows/p2-layouts.yml). It only writes source text and uploads it; the loader joins the pieces and compiles.
+# lay_head.m goes before the controls piece (the file paths), lay_main.m after the custom buttons (the switch). The game-side lookup, p2_ctx(), is in p2-controls.yml next to p2_menu_on().
+on:
+  workflow_call:
+jobs:
+  layouts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write the source pieces
+        run: |
+          set -e
+          mkdir -p parts
+          cat > parts/lay_head.m <<'EOF_LAY_HEAD_M'
+          /* ---- LAYOUTS (1/2): one control layout per part of the game, like the dev's own touch layouts. The loader asks the game which layout it is in (p2_ctx: 0 on foot, 1 in a vehicle, 2 menu or pause,
+             3 and up = the dev's other layouts) and loads that layout's buttons. Files: Documents/layouts/<name>/custom_buttons.txt and own_layout.txt. A part of the game with no file of its own uses the
+             plain files in Documents (custom_buttons.txt, own_layout/own_layout.txt), which are also the "foot" layout. The switching code is in the second piece, after the custom buttons. ---- */
+          extern int p2_ctx(void);
+          static NSString *gLayCtx = @"foot";           /* the layout in use right now */
+          static __weak UIView *gLayGV;                  /* the game view, kept so the own_layout drawing can be rebuilt on a switch */
+          static NSString *layDocs(void) { return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
+          static NSString *layPath(NSString *rootPath, NSString *name, BOOL write) {   /* read: this layout's file if it has one, else the plain one. write: always this layout's own file (created on the first save), "foot" writes the plain file */
+              if ([gLayCtx isEqualToString:@"foot"]) return rootPath;
+              NSString *dir = [[layDocs() stringByAppendingPathComponent:@"layouts"] stringByAppendingPathComponent:gLayCtx], *p = [dir stringByAppendingPathComponent:name];
+              if (write) { [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil]; return p; }
+              return [NSFileManager.defaultManager fileExistsAtPath:p] ? p : rootPath;
+          }
+          static void layStart(UIView *gv);
+          EOF_LAY_HEAD_M
+          cat > parts/lay_main.m <<'EOF_LAY_MAIN_M'
+          /* ---- LAYOUTS (2/2): which layout is in use, the switch, the "Editing layout" badge. Documents/layouts/contexts.txt (written the first time) names the dev's layouts:
+               layout 3 video      the game's touch layout 3 gets the name "video", so its buttons live in Documents/layouts/video/
+             The log (p2.log) prints a LAYOUT line every time the game changes layout, with the number, so you can see which number a video or a vehicle has and name it.
+             Edit a layout by being in that part of the game: open the gear, Move mode, change the buttons; it is saved for that layout only. The layout does not switch while Move mode is on. ---- */
+          static NSMutableDictionary<NSNumber *, NSString *> *gLayNames;
+          static NSString *layName(int c) {
+              if (!gLayNames) {
+                  gLayNames = [NSMutableDictionary new]; NSFileManager *fm = NSFileManager.defaultManager; NSString *d = [layDocs() stringByAppendingPathComponent:@"layouts"], *f = [d stringByAppendingPathComponent:@"contexts.txt"];
+                  if (![fm fileExistsAtPath:d]) {   /* first run: the folder, the names file, and a video layout that is just a Skip (M) button with no stick */
+                      [fm createDirectoryAtPath:[d stringByAppendingPathComponent:@"video"] withIntermediateDirectories:YES attributes:nil error:nil];
+                      [@"# Names for the game's touch layouts. layout N name. Built in: 0 foot (the plain files), 1 vehicle, 2 menu (pause, options, any screen with the game's cursor). Others are called layoutN until named here.\n# Watch p2.log for lines starting LAYOUT: while you are in a video or a vehicle; they show the number. Then add e.g.  layout 3 video\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                      [@"# video layout: only a Skip button (M). Used once a layout number is named video in contexts.txt.\nbtn 32 0.8300 0.7800 0.1000 0.1700 M\n" writeToFile:[d stringByAppendingPathComponent:@"video/custom_buttons.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                      [@"# video layout: no stick, no buttons from the plain layout.\n" writeToFile:[d stringByAppendingPathComponent:@"video/own_layout.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                  }
+                  for (NSString *ln in [[NSString stringWithContentsOfFile:f encoding:NSUTF8StringEncoding error:nil] componentsSeparatedByString:@"\n"]) {
+                      NSArray<NSString *> *w = [ln componentsSeparatedByString:@" "];
+                      if (w.count >= 3 && [w[0] isEqualToString:@"layout"] && [w[2] rangeOfCharacterFromSet:[[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz0123456789_"] invertedSet]].location == NSNotFound) gLayNames[@(w[1].intValue)] = w[2];
+                  }
+              }
+              NSString *n = gLayNames[@(c)]; if (n) return n;
+              return c == 0 ? @"foot" : c == 1 ? @"vehicle" : c == 2 ? @"menu" : [NSString stringWithFormat:@"layout%d", c];
+          }
+          static UILabel *gLayBadge;
+          static void layBadge(void) {   /* "Editing layout: menu" at the top while Move mode is on */
+              if (!gCbHost) return;
+              if (!gLayBadge) {
+                  gLayBadge = [UILabel new]; gLayBadge.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold]; gLayBadge.textColor = UIColor.whiteColor; gLayBadge.textAlignment = NSTextAlignmentCenter;
+                  gLayBadge.backgroundColor = [UIColor colorWithWhite:0 alpha:0.6]; gLayBadge.layer.cornerRadius = 10; gLayBadge.clipsToBounds = YES; gLayBadge.userInteractionEnabled = NO;
+              }
+              if (gLayBadge.superview != gCbHost) [gCbHost addSubview:gLayBadge];
+              gLayBadge.hidden = !gCbEdit; if (!gCbEdit) return;
+              gLayBadge.text = [NSString stringWithFormat:@"Editing layout: %@", gLayCtx];
+              CGFloat w = [gLayBadge sizeThatFits:CGSizeMake(400, 20)].width + 20; gLayBadge.frame = CGRectMake((gCbHost.bounds.size.width - w) / 2, 8, w, 20);
+          }
+          static void laySwitch(NSString *ctx) {
+              if ([ctx isEqualToString:gLayCtx]) return;
+              ownReleaseAll(); cbReleaseAll(); cbSelClear();
+              gLayCtx = ctx;
+              for (CbButton *b in [gCbList copy]) [b removeFromSuperview];
+              [gCbList removeAllObjects]; gSelCb = nil;
+              if (gCbHost) { cbLoad(gCbHost); for (CbButton *b in gCbList) [b place]; cbFront(); }
+              if (gOwnView) { [gOwnView removeFromSuperview]; gOwnView = nil; }
+              for (int i = 0; i < OWN_MAX; i++) gOwnLay[i] = nil;
+              gOwnKnob = nil; gOwnKnob2 = nil; gOwnN = 0; gOwnLoaded = 0; gSelOwn = -1;
+              ownLoad();
+              UIView *gv = gLayGV; if (gv && ownAny()) ownShow(gv);
+              p2_note([NSString stringWithFormat:@"LAYOUT: switched to \"%@\" (%d custom buttons, %d own_layout elements)", ctx, (int)gCbList.count, gOwnN].UTF8String);
+          }
+          static void layTick(void) {
+              static int raw = -9, same;
+              int c = p2_ctx();
+              if (c != raw) { raw = c; same = 0; p2_note([NSString stringWithFormat:@"LAYOUT: the game is now in touch layout %d = \"%@\"%s", c, layName(c), gCbEdit ? " (kept as it is, Move mode is on)" : ""].UTF8String); }
+              else if (same < 100) same++;
+              layBadge();
+              if (gCbEdit || same < 2) return;   /* three polls in a row (about 0.3 s) with the same answer, and never while Move mode is on */
+              laySwitch(layName(c));
+          }
+          static void layStart(UIView *gv) {
+              gLayGV = gv;
+              static NSTimer *t; if (t) return;
+              t = [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *x) { layTick(); }];
+          }
+          EOF_LAY_MAIN_M
+      - name: Upload the pieces
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-src-layouts
+          path: parts/
+          if-no-files-found: error
