@@ -35,8 +35,14 @@ jobs:
   ui:
     if: ${{ !inputs.skip_build }}
     uses: ./.github/workflows/p2-ui.yml
+  icons:
+    if: ${{ !inputs.skip_build }}
+    uses: ./.github/workflows/p2-icons.yml
+  layouts:
+    if: ${{ !inputs.skip_build }}
+    uses: ./.github/workflows/p2-layouts.yml
   build:
-    needs: [controls, ui]
+    needs: [controls, ui, icons, layouts]
     if: ${{ !inputs.skip_build }}
     runs-on: macos-latest
     steps:
@@ -3960,8 +3966,8 @@ jobs:
               L("== DONE: native code from the patched libp2re executed ==");
           }
           EOF_P2CORE_TAIL
-          P="$GITHUB_WORKSPACE/parts"; ln -sfn "$P/p2-src-controls" "$P/controls"; ln -sfn "$P/p2-src-ui" "$P/ui"
-          for f in "$P/controls/ctl_core.c" "$P/controls/ctl_main_1.m" "$P/controls/ctl_main_2.m" "$P/ui/ui_main_1.m" "$P/ui/ui_main_2.m"; do test -s "$f" || { echo "missing source piece $f (the controls/ui jobs did not run?)"; exit 1; }; done
+          P="$GITHUB_WORKSPACE/parts"; ln -sfn "$P/p2-src-controls" "$P/controls"; ln -sfn "$P/p2-src-ui" "$P/ui"; ln -sfn "$P/p2-src-icons" "$P/icons"; ln -sfn "$P/p2-src-layouts" "$P/layouts"
+          for f in "$P/controls/ctl_core.c" "$P/controls/ctl_main_1.m" "$P/controls/ctl_main_2.m" "$P/ui/ui_main_1.m" "$P/ui/ui_main_2.m" "$P/icons/ico_main.m" "$P/layouts/lay_head.m" "$P/layouts/lay_main.m"; do test -s "$f" || { echo "missing source piece $f (the controls/ui jobs did not run?)"; exit 1; }; done
           cat p2core_head.c "$P/controls/ctl_core.c" p2core_tail.c > p2core.c
           cat > main_head.m <<'EOF_MAIN_HEAD'
           #import <UIKit/UIKit.h>
@@ -4019,7 +4025,7 @@ jobs:
           }
 
           EOF_MAIN_HEAD
-          cat main_head.m "$P/controls/ctl_main_1.m" "$P/ui/ui_main_1.m" "$P/controls/ctl_main_2.m" "$P/ui/ui_main_2.m" > main.m
+          cat main_head.m "$P/icons/ico_main.m" "$P/layouts/lay_head.m" "$P/controls/ctl_main_1.m" "$P/ui/ui_main_1.m" "$P/controls/ctl_main_2.m" "$P/layouts/lay_main.m" "$P/ui/ui_main_2.m" > main.m
           APP=Payload/P2Loader.app
           mkdir -p $APP/Frameworks/P2Code.framework
           MVK_LINK=""
@@ -4030,6 +4036,7 @@ jobs:
           cp P2Code $APP/Frameworks/P2Code.framework/P2Code
           cp p2data.bin p2relocs.bin p2names.bin p2tls.bin p2phdr.bin $APP/
           unzip -q -o ../game.apk 'assets/*' -d $APP/ && du -sh $APP/assets || echo 'no assets in apk'
+          mkdir -p $APP/icons && cp "$P/icons/icons/"*.png $APP/icons/ 2>/dev/null && echo "button icons: $(ls $APP/icons | wc -l) PNGs in the app" || echo 'button icons: none in p2-icons/, buttons keep their text labels'
           cat > $APP/Frameworks/P2Code.framework/Info.plist <<'EOF_FWPLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <plist version="1.0"><dict>
