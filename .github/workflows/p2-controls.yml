@@ -585,7 +585,7 @@ jobs:
                          cbPinchApply calls ownLayoutAll while pinching, so Rstick.png
                          grows/shrinks with the right-stick size instead of staying 72pt. */
                       if (e->kind == 3 && gOwnKnob2) {
-                          CGFloat knobSize = 72.0 * ((CGFloat)e->w / 0.13);
+                          CGFloat knobSize = 90.0 * ((CGFloat)e->w / 0.13);
                           gOwnKnob2.bounds = CGRectMake(0, 0, knobSize, knobSize);
                       }
                   }
