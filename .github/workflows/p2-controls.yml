@@ -581,6 +581,13 @@ jobs:
                       icoLayoutLayer(l);   /* icons: picture and caption */
                   } else {
                       float r = e->w * sz.height; l.frame = CGRectMake(e->x * sz.width - r, e->y * sz.height - r, 2 * r, 2 * r); l.cornerRadius = r;
+                      /* Keep the right-stick artwork proportional to its editable radius.
+                         cbPinchApply calls ownLayoutAll while pinching, so Rstick.png
+                         grows/shrinks with the right-stick size instead of staying 72pt. */
+                      if (e->kind == 3 && gOwnKnob2) {
+                          CGFloat knobSize = 72.0 * ((CGFloat)e->w / 0.13);
+                          gOwnKnob2.bounds = CGRectMake(0, 0, knobSize, knobSize);
+                      }
                   }
               }
               [CATransaction commit]; ownRefresh();
