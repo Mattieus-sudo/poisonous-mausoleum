@@ -532,7 +532,11 @@ jobs:
                   OwnEl e; memset(&e, 0, sizeof e); int k;
                   if (sscanf(c, "stick %f %f %f", &e.x, &e.y, &e.w) == 3) { if (!layNoStick()) { e.kind = 1; gOwn[gOwnN++] = e; } }   /* layouts: no movement stick in menu, video, layout3 ... */
                   else if (sscanf(c, "rstick %f %f %f", &e.x, &e.y, &e.w) == 3) { if (!ownHasR() && !layNoStick()) { e.kind = 3; gOwn[gOwnN++] = e; } }   /* v88: older layouts kept it here */
-                  else if (sscanf(c, "btn %x %f %f %f %f %15s %d %d", &k, &e.x, &e.y, &e.w, &e.h, e.label, &e.hidden, &e.noBorder) >= 5) { e.kind = 0; e.dik = k; gOwn[gOwnN++] = e; }
+                  else if (sscanf(c, "btn %x %f %f %f %f %15s", &k, &e.x, &e.y, &e.w, &e.h, e.label) == 6) {
+                      int styleRead = sscanf(c, "btn %x %f %f %f %f %15s H=%d B=%d", &k, &e.x, &e.y, &e.w, &e.h, e.label, &e.hidden, &e.noBorder);
+                      if (styleRead < 8) sscanf(c, "btn %x %f %f %f %f %15s %d %d", &k, &e.x, &e.y, &e.w, &e.h, e.label, &e.hidden, &e.noBorder);
+                      e.kind = 0; e.dik = k; gOwn[gOwnN++] = e;
+                  }
                   else if (sscanf(c, "block %f %f %f %f", &e.x, &e.y, &e.w, &e.h) == 4) { if (!layNoStick()) { e.kind = 2; gOwn[gOwnN++] = e; } }   /* the stick's touch block would swallow menu taps */
               }
               p2_note([NSString stringWithFormat:@"OWNLAYOUT: on, %d elements from %@", gOwnN, f].UTF8String);
@@ -551,8 +555,9 @@ jobs:
                   BOOL customStick = hasLStick || hasRStick;
                   BOOL customBorder = gOwn[i].kind == 0 && !gOwn[i].noBorder && icoLoad(@"border") != nil;
                   gOwnLay[i].borderColor = sel ? UIColor.whiteColor.CGColor : edge;
-                  gOwnLay[i].opacity = (gOwn[i].kind != 1 && gOwn[i].hidden && !sel) ? 0.0f : 1.0f;
-                  for (CALayer *sub in gOwnLay[i].sublayers) { if ([sub.name isEqualToString:@"hiddenMark"]) sub.hidden = !(gOwn[i].kind == 0 && gOwn[i].hidden && sel); else if (gOwn[i].kind == 0 && gOwn[i].hidden && sel) sub.hidden = YES; else if (gOwn[i].kind == 0) sub.hidden = NO; }
+                  BOOL hiddenEdit = gOwn[i].kind == 0 && gOwn[i].hidden && gCbEdit;
+                  gOwnLay[i].opacity = (gOwn[i].kind != 1 && gOwn[i].hidden && !gCbEdit) ? 0.0f : 1.0f;
+                  for (CALayer *sub in gOwnLay[i].sublayers) { if ([sub.name isEqualToString:@"hiddenMark"]) sub.hidden = !hiddenEdit; else if (hiddenEdit && gOwn[i].kind == 0) sub.hidden = YES; else if (gOwn[i].kind == 0) sub.hidden = NO; }
                   gOwnLay[i].borderWidth = (gOwn[i].kind == 0 && gOwn[i].noBorder) ? (sel ? 3 : 0) : (customStick || customBorder ? (sel ? 3 : 0) : (sel ? 3 : 2));
                   if (gOwn[i].kind == 0) {
                       gOwnLay[i].backgroundColor = (customBorder || (gOwn[i].hidden && sel) || gOwn[i].noBorder) ? UIColor.clearColor.CGColor : [UIColor colorWithWhite:gOwn[i].down ? 1.0 : 0.0 alpha:gOwn[i].down ? 0.45 : 0.25].CGColor;
@@ -562,7 +567,7 @@ jobs:
                   }
               }
               if (gOwnKnob2) for (int i = 0; i < gOwnN; i++) if (gOwn[i].kind == 3 && gOwnLay[i]) {
-                  gOwnKnob2.opacity = gOwn[i].hidden && !(gCbEdit && i == gSelOwn) ? 0.0f : 1.0f;
+                  gOwnKnob2.opacity = gOwn[i].hidden && !gCbEdit ? 0.0f : 1.0f;
                   CGSize sz = gOwnView.bounds.size; float r = gOwn[i].w * sz.height;
                   [CATransaction begin]; [CATransaction setDisableActions:YES];
                   gOwnKnob2.position = CGPointMake(gOwn[i].x * sz.width + gKnob2X * r, gOwn[i].y * sz.height + gKnob2Y * r);
@@ -666,7 +671,7 @@ jobs:
                   OwnEl *e = &gOwn[i];
                   if (e->kind == 1) [s appendFormat:@"stick %.4f %.4f %.4f\n", e->x, e->y, e->w];
                   else if (e->kind == 3) { }   /* v88: saved in camera.txt */
-                  else if (e->kind == 0) [s appendFormat:@"btn %02X %.4f %.4f %.4f %.4f %s %d %d\n", e->dik, e->x, e->y, e->w, e->h, e->label[0] ? e->label : "KEY", e->hidden, e->noBorder];
+                  else if (e->kind == 0) [s appendFormat:@"btn %02X %.4f %.4f %.4f %.4f %s H=%d B=%d\n", e->dik, e->x, e->y, e->w, e->h, e->label[0] ? e->label : "KEY", e->hidden, e->noBorder];
                   else [s appendFormat:@"block %.4f %.4f %.4f %.4f\n", e->x, e->y, e->w, e->h];
               }
               [s writeToFile:layPath(gOwnFile, @"own_layout.txt", YES) atomically:YES encoding:NSUTF8StringEncoding error:nil];
@@ -900,7 +905,7 @@ jobs:
           static NSString *cbPath(void) { return layPath(cbRoot(), @"custom_buttons.txt", NO); }   /* layouts: this layout's file, else the plain one */
           static void cbSave(void) {
               NSMutableString *s = [NSMutableString stringWithString:@"# custom buttons (v79). btn KEY x y w h LABEL. KEY = DirectInput scancode in hex, x y w h are fractions of the screen.\n"];
-              for (CbButton *b in gCbList) [s appendFormat:@"btn %02X %.4f %.4f %.4f %.4f %@ %d %d\n", b.dik, b.fx, b.fy, b.fw, b.fh, b.title, b.hiddenButton, b.noBorder];
+              for (CbButton *b in gCbList) [s appendFormat:@"btn %02X %.4f %.4f %.4f %.4f %@ H=%d B=%d\n", b.dik, b.fx, b.fy, b.fw, b.fh, b.title, b.hiddenButton, b.noBorder];
               [s writeToFile:layPath(cbRoot(), @"custom_buttons.txt", YES) atomically:YES encoding:NSUTF8StringEncoding error:nil];
           }
           static void cbSetEdit(BOOL on) {
@@ -929,18 +934,25 @@ jobs:
           static void cbLoad(UIView *host) {
               if (!gCbList) gCbList = [NSMutableArray new];
               NSString *txt = [NSString stringWithContentsOfFile:cbPath() encoding:NSUTF8StringEncoding error:nil];
+              NSCharacterSet *ws = NSCharacterSet.whitespaceAndNewlineCharacterSet;
               for (NSString *line in [txt componentsSeparatedByString:@"\n"]) {
-                  if (gCbList.count >= CB_MAX) break;
-                  if (![line hasPrefix:@"btn "]) continue;
-                  NSArray *p = [line componentsSeparatedByString:@" "];
+                  if (gCbList.count >= CB_MAX || ![line hasPrefix:@"btn "]) continue;
+                  NSMutableArray<NSString *> *p = [NSMutableArray new];
+                  for (NSString *part in [line componentsSeparatedByCharactersInSet:ws]) if (part.length) [p addObject:part];
                   if (p.count < 7) continue;
                   unsigned k = 0;
                   if (![[NSScanner scannerWithString:p[1]] scanHexInt:&k] || k < 1 || k >= CB_RSTICK) continue;
                   CGFloat fx = [p[2] doubleValue], fy = [p[3] doubleValue], fw = [p[4] doubleValue], fh = [p[5] doubleValue];
                   if (fw < 0.03 || fh < 0.05 || fw > 0.5 || fh > 0.6) continue;
-                  NSString *t = (p.count >= 9) ? [[p subarrayWithRange:NSMakeRange(6, p.count - 8)] componentsJoinedByString:@" "] : [[p subarrayWithRange:NSMakeRange(6, p.count - 6)] componentsJoinedByString:@" "];
+                  BOOL hasStyle = NO, hidden = NO, noBorder = NO; NSUInteger labelEnd = p.count;
+                  if (p.count >= 9 && [p[p.count - 2] hasPrefix:@"H="] && [p.lastObject hasPrefix:@"B="]) {
+                      hidden = [[p[p.count - 2] substringFromIndex:2] boolValue]; noBorder = [[p.lastObject substringFromIndex:2] boolValue]; labelEnd = p.count - 2; hasStyle = YES;
+                  } else if (p.count >= 9 && ([p[p.count - 2] isEqualToString:@"0"] || [p[p.count - 2] isEqualToString:@"1"]) && ([p.lastObject isEqualToString:@"0"] || [p.lastObject isEqualToString:@"1"])) {
+                      hidden = [p[p.count - 2] boolValue]; noBorder = [p.lastObject boolValue]; labelEnd = p.count - 2; hasStyle = YES;
+                  }
+                  NSString *t = [[p subarrayWithRange:NSMakeRange(6, labelEnd - 6)] componentsJoinedByString:@" "];
                   CbButton *b = [[CbButton alloc] initWithDik:(int)k title:t fx:fx fy:fy fw:fw fh:fh];
-                  if (p.count >= 9) { b.hiddenButton = [p[p.count - 2] boolValue]; b.noBorder = [p.lastObject boolValue]; }
+                  if (hasStyle) { b.hiddenButton = hidden; b.noBorder = noBorder; }
                   [gCbList addObject:b]; [host addSubview:b];
               }
               p2_note([NSString stringWithFormat:@"CUSTOMBTN: %d buttons loaded from %@", (int)gCbList.count, cbPath()].UTF8String);
@@ -1134,15 +1146,16 @@ jobs:
           - (void)look {
               BOOL sel = gCbEdit && gSelCb == self;
               BOOL hasCustomBorder = self.borderView.image != nil && !self.noBorder;
-              BOOL renderHidden = self.hiddenButton && !(gCbEdit && sel);
+              BOOL renderHidden = self.hiddenButton && !gCbEdit;
+              BOOL suppressLegacyText = self.dik == 0x39 || self.dik == 0x01 || self.dik == 0x1C;
               self.borderView.hidden = !hasCustomBorder || renderHidden;
               self.backgroundColor = (hasCustomBorder || self.noBorder || renderHidden) ? UIColor.clearColor : [UIColor colorWithWhite:self.pressed ? 1.0 : 0.0 alpha:self.pressed ? 0.45 : 0.25];
               self.layer.borderColor = (sel ? UIColor.whiteColor : [UIColor colorWithWhite:1 alpha:0.8]).CGColor;
               self.layer.borderWidth = renderHidden ? 0 : (self.noBorder ? (sel ? 3 : 0) : (hasCustomBorder ? (gCbEdit && sel ? 3 : 0) : (sel ? 3 : 2)));
               self.layer.shadowOpacity = 0; self.layer.shadowRadius = 0; self.layer.shadowPath = nil;
               UIImage *ic = icoForDik(self.dik);   /* icons: a picture for this action replaces the key name (and, flat, the circle) */
-              self.iv.image = (self.hiddenButton && gCbEdit && sel) ? [UIImage systemImageNamed:@"eye.slash"] : ic; self.iv.hidden = renderHidden || (self.hiddenButton ? !(gCbEdit && sel) : ic == nil); self.tl.hidden = renderHidden || self.hiddenButton || (ic != nil); self.cap.hidden = renderHidden || self.cap.text == nil;
-              self.cap.text = icoCaption(self.dik); self.cap.hidden = self.cap.text == nil;
+              self.iv.image = (self.hiddenButton && gCbEdit) ? [UIImage systemImageNamed:@"eye.slash"] : ic; self.iv.hidden = renderHidden || (self.hiddenButton ? !gCbEdit : ic == nil); self.tl.hidden = renderHidden || self.hiddenButton || (ic != nil) || suppressLegacyText;
+              self.cap.text = icoCaption(self.dik); self.cap.hidden = renderHidden || self.hiddenButton || suppressLegacyText || self.cap.text == nil;
               if (ic) {
                   if (self.noBorder) { self.backgroundColor = UIColor.clearColor; self.layer.borderWidth = sel ? 3 : 0; } else if (gIcoFlat) { self.backgroundColor = UIColor.clearColor; self.layer.borderWidth = hasCustomBorder ? (gCbEdit && sel ? 3 : 0) : (gCbEdit ? (sel ? 3 : 2) : 0); }
                   self.iv.layer.shadowOpacity = 0; self.iv.layer.shadowRadius = 0; self.iv.layer.shadowPath = nil;

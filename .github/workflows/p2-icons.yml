@@ -134,11 +134,13 @@ jobs:
                   CALayer *ic = [CALayer layer]; ic.name = @"icon"; ic.contents = (__bridge id)im.CGImage; ic.contentsGravity = kCAGravityResizeAspect; ic.contentsScale = im.scale; [l addSublayer:ic];
                   for (CALayer *s in l.sublayers) if ([s.name isEqualToString:@"label"]) s.hidden = YES;
               }
-              NSString *cap = icoCaption(dik);
+              BOOL suppressLegacyText = dik == 0x39 || dik == 0x01 || dik == 0x1C;
+              NSString *cap = suppressLegacyText ? nil : icoCaption(dik);
               if (cap) {
                   CATextLayer *t = [CATextLayer layer]; t.name = @"cap"; t.string = cap; t.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10 weight:UIFontWeightBold]; t.fontSize = 10; t.alignmentMode = kCAAlignmentCenter; t.foregroundColor = [UIColor colorWithWhite:1 alpha:0.9].CGColor;
                   t.contentsScale = UIScreen.mainScreen.scale; t.shadowColor = UIColor.blackColor.CGColor; t.shadowOpacity = 1; t.shadowRadius = 2; t.shadowOffset = CGSizeZero; [l addSublayer:t];
               }
+              if (suppressLegacyText) for (CALayer *s in l.sublayers) if ([s.name isEqualToString:@"label"] || [s.name isEqualToString:@"cap"]) s.hidden = YES;
           }
           static void icoLayoutLayer(CALayer *l) {
               CGFloat w = l.bounds.size.width, h = l.bounds.size.height;
