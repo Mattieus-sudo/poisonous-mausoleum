@@ -1,4 +1,4 @@
-name: "Build loader v93 (layout check retries until the game is ready)"
+name: "Build loader v94 (right stick per layout, no left stick in menu or video)"
 # PRIVATE REPOS ONLY. The IPA artifact contains the patched game code. Delete the artifact after downloading.
 # Pushes run the download/disassembly/prep inspection. A full IPA build requires manual dispatch with inspect_only=false.
 on:

@@ -19,6 +19,7 @@ jobs:
           extern int p2_ctx(void);
           static NSString *gLayCtx = @"foot";           /* the layout in use right now */
           static __weak UIView *gLayGV;                  /* the game view, kept so the own_layout drawing can be rebuilt on a switch */
+          static BOOL layNoStick(void) { return ![gLayCtx isEqualToString:@"foot"] && ![gLayCtx isEqualToString:@"vehicle"]; }   /* menu, video, layout3 ...: no movement stick, ever */
           static NSString *layDocs(void) { return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
           static NSString *layPath(NSString *rootPath, NSString *name, BOOL write) {   /* read: this layout's file if it has one, else the plain one. write: always this layout's own file (created on the first save), "foot" writes the plain file */
               if ([gLayCtx isEqualToString:@"foot"]) return rootPath;
@@ -58,6 +59,7 @@ jobs:
               if ([n isEqualToString:@"vehicle"]) return @"In vehicle";
               if ([n isEqualToString:@"menu"]) return @"Menu";
               if ([n isEqualToString:@"video"]) return @"Video";
+              if ([n hasPrefix:@"layout"] && n.length > 6 && [n substringFromIndex:6].intValue > 0) return [NSString stringWithFormat:@"Layout %d (the game's own, not named yet)", [n substringFromIndex:6].intValue];
               NSString *s = [n stringByReplacingOccurrencesOfString:@"_" withString:@" "]; return s.length ? [[[s substringToIndex:1] uppercaseString] stringByAppendingString:[s substringFromIndex:1]] : s;
           }
           static NSString *laySlug(NSString *t) {   /* "Boss fight!" -> "boss_fight" */

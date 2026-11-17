@@ -467,24 +467,38 @@ jobs:
           static BOOL ownHasR(void) { for (int i = 0; i < gOwnN; i++) if (gOwn[i].kind == 3) return YES; return NO; }
           static BOOL ownAny(void) { return gOwnOn || ownHasR(); }   /* v88: the right stick lives in camera.txt and works without own_layout */
           static void camSave(void) {
-              NSMutableString *s = [NSMutableString stringWithString:@"# camera (v88). rstick cx cy r = the right stick (centre, radius as a fraction of the screen HEIGHT); camsens H V = percent of the default turn speed, left/right and up/down.\n"];
+              /* layouts: camsens (the sliders) stays global in Documents/camera.txt. The right stick is saved PER LAYOUT: On foot in camera.txt, every other layout in Documents/layouts/<name>/camera.txt
+                 (written even when it holds no rstick line, so "removed in this layout" stays removed and does not fall back to On foot). */
+              NSString *d = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
+              NSString *root = [d stringByAppendingPathComponent:@"camera.txt"];
+              NSMutableString *s = [NSMutableString stringWithString:@"# camera. rstick cx cy r = the right stick of THIS layout (centre, radius as a fraction of the screen HEIGHT); camsens H V (global) = percent of the default turn speed, left/right and up/down.\n"];
               for (int i = 0; i < gOwnN; i++) if (gOwn[i].kind == 3) [s appendFormat:@"rstick %.4f %.4f %.4f\n", gOwn[i].x, gOwn[i].y, gOwn[i].w];
               [s appendFormat:@"camsens %d %d\n", (int)gCamSx, (int)gCamSy];
-              NSString *d = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
-              [s writeToFile:[d stringByAppendingPathComponent:@"camera.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+              [s writeToFile:layPath(root, @"camera.txt", YES) atomically:YES encoding:NSUTF8StringEncoding error:nil];
+              if (![gLayCtx isEqualToString:@"foot"]) {   /* the global sliders always live in the plain file too */
+                  NSMutableString *g = [NSMutableString stringWithString:@"# camera\n"];
+                  NSString *old = [NSString stringWithContentsOfFile:root encoding:NSUTF8StringEncoding error:nil];
+                  for (NSString *ln in [old componentsSeparatedByString:@"\n"]) if ([ln hasPrefix:@"rstick "]) [g appendFormat:@"%@\n", ln];
+                  [g appendFormat:@"camsens %d %d\n", (int)gCamSx, (int)gCamSy];
+                  [g writeToFile:root atomically:YES encoding:NSUTF8StringEncoding error:nil];
+              }
           }
           static void ownLoad(void) {
               if (gOwnLoaded) return; gOwnLoaded = 1;
               NSString *d = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
               gOwnOn = [NSFileManager.defaultManager fileExistsAtPath:[d stringByAppendingPathComponent:@"own_layout"]];
               gSwClassic = [NSFileManager.defaultManager fileExistsAtPath:[d stringByAppendingPathComponent:@"swipe_classic"]];
-              { NSString *ct = [NSString stringWithContentsOfFile:[d stringByAppendingPathComponent:@"camera.txt"] encoding:NSUTF8StringEncoding error:nil];   /* v88: the right stick and the camera percents */
-                for (NSString *ln in [ct componentsSeparatedByString:@"\n"]) {
-                  const char *c = ln.UTF8String; if (!c || c[0] == '#') continue; OwnEl e; memset(&e, 0, sizeof e); float a, b;
+              { NSString *camRoot = [d stringByAppendingPathComponent:@"camera.txt"];
+                NSString *ct = [NSString stringWithContentsOfFile:camRoot encoding:NSUTF8StringEncoding error:nil];   /* the camera percents are global */
+                for (NSString *ln in [ct componentsSeparatedByString:@"\n"]) { const char *c = ln.UTF8String; float a, b; if (c && c[0] != '#' && sscanf(c, "camsens %f %f", &a, &b) == 2) { gCamSx = a; gCamSy = b; } }
+                p2_cam_cfg((int)gCamSx, (int)gCamSy);
+                /* layouts: the right stick belongs to ONE layout. On foot and vehicle: this layout's camera.txt, else the plain one. Menu, video and the other layouts: only their own file, never the plain one. */
+                NSString *rf = layPath(camRoot, @"camera.txt", NO);
+                if (layNoStick() && [rf isEqualToString:camRoot]) rf = nil;
+                for (NSString *ln in [[NSString stringWithContentsOfFile:(rf ?: @"/nonexistent") encoding:NSUTF8StringEncoding error:nil] componentsSeparatedByString:@"\n"]) {
+                  const char *c = ln.UTF8String; if (!c || c[0] == '#') continue; OwnEl e; memset(&e, 0, sizeof e);
                   if (sscanf(c, "rstick %f %f %f", &e.x, &e.y, &e.w) == 3) { if (gOwnN < OWN_MAX && !ownHasR()) { e.kind = 3; gOwn[gOwnN++] = e; } }
-                  else if (sscanf(c, "camsens %f %f", &a, &b) == 2) { gCamSx = a; gCamSy = b; }
-                }
-                p2_cam_cfg((int)gCamSx, (int)gCamSy); }
+                } }
               if (!gOwnOn) return;
               NSString *dir = [d stringByAppendingPathComponent:@"own_layout"];
               NSString *rootF = [dir stringByAppendingPathComponent:@"own_layout.txt"]; gOwnFile = rootF; NSString *f = layPath(rootF, @"own_layout.txt", NO);   /* layouts: this layout's file, else the plain one */   /* v78: the file lives INSIDE the own_layout folder */
@@ -502,10 +516,10 @@ jobs:
                   if (gOwnN >= OWN_MAX) break;
                   const char *c = line.UTF8String; if (!c || c[0] == '#') continue;
                   OwnEl e; memset(&e, 0, sizeof e); int k;
-                  if (sscanf(c, "stick %f %f %f", &e.x, &e.y, &e.w) == 3) { e.kind = 1; gOwn[gOwnN++] = e; }
-                  else if (sscanf(c, "rstick %f %f %f", &e.x, &e.y, &e.w) == 3) { if (!ownHasR()) { e.kind = 3; gOwn[gOwnN++] = e; } }   /* v88: older layouts kept it here */
+                  if (sscanf(c, "stick %f %f %f", &e.x, &e.y, &e.w) == 3) { if (!layNoStick()) { e.kind = 1; gOwn[gOwnN++] = e; } }   /* layouts: no movement stick in menu, video, layout3 ... */
+                  else if (sscanf(c, "rstick %f %f %f", &e.x, &e.y, &e.w) == 3) { if (!ownHasR() && !layNoStick()) { e.kind = 3; gOwn[gOwnN++] = e; } }   /* v88: older layouts kept it here */
                   else if (sscanf(c, "btn %x %f %f %f %f %15s", &k, &e.x, &e.y, &e.w, &e.h, e.label) >= 5) { e.kind = 0; e.dik = k; gOwn[gOwnN++] = e; }
-                  else if (sscanf(c, "block %f %f %f %f", &e.x, &e.y, &e.w, &e.h) == 4) { e.kind = 2; gOwn[gOwnN++] = e; }
+                  else if (sscanf(c, "block %f %f %f %f", &e.x, &e.y, &e.w, &e.h) == 4) { if (!layNoStick()) { e.kind = 2; gOwn[gOwnN++] = e; } }   /* the stick's touch block would swallow menu taps */
               }
               p2_note([NSString stringWithFormat:@"OWNLAYOUT: on, %d elements from %@", gOwnN, f].UTF8String);
           }
@@ -913,8 +927,9 @@ jobs:
               gRsPanel.frame = CGRectMake(px, MAX(8, MIN(cy - h / 2, sz.height - h - 8)), w, h); [gCbHost bringSubviewToFront:gRsPanel];
           }
           static void ownDeleteAt(int i) {
-              if (i < 0 || i >= gOwnN || (gOwn[i].kind != 0 && gOwn[i].kind != 3)) return;
+              if (i < 0 || i >= gOwnN || (gOwn[i].kind != 0 && gOwn[i].kind != 3 && !(gOwn[i].kind == 1 && layNoStick()))) return;   /* the movement stick can only be removed in menu, video and the other non-gameplay layouts */
               if (gOwnLay[i]) [gOwnLay[i] removeFromSuperlayer];
+              if (gOwn[i].kind == 1) { ownStick(&gOwn[i], 0); [gOwnKnob removeFromSuperlayer]; gOwnKnob = nil; gKnobX = gKnobY = 0; }
               if (gOwn[i].kind == 3) { [gOwnKnob2 removeFromSuperlayer]; gOwnKnob2 = nil; gKnob2X = gKnob2Y = 0; gRsFixedHeld = NO; p2_rstick(0, 0); }
               for (int j = i; j < gOwnN - 1; j++) { gOwn[j] = gOwn[j + 1]; gOwnLay[j] = gOwnLay[j + 1]; }
               gOwnN--; gOwnLay[gOwnN] = nil;
@@ -928,9 +943,9 @@ jobs:
               CGRect c = CGRectZero; BOOL show = NO;
               if (gCbEdit) {
                   if (gSelCb && gSelCb.superview) { c = gSelCb.frame; show = YES; }
-                  else if (gSelOwn >= 0 && gSelOwn < gOwnN && (gOwn[gSelOwn].kind == 0 || gOwn[gSelOwn].kind == 3)) {
+                  else if (gSelOwn >= 0 && gSelOwn < gOwnN && (gOwn[gSelOwn].kind == 0 || gOwn[gSelOwn].kind == 3 || (gOwn[gSelOwn].kind == 1 && layNoStick()))) {
                       OwnEl *oe = &gOwn[gSelOwn]; CGSize bs = gCbHost.bounds.size;
-                      if (oe->kind == 3) { CGFloat rr = oe->w * bs.height; c = CGRectMake(oe->x * bs.width - rr, oe->y * bs.height - rr, 2 * rr, 2 * rr); } else c = ownCircle(oe, bs);
+                      if (oe->kind == 3 || oe->kind == 1) { CGFloat rr = oe->w * bs.height; c = CGRectMake(oe->x * bs.width - rr, oe->y * bs.height - rr, 2 * rr, 2 * rr); } else c = ownCircle(oe, bs);
                       show = YES; }
               }
               gXBtn.hidden = !show; if (!show) return;
