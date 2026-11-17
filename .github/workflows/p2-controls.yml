@@ -593,7 +593,15 @@ jobs:
                       } else {
                           CALayer *kn = [CALayer layer]; kn.bounds = CGRectMake(0, 0, 48, 48); kn.cornerRadius = 24; kn.backgroundColor = (gOwn[i].kind == 3 ? [UIColor colorWithRed:0.45 green:0.8 blue:1 alpha:0.55] : [UIColor colorWithWhite:1 alpha:0.5]).CGColor;
                           [gOwnView.layer addSublayer:kn]; if (gOwn[i].kind == 3) gOwnKnob2 = kn; else gOwnKnob = kn;
-                          if (gOwn[i].kind == 1) { CALayer *ring = [CALayer layer]; ring.name = @"ring"; ring.borderWidth = 1.5; ring.borderColor = [UIColor colorWithWhite:1 alpha:0.45].CGColor; [l addSublayer:ring]; }
+                          if (gOwn[i].kind == 1) {
+                           UIImage *leftStick = icoLoad(@"Lstick");
+                           if (leftStick) { l.contents = (__bridge id)leftStick.CGImage; l.contentsGravity = kCAGravityResizeAspect; l.contentsScale = leftStick.scale; l.borderWidth = 0; }
+                           else { CALayer *ring = [CALayer layer]; ring.name = @"ring"; ring.borderWidth = 1.5; ring.borderColor = [UIColor colorWithWhite:1 alpha:0.45].CGColor; [l addSublayer:ring]; }
+                       }
+                       if (gOwn[i].kind == 3) {
+                           UIImage *rightStick = icoLoad(@"Rstick");
+                           if (rightStick) { kn.contents = (__bridge id)rightStick.CGImage; kn.contentsGravity = kCAGravityResizeAspect; kn.contentsScale = rightStick.scale; kn.backgroundColor = UIColor.clearColor; kn.cornerRadius = 0; }
+                       }
                       }
                       gOwnLay[i] = l; [gOwnView.layer insertSublayer:l atIndex:0];
                   }

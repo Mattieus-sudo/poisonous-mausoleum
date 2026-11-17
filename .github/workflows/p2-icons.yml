@@ -15,7 +15,7 @@ jobs:
           cat > pack_icons.py <<'EOF_PACK_PY'
           import glob, os, re
           from PIL import Image
-          KNOWN = ['attack1', 'attack2', 'target', 'jump', 'sprint', 'autosprint', 'walk', 'block', 'hunt', 'shapeshift', 'heller_form', 'power_wheel', 'grab', 'devastator', 'bio_bomb', 'pack_leader', 'pack_attack', 'skip', 'confirm', 'pause', 'up', 'down', 'left', 'right']
+          KNOWN = ['border', 'lstick', 'rstick', 'attack1', 'attack2', 'target', 'jump', 'sprint', 'autosprint', 'walk', 'block', 'hunt', 'shapeshift', 'heller_form', 'power_wheel', 'grab', 'devastator', 'bio_bomb', 'pack_leader', 'pack_attack', 'skip', 'confirm', 'pause', 'up', 'down', 'left', 'right']
           MAXPX = 256   # a button is at most about 150 px on screen, 256 keeps it sharp on a 3x display
           got = []
           for f in sorted(glob.glob("p2-icons/*.png")):
@@ -85,7 +85,7 @@ jobs:
               gIcoMap = [NSMutableDictionary new]; gIcoCap = [NSMutableDictionary new]; gIcoCache = [NSMutableDictionary new];
               NSFileManager *fm = NSFileManager.defaultManager; NSString *d = icoDir(), *f = [d stringByAppendingPathComponent:@"icon_map.txt"];
               [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:nil];   /* so the folder shows up in the Files app */
-              if (![fm fileExistsAtPath:f]) [@"# button icons and captions. KEY = DirectInput scancode in hex (101 = Left Click, 102 = Right Click).\n# Pictures: drop <action>.png (attack1 attack2 target jump sprint autosprint walk block hunt shapeshift heller_form power_wheel grab devastator bio_bomb pack_leader pack_attack skip confirm pause up down left right)\n# into this folder, or key_XX.png for one exact key. Relaunch after a change.\n# bind ACTION KEY      the game's key for an action if you rebound it, e.g.  bind grab 12\n# map KEY name         use name.png for this key (map KEY none = keep the text label)\n# caption KEY text     the small text under the button (caption KEY none = no caption)\n# captions 0           no captions at all\n# picture alone       no circle behind the picture (default: picture inside, in the circle)\npicture inside\ncaptions 1\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
+              if (![fm fileExistsAtPath:f]) [@"# button icons and captions. KEY = DirectInput scancode in hex (101 = Left Click, 102 = Right Click).\n# Optional overlays: border.png (outside every button icon); Lstick.png (left-stick sprint border); Rstick.png (right-stick moving knob).\n# Pictures: drop <action>.png (attack1 attack2 target jump sprint autosprint walk block hunt shapeshift heller_form power_wheel grab devastator bio_bomb pack_leader pack_attack skip confirm pause up down left right)\n# into this folder, or key_XX.png for one exact key. Relaunch after a change.\n# bind ACTION KEY      the game's key for an action if you rebound it, e.g.  bind grab 12\n# map KEY name         use name.png for this key (map KEY none = keep the text label)\n# caption KEY text     the small text under the button (caption KEY none = no caption)\n# captions 0           no captions at all\n# picture alone       no circle behind the picture (default: picture inside, in the circle)\npicture inside\ncaptions 1\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
               NSString *txt = [NSString stringWithContentsOfFile:f encoding:NSUTF8StringEncoding error:nil];
               for (NSString *ln in [txt componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
                   if ([ln hasPrefix:@"#"]) continue;
@@ -122,6 +122,8 @@ jobs:
           }
           /* own_layout buttons are CALayers: the picture is a sublayer named "icon" (the key name, sublayer "label", is hidden when there is one), the caption a sublayer named "cap" under the circle. */
           static void icoDressLayer(CALayer *l, int dik) {
+              UIImage *border = icoLoad(@"border");
+              if (border) { CALayer *b = [CALayer layer]; b.name = @"iconBorder"; b.contents = (__bridge id)border.CGImage; b.contentsGravity = kCAGravityResizeAspect; b.contentsScale = border.scale; [l addSublayer:b]; l.borderWidth = 0; }
               UIImage *im = icoForDik(dik);
               if (im) {
                   CALayer *ic = [CALayer layer]; ic.name = @"icon"; ic.contents = (__bridge id)im.CGImage; ic.contentsGravity = kCAGravityResizeAspect; ic.contentsScale = im.scale; [l addSublayer:ic];
@@ -136,13 +138,16 @@ jobs:
           static void icoLayoutLayer(CALayer *l) {
               CGFloat w = l.bounds.size.width, h = l.bounds.size.height;
               for (CALayer *s in l.sublayers) {
-                  if ([s.name isEqualToString:@"icon"]) { CGFloat k = gIcoFlat ? 1.0 : 0.66; s.bounds = CGRectMake(0, 0, w * k, h * k); s.position = CGPointMake(w / 2, h / 2); }   /* inside the circle: 66 percent, the square that fits the circle */
+                  if ([s.name isEqualToString:@"iconBorder"]) s.frame = l.bounds;
+                  else if ([s.name isEqualToString:@"icon"]) { CGFloat k = gIcoFlat ? 1.0 : 0.66; s.bounds = CGRectMake(0, 0, w * k, h * k); s.position = CGPointMake(w / 2, h / 2); }   /* inside the circle: 66 percent, the square that fits the circle */
                   else if ([s.name isEqualToString:@"cap"]) s.frame = CGRectMake(-w * 0.3, h + 1, w * 1.6, 14);
               }
           }
           static void icoRefreshLayer(CALayer *l, BOOL down, BOOL edit, BOOL sel) {
               CALayer *ic = nil; for (CALayer *s in l.sublayers) if ([s.name isEqualToString:@"icon"]) ic = s;
               if (!ic) return;
+              BOOL hasBorder = NO; for (CALayer *s in l.sublayers) if ([s.name isEqualToString:@"iconBorder"]) hasBorder = YES;
+              if (hasBorder) l.borderWidth = edit ? (sel ? 3 : 2) : 0;
               if (gIcoFlat) { l.backgroundColor = nil; l.borderWidth = edit ? (sel ? 3 : 2) : 0; }
               [CATransaction begin]; [CATransaction setDisableActions:YES];
               ic.opacity = down ? 0.65f : 1.0f; ic.transform = down ? CATransform3DMakeScale(0.9, 0.9, 1) : CATransform3DIdentity;
