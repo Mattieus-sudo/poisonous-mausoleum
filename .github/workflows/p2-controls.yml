@@ -270,7 +270,13 @@ jobs:
               cx = (int)(fx * (float)bbW / tvw); cy = (int)(fy * (float)bbH / tvh);
               if (cx < 0) cx = 0; if (cy < 0) cy = 0; if (cx > bbW - 1) cx = bbW - 1; if (cy > bbH - 1) cy = bbH - 1;
               if (doWarp && !held) { gPlX = cx; gPlY = cy; gPlStart = fx_now_ns(CLOCK_UPTIME_RAW); acc_write(-30000, -30000, 0); gPlPh = 1; }
-              else if (doWarp) { acc_write(cx - gPlLastX, cy - gPlLastY, 1); gPlLastX = cx; gPlLastY = cy; }
+              else if (doWarp) {
+                  int ddy = cy - gPlLastY; acc_write(cx - gPlLastX, ddy, 1);
+                  /* v92e: a drag also turns the mouse wheel (Input()+0x954, 120 per notch, positive = up), about one notch per 40 render pixels, so lists scroll from anywhere on the screen and not only when the press starts on the game's own scroll bar. Folders: menu_wheel_off, menu_wheel_inv. */
+                  { static int wInit, wOff, wInv; static float wRem; if (!wInit) { wInit = 1; wOff = mk_has("menu_wheel_off"); wInv = mk_has("menu_wheel_inv"); L("MENUWHEEL: drag scrolls the wheel %s, direction %s (folders menu_wheel_off, menu_wheel_inv)", wOff ? "OFF" : "ON", wInv ? "flipped" : "finger down = scroll up"); }
+                    if (!wOff && ddy) { wRem += (float)(wInv ? -ddy : ddy) * 3.0f; int w = (int)wRem; if (w) { wRem -= (float)w; uint8_t *mu = (uint8_t *)(gBase + EO_MOUSEMU); sh_mx_lock(mu); *(volatile int *)(gBase + 0x5e41c94UL) += w; sh_mx_unlock(mu); } } }
+                  gPlLastX = cx; gPlLastY = cy;
+              }
               if (doPress || doRel) btn_push(0, doPress ? 1 : 0, gPlLastX, gPlLastY);
               { static int n; if (n++ < 120) { int rx = -1, ry = -1, rl = -1; cur_rd(&rx, &ry, &rl); L("MENUTOUCH: %s finger %.0f,%.0f of view %.0fx%.0f (hardcoded win %dx%d) -> cursor %d,%d of client %dx%d; game cursor reads back %d,%d left %d", doPress ? "press" : doRel ? "release" : held ? "drag" : "warp", fx, fy, tvw, tvh, p2_win_w, p2_win_h, cx, cy, gCliW, gCliH, rx, ry, rl); } }
           }
