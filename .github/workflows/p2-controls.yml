@@ -600,7 +600,7 @@ jobs:
                        }
                        if (gOwn[i].kind == 3) {
                            UIImage *rightStick = icoLoad(@"Rstick");
-                           if (rightStick) { kn.contents = (__bridge id)rightStick.CGImage; kn.contentsGravity = kCAGravityResizeAspect; kn.contentsScale = rightStick.scale; kn.backgroundColor = UIColor.clearColor; kn.cornerRadius = 0; }
+                           if (rightStick) { kn.contents = (__bridge id)rightStick.CGImage; kn.contentsGravity = kCAGravityResizeAspect; kn.contentsScale = rightStick.scale; kn.backgroundColor = [UIColor clearColor].CGColor; kn.cornerRadius = 0; }
                        }
                       }
                       gOwnLay[i] = l; [gOwnView.layer insertSublayer:l atIndex:0];
