@@ -1,0 +1,1010 @@
+name: "P2 UI source"
+# UI: the iOS settings screens, Liquid Glass loader, in-game menu and RootVC in main.m.
+# Called by build-loader.yml (uses: ./.github/workflows/p2-ui.yml). It only writes source text and uploads it; the loader joins the pieces and compiles.
+on:
+  workflow_call:
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write the source pieces
+        run: |
+          set -e
+          mkdir -p parts
+          cat > parts/ui_main_1.m <<'EOF_UI_MAIN_1_M'
+          static UITextView *gView;
+          static CADisplayLink *gHzLink;
+          static NSMutableString *gFlags;
+          static NSMutableString *gText;
+          static BOOL gDirty, gRan;
+          static NSString *sFw, *sRes, *sRep;
+          static void emit(const char *s) {   /* always called on the main thread */
+              [gText appendFormat:@"%s\n", s];
+              if (!gDirty) { gDirty = YES; dispatch_async(dispatch_get_main_queue(), ^{ gDirty = NO; gView.text = gText; [gView scrollRangeToVisible:NSMakeRange(gText.length, 0)]; }); }
+          }
+
+          /* ================= v66 settings UI (UIKit, no storyboard) =================
+             A flag is a folder in Documents. Every control below only creates or deletes such folders. */
+          static NSString *uiDocs(void) { return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
+          static BOOL uiHas(NSString *n) { return [NSFileManager.defaultManager fileExistsAtPath:[uiDocs() stringByAppendingPathComponent:n]]; }
+          static void uiSet(NSString *n, BOOL on) {
+              NSFileManager *fm = NSFileManager.defaultManager; NSString *p = [uiDocs() stringByAppendingPathComponent:n];
+              BOOL has = [fm fileExistsAtPath:p];
+              if (on && !has) [fm createDirectoryAtPath:p withIntermediateDirectories:YES attributes:nil error:nil];
+              else if (!on && has) [fm removeItemAtPath:p error:nil];
+          }
+          static BOOL uiIsNum(NSString *name, NSString *prefix) {   /* "waitspin_1000" matches prefix "waitspin_"; "imgdelay_all" does not match "imgdelay_" */
+              if (![name hasPrefix:prefix] || name.length <= prefix.length) return NO;
+              unichar c = [name characterAtIndex:prefix.length]; return c >= '0' && c <= '9';
+          }
+          static NSArray<NSString *> *uiWithPrefix(NSString *prefix) {
+              NSMutableArray *r = [NSMutableArray new];
+              for (NSString *n in [NSFileManager.defaultManager contentsOfDirectoryAtPath:uiDocs() error:nil]) if (uiIsNum(n, prefix)) [r addObject:n];
+              return r;
+          }
+
+          /* v66: Play is refused when the game files are not where the game looks (Documents/Prototype2/game) or the engine dll is not the expected build.
+             A game_folder.txt in Documents redirects the game to another folder, so the check steps aside then. */
+          static BOOL uiGameFilesOK(void) {
+              NSFileManager *fm = NSFileManager.defaultManager;
+              if ([fm fileExistsAtPath:[uiDocs() stringByAppendingPathComponent:@"game_folder.txt"]]) return YES;
+              NSString *g = [uiDocs() stringByAppendingPathComponent:@"Prototype2/game"];
+              for (NSString *n in @[@"prototype2.exe", @"prototype2engine.dll", @"binkw32.dll"])
+                  if (![fm fileExistsAtPath:[g stringByAppendingPathComponent:n]]) return NO;
+              return [[fm attributesOfItemAtPath:[g stringByAppendingPathComponent:@"prototype2engine.dll"] error:nil] fileSize] == 17336320ULL;
+          }
+
+          typedef NS_ENUM(NSInteger, SKind) { SKSwitch, SKMenu, SKLink, SKButton, SKInfo };
+
+          @interface SRow : NSObject
+          @property (nonatomic) SKind kind;
+          @property (nonatomic, copy) NSString *title, *detail;
+          @property (nonatomic, copy) NSString *flag;               /* switch: folder name */
+          @property (nonatomic) BOOL onWhenPresent;                 /* switch: YES = folder present means ON; NO = folder present means OFF */
+          @property (nonatomic, copy) NSArray<NSString *> *labels;  /* menu: label per choice */
+          @property (nonatomic, copy) NSArray<NSString *> *folders; /* menu: folder per choice, @"" = no folder (the default) */
+          @property (nonatomic, copy) NSString *prefix;             /* menu: also clear every <prefix><digits> folder */
+          @property (nonatomic) BOOL hz;                            /* menu: apply the display lock right away */
+          @end
+          @implementation SRow @end
+
+          static SRow *sSwitch(NSString *t, NSString *d, NSString *flag, BOOL onWhenPresent) {
+              SRow *r = [SRow new]; r.kind = SKSwitch; r.title = t; r.detail = d; r.flag = flag; r.onWhenPresent = onWhenPresent; return r;
+          }
+          static SRow *sMenu(NSString *t, NSString *d, NSArray *labels, NSArray *folders, NSString *prefix) {
+              SRow *r = [SRow new]; r.kind = SKMenu; r.title = t; r.detail = d; r.labels = labels; r.folders = folders; r.prefix = prefix; return r;
+          }
+          static SRow *sPlain(SKind k, NSString *t, NSString *d) { SRow *r = [SRow new]; r.kind = k; r.title = t; r.detail = d; return r; }
+          static SRow *sBtn(NSString *t, NSString *action) { SRow *r = sPlain(SKButton, t, @""); r.flag = action; return r; }
+          static unsigned long long uiDirSize(NSString *path) {
+              NSFileManager *fm = NSFileManager.defaultManager; unsigned long long tot = 0;
+              for (NSString *sub in [fm enumeratorAtPath:path]) tot += [[fm attributesOfItemAtPath:[path stringByAppendingPathComponent:sub] error:nil] fileSize];
+              return tot;
+          }
+          /* v83: the Android host reads these exact controls.cfg directives in android_main.
+             Keep the file as the source of truth; the host parses these settings at next launch. */
+          static NSString *hostCfgPath(void) { return [uiDocs() stringByAppendingPathComponent:@"controls.cfg"]; }
+          static NSArray<NSString *> *hostCfgLines(void) {
+              NSString *raw = [NSString stringWithContentsOfFile:hostCfgPath() encoding:NSUTF8StringEncoding error:nil];
+              return raw.length ? [raw componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] : @[];
+          }
+          static NSString *hostCfgValue(NSString *key, NSString *fallback) {
+              NSString *prefix = [key stringByAppendingString:@" "];
+              for (NSString *line in hostCfgLines()) if ([line hasPrefix:prefix]) return [[line substringFromIndex:prefix.length] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+              return fallback;
+          }
+          static BOOL hostCfgSet(NSString *key, NSString *value) {
+              NSString *prefix = [key stringByAppendingString:@" "];
+              NSMutableArray<NSString *> *lines = [NSMutableArray array]; BOOL replaced = NO;
+              for (NSString *line in hostCfgLines()) {
+                  if ([line hasPrefix:prefix]) { if (!replaced) [lines addObject:[prefix stringByAppendingString:value]]; replaced = YES; }
+                  else if (line.length) [lines addObject:line];
+              }
+              if (!replaced) [lines addObject:[prefix stringByAppendingString:value]];
+              NSString *out = [[lines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
+              return [out writeToFile:hostCfgPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
+          }
+          static BOOL hostCfgRemove(NSString *key) {
+              NSString *prefix = [key stringByAppendingString:@" "];
+              NSMutableArray<NSString *> *lines = [NSMutableArray array];
+              for (NSString *line in hostCfgLines()) if (![line hasPrefix:prefix] && line.length) [lines addObject:line];
+              NSString *out = lines.count ? [[lines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] : @"";
+              return [out writeToFile:hostCfgPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
+          }
+          static NSArray<NSString *> *hostModNames(void) {
+              NSString *dir = [uiDocs() stringByAppendingPathComponent:@"Mods"];
+              NSArray *all = [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil];
+              NSMutableArray *mods = [NSMutableArray array];
+              for (NSString *name in all) { BOOL isDir = NO; NSString *path = [dir stringByAppendingPathComponent:name];
+                  if (![name hasPrefix:@"."] && [NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&isDir] && isDir) [mods addObject:name];
+              }
+              return [mods sortedArrayUsingSelector:@selector(localizedStandardCompare:)];
+          }
+          static BOOL hostModEnabled(NSString *name) {
+              NSString *wanted = [@"mod " stringByAppendingString:name];
+              for (NSString *line in hostCfgLines()) if ([line isEqualToString:wanted]) return YES;
+              return NO;
+          }
+          static BOOL hostSetModEnabled(NSString *name, BOOL enabled) {
+              NSMutableArray<NSString *> *lines = [NSMutableArray array];
+              for (NSString *line in hostCfgLines()) if (![line hasPrefix:@"mod "] && line.length) [lines addObject:line];
+              NSMutableArray<NSString *> *enabledNames = [NSMutableArray array];
+              for (NSString *mod in hostModNames()) if (([mod isEqualToString:name] ? enabled : hostModEnabled(mod))) [enabledNames addObject:mod];
+              for (NSString *mod in enabledNames) [lines addObject:[@"mod " stringByAppendingString:mod]];
+              NSString *out = [[lines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
+              return [out writeToFile:hostCfgPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
+          }
+
+          /* ---- live log screen: reuses the one text view that emit() already feeds ---- */
+          @interface LogVC : UIViewController @end
+          @implementation LogVC
+          - (void)viewDidLoad {
+              [super viewDidLoad];
+              self.title = @"Live logs"; self.view.backgroundColor = UIColor.blackColor;
+              gView.frame = self.view.bounds; gView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+              gView.hidden = NO; gView.text = gText; [self.view addSubview:gView];
+              [gView scrollRangeToVisible:NSMakeRange(gText.length, 0)];
+          }
+          - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self.navigationController setNavigationBarHidden:NO animated:animated]; }
+          @end
+
+          /* ---- the settings list ---- */
+          @interface SettingsVC : UITableViewController
+          @property (nonatomic, copy) NSArray<NSArray<SRow *> *> *rows;
+          @property (nonatomic, copy) NSArray<NSString *> *heads;
+          @property (nonatomic, copy) void (^onHz)(void);
+          @property (nonatomic, copy) void (^onLogs)(void);
+          @property (nonatomic, copy) BOOL (^isRunning)(void);
+          @property (nonatomic, strong) NSMutableSet<NSNumber *> *openSections;   /* dropdown sections currently expanded */
+          @end
+          @implementation SettingsVC
+          - (instancetype)init {
+              self = [super initWithStyle:UITableViewStyleInsetGrouped];
+              self.title = @"Settings";
+              self.openSections = [NSMutableSet new];
+              self.heads = @[@"Game", @"Performance", @"Diagnostics", @"Experiments", @""];
+              self.rows = @[
+                  @[ sMenu(@"Display refresh rate", @"Locks the screen to this rate. Applies immediately.",
+                           @[@"iOS decides", @"60 Hz", @"90 Hz", @"120 Hz (default)"], @[@"hz_off", @"hz_60", @"hz_90", @""], nil),
+                      ],
+                  @[ sMenu(@"Wait spin", @"How long a game thread busy-waits before sleeping. Longer reacts faster but uses more CPU, battery and heat.",
+                           @[@"Off (0 us)", @"250 us", @"1000 us (default)", @"2000 us", @"4000 us"], @[@"waitspin_0", @"waitspin_250", @"", @"waitspin_2000", @"waitspin_4000"], @"waitspin_"),
+                     sMenu(@"Thread priority", @"Tells iOS how urgent the game's threads are. The default is the highest class.",
+                           @[@"Highest (default)", @"High", @"iOS default"], @[@"", @"qos_initiated", @"qos_off"], nil),
+                     sMenu(@"Shadow casters", @"Which size objects cast shadows. Higher numbers skip smaller objects for better performance.",
+                   @[@"Skip under 1024 triangles (default)", @"Skip under 256", @"Skip under 64 (low preset)", @"Skip all shadow casters", @"Cast all"],
+                   @[@"", @"setenv_P2RE_VKSHADOWMIN=256", @"setenv_P2RE_VKSHADOWMIN=64", @"setenv_P2RE_VKSHADOWMIN=40000000", @"shadowmin_off"], @"setenv_P2RE_VKSHADOWMIN=") ],
+                  @[ sSwitch(@"Render thread trace", @"Records what the render thread waits for. Measurement only, may cost a little speed. Turn on when sending logs.", @"rbtrace_off", NO),
+                     sSwitch(@"Wait trace", @"Records how long each game thread is blocked. Measurement only.", @"waittrace_off", NO),
+                     sSwitch(@"Texture trace", @"Hashes texture uploads to catch broken textures. Probably the costliest trace.", @"textrace_off", NO),
+                     sSwitch(@"Code sampler", @"Samples where game code is running about 100 times a second. Can cost fps.", @"pcprof_on", YES),
+                     sSwitch(@"Touch trace", @"Once a second while you touch the screen, logs how many touch moves iOS delivered, how long handing them to the game took, and the real display refresh interval (shows if iOS changes the refresh rate while you touch). Measurement only.", @"touch_trace", YES) ],
+                  @[ sMenu(@"Screen aspect ratio", @"Makes the game see a screen of this shape. Its resolution list follows it (16:9 offers 1280x720). A different shape than your real screen may show black bars or stretch; try it and look.",
+                           @[@"Off (screen's real shape, default)", @"16:9", @"16:10", @"3:2", @"4:3"], @[@"", @"fakeaspect_17778", @"fakeaspect_16000", @"fakeaspect_15000", @"fakeaspect_13333"], @"fakeaspect_"),
+                     sSwitch(@"Smooth camera panning (v81)", @"On by default. Keeps every touch sample with its real time and hands the game ONE move per frame, placed on your finger's path a few milliseconds back (the loader measures how far). Removes the stutter from uneven numbers of touch moves per frame at 60, 90 and 120 fps. Turn it off for the old raw behaviour. Applies at the next start.", @"pan_smooth_off", NO),
+                     sSwitch(@"Full-size textures only", @"Texture test: samplers use only the largest mip level. Costs fps, distant textures shimmer.", @"maxlod_0", YES),
+                     sSwitch(@"Audio off", @"Turns the game's audio off.", @"audio_off", YES),
+                     sSwitch(@"GPU Pass Timer", @"Turns on the GPU pass timer. Writes 'vkpddi gpu:' lines to p2.log. Applies at the next start. Small overhead.", @"setenv_P2RE_VKGPUTIME", YES) ],
+                  @[ sBtn(@"Clear caches", @"caches"), sBtn(@"Reset to defaults", @"reset") ],
+              ];
+              return self;
+          }
+          - (void)viewDidLoad { [super viewDidLoad]; self.tableView.tableHeaderView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 28)];   /* a little room above the first dropdown */
+              self.tableView.estimatedRowHeight = 60; self.tableView.rowHeight = UITableViewAutomaticDimension;
+              self.tableView.backgroundColor = UIColor.clearColor; }   /* v86: sits on the loader's glass card */
+          - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self.navigationController setNavigationBarHidden:(self.navigationController.viewControllers.count == 1) animated:animated]; [self.tableView reloadData]; }
+          - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return (NSInteger)self.rows.count; }
+          - (BOOL)collapsible:(NSInteger)s { return s < (NSInteger)self.rows.count - 1; }   /* every section except the last (Maintenance) is a dropdown */
+          - (BOOL)expanded:(NSInteger)s { return ![self collapsible:s] || [self.openSections containsObject:@(s)]; }
+          - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return [self expanded:s] ? (NSInteger)self.rows[s].count : 0; }
+          - (void)headerTapped:(UITapGestureRecognizer *)g {
+              NSNumber *k = @(g.view.tag);
+              if ([self.openSections containsObject:k]) [self.openSections removeObject:k]; else [self.openSections addObject:k];
+              [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:(NSUInteger)g.view.tag] withRowAnimation:UITableViewRowAnimationFade];
+          }
+          - (CGFloat)tableView:(UITableView *)tv heightForHeaderInSection:(NSInteger)s { return self.heads[s].length ? 52 : 16; }
+          - (UIView *)tableView:(UITableView *)tv viewForHeaderInSection:(NSInteger)s {
+              if (!self.heads[s].length) return nil;
+              UIView *v = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tv.bounds.size.width, 52)];
+              UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(20, 14, tv.bounds.size.width - 40, 30)];
+              l.text = self.heads[s]; l.font = [UIFont systemFontOfSize:22 weight:UIFontWeightSemibold]; l.textColor = UIColor.secondaryLabelColor;
+              l.autoresizingMask = UIViewAutoresizingFlexibleWidth; [v addSubview:l];
+              if ([self collapsible:s]) {
+                  l.frame = CGRectMake(20, 14, tv.bounds.size.width - 80, 30);
+                  UIImageView *ch = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:[self expanded:s] ? @"chevron.down" : @"chevron.right"]];
+                  ch.tintColor = UIColor.secondaryLabelColor; ch.contentMode = UIViewContentModeCenter;
+                  ch.frame = CGRectMake(tv.bounds.size.width - 56, 14, 36, 30); ch.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+                  [v addSubview:ch];
+                  v.tag = s; v.isAccessibilityElement = YES; v.accessibilityLabel = self.heads[s]; v.accessibilityTraits = UIAccessibilityTraitButton;
+                  [v addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(headerTapped:)]];
+              }
+              return v;
+          }
+          - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
+              if (![self expanded:s]) return nil;
+          if (s == 1) return @"Changes apply the next time the app starts: fully close it (swipe it away) and open it again. Only the display refresh rate applies right away.";
+              if (s == 4) return @"Clear caches deletes the spirv and vkpddi_cache folders (the shader and pipeline caches). Try it if the game crashes or looks wrong after an update. They are rebuilt on the next start, so that launch can take longer. Your game files are not touched.";
+              if (s == 3) return @"Screen aspect ratio applies the next time the app starts: fully close it and open it again, then pick the resolution in the game's own Options > Video menu. Off removes the fake_aspect file only if the launcher made it.";
+              if (s == 2) return @"Traces are off by default and only measure. Turn them on when you need to send logs.";
+              return nil;
+          }
+          - (NSInteger)currentIndex:(SRow *)r {   /* -1 = a custom folder the list does not offer */
+              for (NSInteger i = 0; i < (NSInteger)r.folders.count; i++) if (r.folders[i].length && uiHas(r.folders[i])) return i;
+              if (r.prefix.length && uiWithPrefix(r.prefix).count) return -1;
+              for (NSInteger i = 0; i < (NSInteger)r.folders.count; i++) if (!r.folders[i].length) return i;
+              return 0;
+          }
+          - (void)choose:(SRow *)r index:(NSInteger)i {
+              for (NSString *f in r.folders) if (f.length) uiSet(f, NO);
+              if (r.prefix.length) for (NSString *f in uiWithPrefix(r.prefix)) uiSet(f, NO);
+              if (r.folders[i].length) uiSet(r.folders[i], YES);
+              if (r.hz && self.onHz) self.onHz();
+          }
+          - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
+              SRow *r = self.rows[ip.section][ip.row];
+              UITableViewCell *c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
+              c.selectionStyle = UITableViewCellSelectionStyleNone; c.backgroundColor = [UIColor colorWithWhite:1 alpha:0.07];
+              c.textLabel.text = r.title; c.textLabel.font = [UIFont systemFontOfSize:17]; c.textLabel.numberOfLines = 0;
+              c.detailTextLabel.text = r.detail.length ? r.detail : nil; c.detailTextLabel.numberOfLines = 0;
+              c.detailTextLabel.font = [UIFont systemFontOfSize:13]; c.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+              if (r.kind == SKSwitch) {
+                  UISwitch *s = [UISwitch new]; BOOL has = uiHas(r.flag); s.on = r.onWhenPresent ? has : !has;
+                  s.tag = ip.section * 1000 + ip.row; [s addTarget:self action:@selector(flip:) forControlEvents:UIControlEventValueChanged];
+                  c.accessoryView = s;
+              } else if (r.kind == SKMenu) {
+                  NSInteger cur = [self currentIndex:r];
+                  NSString *shown = cur >= 0 ? r.labels[cur] : @"Custom";
+                  if (cur < 0) { NSArray *cu = uiWithPrefix(r.prefix); if (cu.count) shown = [NSString stringWithFormat:@"Custom (%@)", cu[0]]; }
+                  NSMutableArray *acts = [NSMutableArray new];
+                  for (NSInteger i = 0; i < (NSInteger)r.labels.count; i++) {
+                      UIAction *a = [UIAction actionWithTitle:r.labels[i] image:nil identifier:nil handler:^(UIAction *x) {
+                          [self choose:r index:i];
+                          dispatch_async(dispatch_get_main_queue(), ^{ [tv reloadRowsAtIndexPaths:@[ip] withRowAnimation:UITableViewRowAnimationNone]; });
+                      }];
+                      a.state = (i == cur) ? UIMenuElementStateOn : UIMenuElementStateOff; [acts addObject:a];
+                  }
+                  UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+                  [b setTitle:shown forState:UIControlStateNormal];
+                  [b setImage:[UIImage systemImageNamed:@"chevron.up.chevron.down"] forState:UIControlStateNormal];
+                  b.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;   /* arrows after the text */
+                  b.titleLabel.font = [UIFont systemFontOfSize:17];
+                  b.menu = [UIMenu menuWithChildren:acts]; b.showsMenuAsPrimaryAction = YES;
+                  [b sizeToFit]; b.frame = CGRectMake(0, 0, b.bounds.size.width + 14, MAX(b.bounds.size.height, 36));
+                  c.accessoryView = b;
+              } else if (r.kind == SKLink) {
+                  c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; c.selectionStyle = UITableViewCellSelectionStyleDefault;
+              } else if (r.kind == SKButton) {
+                  c.textLabel.textColor = [r.flag isEqualToString:@"caches"] ? UIColor.systemBlueColor : UIColor.systemRedColor; c.textLabel.textAlignment = NSTextAlignmentCenter; c.selectionStyle = UITableViewCellSelectionStyleDefault;
+              }
+              return c;
+          }
+          - (void)flip:(UISwitch *)s {
+              SRow *r = self.rows[s.tag / 1000][s.tag % 1000];
+              uiSet(r.flag, r.onWhenPresent ? s.on : !s.on);
+          }
+          - (void)say:(NSString *)title message:(NSString *)msg {
+              UIAlertController *al = [UIAlertController alertControllerWithTitle:title message:msg preferredStyle:UIAlertControllerStyleAlert];
+              [al addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+              [self presentViewController:al animated:YES completion:nil];
+          }
+          - (void)askClearCaches {
+              if (self.isRunning && self.isRunning()) {
+                  [self say:@"Close the app first" message:@"The game has already started in this session. Swipe the app away, open it again and clear the caches before pressing Play."]; return;
+              }
+              UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Clear caches?" message:@"Deletes the spirv and vkpddi_cache folders. They are rebuilt the next time the game starts, so that start can take longer." preferredStyle:UIAlertControllerStyleAlert];
+              [al addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+              [al addAction:[UIAlertAction actionWithTitle:@"Clear" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
+                  NSFileManager *fm = NSFileManager.defaultManager; unsigned long long total = 0; int gone = 0, failed = 0;
+                  for (NSString *n in @[@"spirv", @"vkpddi_cache"]) {
+                      NSString *path = [uiDocs() stringByAppendingPathComponent:n];
+                      if (![fm fileExistsAtPath:path]) continue;
+                      unsigned long long sz = uiDirSize(path);
+                      if ([fm removeItemAtPath:path error:nil]) { gone++; total += sz; } else failed++;
+                  }
+                  NSString *msg = failed ? @"Some cache folders could not be deleted. Fully close the app and try again."
+                                : gone ? [NSString stringWithFormat:@"Freed %@. The caches will be rebuilt on the next start.", [NSByteCountFormatter stringFromByteCount:(long long)total countStyle:NSByteCountFormatterCountStyleFile]]
+                                : @"There were no cache folders to delete.";
+                  [self say:@"Caches" message:msg];
+              }]];
+              [self presentViewController:al animated:YES completion:nil];
+          }
+          - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
+              SRow *r = self.rows[ip.section][ip.row]; [tv deselectRowAtIndexPath:ip animated:YES];
+              if (r.kind == SKLink && self.onLogs) self.onLogs();
+              if (r.kind == SKButton && [r.flag isEqualToString:@"caches"]) { [self askClearCaches]; return; }
+              if (r.kind == SKButton) {
+                  UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Reset to defaults?" message:@"Removes every switch folder this screen controls, then turns Skip splash back on and the traces off (their defaults). Your game files and caches are not touched." preferredStyle:UIAlertControllerStyleAlert];
+                  [al addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+                  [al addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
+                      for (NSArray<SRow *> *sec in self.rows) for (SRow *q in sec) {
+                          if (q.kind == SKSwitch) uiSet(q.flag, NO);
+                          if (q.kind == SKMenu) { for (NSString *f in q.folders) if (f.length) uiSet(f, NO); if (q.prefix.length) for (NSString *f in uiWithPrefix(q.prefix)) uiSet(f, NO); }
+                      }
+                      uiSet(@"nosplash", YES);   /* default is ON */
+                      uiSet(@"rbtrace_off", YES); uiSet(@"waittrace_off", YES); uiSet(@"textrace_off", YES);   /* traces default to OFF */
+                      if (self.onHz) self.onHz();
+                      [self.tableView reloadData];
+                  }]];
+                  [self presentViewController:al animated:YES completion:nil];
+              }
+          }
+          @end
+
+          EOF_UI_MAIN_1_M
+          cat > parts/ui_main_2.m <<'EOF_UI_MAIN_2_M'
+          /* v83: iOS-native front end for the Android host's controls.cfg settings.
+             No Android overlay or Android touch handler is re-enabled. */
+          /* ===== v86: native Liquid Glass. UIGlassEffect and the glass button configurations are iOS 26 APIs; they are looked up at runtime so the build compiles on any SDK
+             and iOS 15 to 25 keep the previous dark blur / filled look. ===== */
+          static BOOL p2HasGlass(void) { return NSClassFromString(@"UIGlassEffect") != nil; }
+          static UIVisualEffect *p2GlassEffect(void) {
+              Class gc = NSClassFromString(@"UIGlassEffect"); SEL sel = NSSelectorFromString(@"effectWithStyle:");
+              if (gc) {
+                  id e = nil;
+                  if ([gc respondsToSelector:sel]) e = ((id (*)(Class, SEL, NSInteger))objc_msgSend)(gc, sel, 0);   /* 0 = regular glass */
+                  else e = [[gc alloc] init];
+                  if ([e isKindOfClass:UIVisualEffect.class]) return e;
+              }
+              return [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterialDark];
+          }
+          static void p2StyleGlassView(UIVisualEffectView *v, CGFloat radius) {
+              v.clipsToBounds = YES; v.layer.cornerRadius = radius; v.layer.cornerCurve = kCACornerCurveContinuous;v.layer.borderWidth = 1.0;
+              v.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.24].CGColor;
+              v.contentView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.07];
+              v.layer.shadowColor = [UIColor colorWithWhite:1 alpha:0.18].CGColor;
+              v.layer.shadowOpacity = 0.22; v.layer.shadowRadius = 14; v.layer.shadowOffset = CGSizeMake(0, 2);
+              /* A narrow specular edge keeps the panel reading as glass, not frost. */
+              CALayer *edgeGlint = [CALayer layer]; edgeGlint.name = @"p2-glass-edge-glint";
+              edgeGlint.frame = CGRectMake(1, 1, MAX(0, v.bounds.size.width - 2), 1);
+              edgeGlint.backgroundColor = [UIColor colorWithWhite:1 alpha:0.24].CGColor;
+               [v.layer addSublayer:edgeGlint];
+          }
+          static UIButtonConfiguration *p2GlassButtonConfig(BOOL prominent) {   /* nil below iOS 26 */
+              SEL sel = NSSelectorFromString(prominent ? @"prominentGlassButtonConfiguration" : @"glassButtonConfiguration");
+              if (![UIButtonConfiguration respondsToSelector:sel]) return nil;
+              return ((UIButtonConfiguration *(*)(Class, SEL))objc_msgSend)(UIButtonConfiguration.class, sel);
+          }
+          static void p2GlassCircleButton(UIButton *b, CGFloat fgAlpha, UIColor *fallbackBg) {   /* b already has its image set */
+              UIButtonConfiguration *cf = p2GlassButtonConfig(NO);
+              if (cf) {
+                  cf.image = [b imageForState:UIControlStateNormal]; cf.baseForegroundColor = [UIColor colorWithWhite:1 alpha:fgAlpha];
+                  cf.cornerStyle = UIButtonConfigurationCornerStyleCapsule; cf.contentInsets = NSDirectionalEdgeInsetsMake(0, 0, 0, 0);
+                  b.configuration = cf; b.backgroundColor = UIColor.clearColor;
+              } else {
+                  b.tintColor = [UIColor colorWithWhite:1 alpha:fgAlpha]; b.backgroundColor = fallbackBg; b.layer.cornerRadius = 20;
+              }
+          }
+          /* v86: the in-game settings panel shows CONTROLS first, then PERFORMANCE, GRAPHICS, MODS, SYSTEM. All the row logic below still works on the ORIGINAL section numbers
+             (0 PERFORMANCE, 1 GRAPHICS, 2 MODS, 3 CONTROLS, 4 SYSTEM); hsL() maps a displayed section to its original number. */
+          static inline NSInteger hsL(NSInteger shown) { static const NSInteger m[5] = {3, 0, 1, 2, 4}; return (shown >= 0 && shown < 5) ? m[shown] : shown; }
+
+          @interface HostSettingsVC : UITableViewController
+          @property (nonatomic, copy) void (^onClose)(void);
+          @property (nonatomic, copy) void (^onEdit)(void);   /* v84: Edit touch layout closes the panel and opens the editor on the game screen */
+          @property (nonatomic, strong) NSArray<NSString *> *mods;
+          @end
+          @implementation HostSettingsVC
+          - (instancetype)init { self = [super initWithStyle:UITableViewStyleInsetGrouped]; self.title = @"Game settings"; return self; }
+          - (void)viewDidLoad {
+              [super viewDidLoad]; self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+              self.tableView.backgroundColor = UIColor.clearColor; self.tableView.backgroundView = nil;
+              self.navigationItem.title = @"Settings";
+              self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"xmark"] style:UIBarButtonItemStylePlain target:self action:@selector(closePanel)];
+              self.mods = hostModNames();
+              self.tableView.rowHeight = 58; self.tableView.estimatedRowHeight = 58;
+          }
+          - (void)closePanel { if (self.onClose) self.onClose(); }
+          - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 5; }
+          - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section {
+              section = hsL(section);
+              if (section == 0) return 4; if (section == 1) return 4; if (section == 2) return MAX(2, (NSInteger)self.mods.count + 1); if (section == 3) return 2; return 1;
+          }
+          - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)section {
+              return @[@"PERFORMANCE", @"GRAPHICS", @"MODS", @"CONTROLS", @"SYSTEM"][hsL(section)];
+          }
+          - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)section {
+              section = hsL(section);
+              if (section == 0) return @"Host settings are written to the host's own controls.cfg and parsed by Android main on the next full app launch. Metal frame generation is intentionally not exposed here.";
+              if (section == 2 && self.mods.count == 0) return @"No mod folders found in Documents/Mods. Add one folder per mod; its folder name is used by the host's mod directive.";
+              if (section == 3) return @"Edit touch layout & buttons closes this panel so you can arrange the controls on the game screen. Camera sensitivity is saved to the host controls.cfg for the next full app launch.";
+              return nil;
+          }
+          - (NSString *)titleForRow:(NSIndexPath *)ip {
+              if (ip.section == 0) return @[@"FSR upscaling", @"FPS limit", @"Render scale", @"Heat guard"][ip.row];
+              if (ip.section == 1) return @[@"Graphics preset", @"Manual graphics", @"Potato graphics", @"Quality level"][ip.row];
+              if (ip.section == 2) return ip.row == 0 ? @"Mod loader" : (self.mods.count ? self.mods[(NSUInteger)ip.row - 1] : @"No installed mods");
+              if (ip.section == 3) return @[@"Edit touch layout & buttons", @"Camera sensitivity"][ip.row];
+              return @"Open live log";
+          }
+          - (NSString *)keyForRow:(NSIndexPath *)ip {
+              if (ip.section == 0) return @[@"upscale", @"", @"screen", @"heatguard"][ip.row];
+              if (ip.section == 1) return @[@"gfx", @"gfxmanual", @"potato", @"quality"][ip.row];
+              if (ip.section == 2 && ip.row == 0) return @"modloader";
+              return nil;
+          }
+          - (BOOL)isSwitchRow:(NSIndexPath *)ip { return (ip.section == 0 && (ip.row == 0 || ip.row == 3)) || (ip.section == 1 && (ip.row == 1 || ip.row == 2)) || (ip.section == 2 && ip.row == 0); }
+          - (NSString *)valueForRow:(NSIndexPath *)ip {
+              NSString *key = [self keyForRow:ip]; if (key.length) return hostCfgValue(key, @"0");
+              if (ip.section == 0 && ip.row == 1) return hostCfgValue(@"fpscap", @"60");
+              if (ip.section == 3 && ip.row == 1) return hostCfgValue(@"camera", @"1.0");
+              if (ip.section == 1 && ip.row == 0) return hostCfgValue(@"gfx", @"-1");
+              if (ip.section == 1 && ip.row == 3) return hostCfgValue(@"quality", @"0");
+              if (ip.section == 0 && ip.row == 2) return hostCfgValue(@"screen", @"100");
+              return @"";
+          }
+          - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
+              ip = [NSIndexPath indexPathForRow:ip.row inSection:hsL(ip.section)];   /* v86: displayed section -> original section */
+              UITableViewCell *c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
+              c.backgroundColor = [UIColor colorWithWhite:1 alpha:0.035]; c.textLabel.textColor = UIColor.labelColor; c.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+              c.textLabel.text = [self titleForRow:ip]; c.detailTextLabel.numberOfLines = 2;
+              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right", @"thermometer.medium"], @[@"slider.horizontal.3", @"wrench.and.screwdriver", @"leaf", @"dial.low"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
+              c.imageView.image = [UIImage systemImageNamed:icons[ip.section][MIN((NSUInteger)ip.row, [icons[ip.section] count] - 1)]]; c.imageView.tintColor = [UIColor colorWithRed:0.35 green:0.68 blue:1 alpha:1];
+              if ([self isSwitchRow:ip] || (ip.section == 2 && ip.row > 0 && self.mods.count)) {
+                  UISwitch *sw = [UISwitch new];
+                  if (ip.section == 2 && ip.row > 0) sw.on = hostModEnabled(self.mods[(NSUInteger)ip.row - 1]);
+                  else sw.on = [[self valueForRow:ip] integerValue] != 0;
+                  sw.accessibilityIdentifier = (ip.section == 2 && ip.row > 0) ? [@"mod:" stringByAppendingString:self.mods[(NSUInteger)ip.row - 1]] : [self keyForRow:ip];
+                  [sw addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged]; c.accessoryView = sw;
+                  c.selectionStyle = UITableViewCellSelectionStyleNone;
+              } else if (ip.section == 0 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@ FPS · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@%% · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 1 && ip.row == 0) { NSString *v = [self valueForRow:ip]; c.detailTextLabel.text = [v isEqualToString:@"-1"] ? @"Quality fallback · loaded next launch" : [NSString stringWithFormat:@"Preset %@ · loaded next launch", v]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 1 && ip.row == 3) { c.detailTextLabel.text = @"Fallback quality · used when preset is set to Quality fallback"; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 2 && ip.row > 0 && !self.mods.count) { c.detailTextLabel.text = @"Create folders inside Documents/Mods"; c.selectionStyle = UITableViewCellSelectionStyleNone; }
+              else if (ip.section == 3 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@× · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else { c.detailTextLabel.text = ip.section == 3 ? @"Add, move, resize or delete buttons" : @""; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              return c;
+          }
+          - (void)switchChanged:(UISwitch *)sw {
+              NSString *ident = sw.accessibilityIdentifier ?: @""; BOOL ok = NO;
+              if ([ident hasPrefix:@"mod:"]) ok = hostSetModEnabled([ident substringFromIndex:4], sw.isOn);
+              else if (ident.length) ok = hostCfgSet(ident, sw.isOn ? @"1" : @"0");
+              if (!ok) { sw.on = !sw.isOn; UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Could not save setting" message:@"The host controls.cfg file could not be written." preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]]; [self presentViewController:a animated:YES completion:nil]; }
+          }
+          - (void)choose:(NSIndexPath *)ip title:(NSString *)title choices:(NSArray<NSString *> *)choices values:(NSArray<NSString *> *)values key:(NSString *)key {
+              UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:@"Saved to the Android host configuration. Takes effect next launch." preferredStyle:UIAlertControllerStyleActionSheet];
+              for (NSUInteger i = 0; i < choices.count; i++) { NSString *v = values[i]; [a addAction:[UIAlertAction actionWithTitle:choices[i] style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) { if ([v isEqualToString:@"<remove>"]) hostCfgRemove(key); else hostCfgSet(key, v); [self.tableView reloadRowsAtIndexPaths:@[ip] withRowAnimation:UITableViewRowAnimationNone]; }]]; }
+              [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+              if (a.popoverPresentationController) { UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:ip]; a.popoverPresentationController.sourceView = cell; a.popoverPresentationController.sourceRect = cell.bounds; }
+              [self presentViewController:a animated:YES completion:nil];
+          }
+          - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
+              [tv deselectRowAtIndexPath:ip animated:YES];
+              NSIndexPath *dip = ip;   /* v86: the displayed row, used to reload it and anchor the sheet */
+              ip = [NSIndexPath indexPathForRow:ip.row inSection:hsL(ip.section)];
+              if (ip.section == 0 && ip.row == 1) [self choose:dip title:@"FPS limit" choices:@[@"30 FPS", @"45 FPS", @"60 FPS", @"90 FPS", @"120 FPS", @"144 FPS", @"165 FPS", @"180 FPS", @"240 FPS"] values:@[@"30", @"45", @"60", @"90", @"120", @"144", @"165", @"180", @"240"] key:@"fpscap"];
+              else if (ip.section == 0 && ip.row == 2) [self choose:dip title:@"Render scale" choices:@[@"60%", @"75%", @"100%"] values:@[@"60", @"75", @"100"] key:@"screen"];
+              else if (ip.section == 1 && ip.row == 0) [self choose:dip title:@"Graphics preset" choices:@[@"Use quality fallback", @"Very Low", @"Low", @"Medium", @"High"] values:@[@"<remove>", @"0", @"1", @"2", @"3"] key:@"gfx"];
+              else if (ip.section == 1 && ip.row == 3) [self choose:dip title:@"Quality level" choices:@[@"Low", @"Medium", @"High"] values:@[@"0", @"1", @"2"] key:@"quality"];
+              else if (ip.section == 3 && ip.row == 0) { if (self.onEdit) self.onEdit(); }
+              else if (ip.section == 3 && ip.row == 1) [self choose:dip title:@"Camera sensitivity" choices:@[@"0.5×", @"0.75×", @"1.0× (default)", @"1.5×", @"2.0×", @"3.0×", @"4.0×", @"5.0×", @"6.0×"] values:@[@"0.5", @"0.75", @"1.0", @"1.5", @"2.0", @"3.0", @"4.0", @"5.0", @"6.0"] key:@"camera"];
+              else if (ip.section == 4 && ip.row == 0) [self.navigationController pushViewController:[LogVC new] animated:YES];
+          }
+          @end
+
+          /* ---- root screen: left panel (icon, name, version, Play) + settings list; the game view sits underneath ---- */
+          @interface RootVC : UIViewController
+          @property (nonatomic, strong) UIView *game;
+          @property (nonatomic, strong) UIView *menu;
+          @property (nonatomic, strong) UIImageView *icon;
+          @property (nonatomic, strong) UILabel *name, *ver, *credit;
+          @property (nonatomic, strong) UIButton *play;
+          @property (nonatomic, strong) UIVisualEffectView *panelGlass, *listGlass;   /* v86: the two Liquid Glass cards on the loader screen */
+          @property (nonatomic, strong) UIButton *gear, *doneMove, *plus;
+          @property (nonatomic, strong) UINavigationController *nav;
+          @property (nonatomic, strong) UIView *settingsBackdrop;
+          @property (nonatomic, strong) UIVisualEffectView *settingsPanel;
+          @property (nonatomic, strong) UINavigationController *settingsNav;
+          @property (nonatomic, strong) UIView *addBackdrop;                 /* v84: the "+" list */
+          @property (nonatomic, strong) UIVisualEffectView *addPanel;
+          @property (nonatomic, strong) UINavigationController *addNav;
+          @property (nonatomic, strong) UIPinchGestureRecognizer *pinch;
+          @property (nonatomic, copy) void (^onPlay)(void);
+          @property (nonatomic, copy) void (^onHz)(void);
+          @property (nonatomic) BOOL started;
+          @end
+          static void p2ScheduleLightning(CAShapeLayer *arc, UIView *bgv, NSArray<UIBezierPath *> *paths) {
+              if (!arc || !bgv || paths.count < 3) return;
+
+              CGFloat w = bgv.bounds.size.width, h = bgv.bounds.size.height;
+              if (w <= 0 || h <= 0) return;
+
+              NSUInteger first = arc4random_uniform(3);
+              NSUInteger second = (first + 1 + arc4random_uniform(2)) % 3;
+              NSUInteger third = 3 - first - second;
+              BOOL flipped = arc4random_uniform(2) != 0;
+              CGFloat sx = flipped ? -0.58 : 0.58;
+              /* Keep every recurring strike visible; one in four gets a brightness/glow surge. */
+              CGFloat power = 0.78 + arc4random_uniform(21) / 100.0;
+              BOOL superStrike = (arc4random_uniform(4) == 0);
+              CGFloat flashPower = superStrike ? MIN(1.0, power * 1.35) : power;
+              arc.lineWidth = 3.2 + arc4random_uniform(11) / 10.0;
+
+              /* The path occupies x=0.10...0.50 of its layer; place it fully across the screen. */
+              CGFloat x = flipped
+                  ? w * (0.03 + arc4random_uniform(707) / 1000.0)
+                  : w * (0.263 + arc4random_uniform(707) / 1000.0);
+              CGFloat y = h * (0.32 + arc4random_uniform(361) / 1000.0);
+              CGPoint center = CGPointMake(x, y);
+
+              arc.path = paths[first].CGPath;
+              arc.position = center;
+              arc.transform = CATransform3DMakeScale(sx, 0.58, 1.0);
+              arc.opacity = 0;
+              arc.strokeEnd = 0;
+              arc.shadowRadius = superStrike ? 30.0 : 18.0;
+              arc.shadowOpacity = superStrike ? 1.0 : power;
+
+              CAKeyframeAnimation *draw = [CAKeyframeAnimation animationWithKeyPath:@"strokeEnd"];
+              draw.values = @[@0, @0, @1, @0, @0, @1, @0, @0, @1, @0, @0];
+              draw.keyTimes = @[@0, @0.10, @0.14, @0.20, @0.44, @0.48, @0.54, @0.78, @0.82, @0.88, @1];
+
+              CAKeyframeAnimation *flash = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+              flash.values = @[@0, @0, @(0.72 * flashPower), @(0.12 * flashPower), @0,
+                               @0, @(0.94 * flashPower), @(0.20 * flashPower), @0, @0, @(0.60 * flashPower)];
+              flash.keyTimes = draw.keyTimes;
+
+              CAKeyframeAnimation *shape = [CAKeyframeAnimation animationWithKeyPath:@"path"];
+              shape.values = @[(id)paths[first].CGPath, (id)paths[second].CGPath,
+                               (id)paths[third].CGPath, (id)paths[first].CGPath];
+              shape.keyTimes = @[@0, @0.34, @0.67, @1];
+
+              CAKeyframeAnimation *drift = [CAKeyframeAnimation animationWithKeyPath:@"position"];
+              drift.values = @[
+                  [NSValue valueWithCGPoint:center],
+                  [NSValue valueWithCGPoint:CGPointMake(x + (flipped ? -0.035 : 0.035) * w, y - 0.02 * h)],
+                  [NSValue valueWithCGPoint:CGPointMake(x + (flipped ? 0.025 : -0.025) * w, y + 0.025 * h)],
+                  [NSValue valueWithCGPoint:center]
+              ];
+              drift.keyTimes = shape.keyTimes;
+
+              CAKeyframeAnimation *glow = [CAKeyframeAnimation animationWithKeyPath:@"shadowOpacity"];
+              glow.values = superStrike
+                  ? @[@0.95, @1.0, @0.98, @1.0]
+                  : @[@(0.65 * power), @(1.0 * power), @(0.72 * power), @(0.9 * power)];
+              glow.keyTimes = shape.keyTimes;
+
+              CAAnimationGroup *pulse = [CAAnimationGroup animation];
+              pulse.animations = @[draw, flash, shape, drift, glow];
+              pulse.duration = 3.2;
+              pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+              [arc addAnimation:pulse forKey:@"p2-lightning-flash"];
+
+              /* Short, varied pause after each complete three-hit pulse; no overlapping strikes. */
+              __weak CAShapeLayer *weakArc = arc;
+              __weak UIView *weakBG = bgv;
+              uint32_t pauseMs = 180 + arc4random_uniform(571);
+              dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                  (int64_t)((3.2 + pauseMs / 1000.0) * NSEC_PER_SEC)),
+                  dispatch_get_main_queue(), ^{
+                      CAShapeLayer *nextArc = weakArc;
+                      UIView *nextBG = weakBG;
+                      if (nextArc && nextBG) p2ScheduleLightning(nextArc, nextBG, paths);
+                  });
+          }
+
+          @implementation RootVC
+          - (UILabel *)label:(NSString *)t size:(CGFloat)sz weight:(UIFontWeight)w color:(UIColor *)col {
+              UILabel *l = [UILabel new]; l.text = t; l.font = [UIFont systemFontOfSize:sz weight:w]; l.textColor = col;
+              l.textAlignment = NSTextAlignmentCenter; l.numberOfLines = 0; [self.menu addSubview:l]; return l;
+          }
+          - (void)setPlayTitle:(NSString *)t {
+              UIButtonConfiguration *cf = self.play.configuration;
+              cf.attributedTitle = [[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:22 weight:UIFontWeightSemibold]}];
+              self.play.configuration = cf;
+          }
+          - (void)viewDidLoad {
+              [super viewDidLoad];
+              self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+              self.view.backgroundColor = UIColor.blackColor;
+              self.game.frame = self.view.bounds; self.game.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+              [self.view addSubview:self.game];
+              self.menu = [[UIView alloc] initWithFrame:self.view.bounds]; self.menu.backgroundColor = UIColor.blackColor;
+              self.menu.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+              [self.view addSubview:self.menu];
+              /* v86: something colourful behind the glass, or it has nothing to refract: the app icon, blown up, blurred and darkened. */
+              UIView *bgv = [[UIView alloc] initWithFrame:self.menu.bounds]; bgv.backgroundColor = UIColor.blackColor; bgv.clipsToBounds = YES;
+              bgv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [self.menu addSubview:bgv];
+              UIImageView *bgi = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"LauncherIcon"]]; bgi.frame = bgv.bounds; bgi.contentMode = UIViewContentModeScaleAspectFill;
+              bgi.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [bgv addSubview:bgi];UIVisualEffectView *bgb = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]]; bgb.frame = bgv.bounds;
+              bgb.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [bgv addSubview:bgb];
+              /* A brief electric filament moves behind the panels; controls remain unobstructed. */
+              CAShapeLayer *arc = [CAShapeLayer layer];
+              arc.frame = bgv.bounds;
+              arc.fillColor = UIColor.clearColor.CGColor;
+              arc.strokeColor = [UIColor colorWithRed:0.56 green:0.82 blue:1 alpha:0.92].CGColor;
+              arc.lineWidth = 3.5; arc.lineCap = kCALineCapRound; arc.lineJoin = kCALineJoinRound;
+              arc.shadowColor = [UIColor colorWithRed:0.18 green:0.55 blue:1 alpha:1].CGColor;
+              arc.shadowRadius = 18; arc.shadowOpacity = 1.0;
+              UIBezierPath *bolt = [UIBezierPath bezierPath];
+              [bolt moveToPoint:CGPointMake(bgv.bounds.size.width * 0.16, 0)];
+              [bolt addLineToPoint:CGPointMake(bgv.bounds.size.width * 0.23, bgv.bounds.size.height * 0.18)];
+              [bolt addLineToPoint:CGPointMake(bgv.bounds.size.width * 0.19, bgv.bounds.size.height * 0.31)];
+              [bolt addLineToPoint:CGPointMake(bgv.bounds.size.width * 0.34, bgv.bounds.size.height * 0.44)];
+              [bolt addLineToPoint:CGPointMake(bgv.bounds.size.width * 0.29, bgv.bounds.size.height * 0.61)];
+              [bolt addLineToPoint:CGPointMake(bgv.bounds.size.width * 0.42, bgv.bounds.size.height)];
+              [bolt moveToPoint:CGPointMake(bgv.bounds.size.width * 0.23, bgv.bounds.size.height * 0.18)];
+              [bolt addLineToPoint:CGPointMake(bgv.bounds.size.width * 0.10, bgv.bounds.size.height * 0.30)];
+              [bolt moveToPoint:CGPointMake(bgv.bounds.size.width * 0.34, bgv.bounds.size.height * 0.44)];
+              [bolt addLineToPoint:CGPointMake(bgv.bounds.size.width * 0.50, bgv.bounds.size.height * 0.38)];
+              UIBezierPath *bolt2 = [bolt copy], *bolt3 = [bolt copy];
+              [bolt2 applyTransform:CGAffineTransformMake(0.92, 0.08, -0.06, 1.0, bgv.bounds.size.width * 0.11, bgv.bounds.size.height * 0.02)];
+              [bolt3 applyTransform:CGAffineTransformMake(1.08, -0.05, 0.04, 0.94, -bgv.bounds.size.width * 0.08, bgv.bounds.size.height * 0.04)];
+              arc.path = bolt.CGPath; arc.strokeEnd = 0; [bgv.layer addSublayer:arc];
+              NSArray<UIBezierPath *> *lightningPaths = @[bolt, bolt2, bolt3];
+              /* Keep the opening strike unchanged; begin recurring lightning after it completes. */
+              __weak CAShapeLayer *weakArc = arc;
+              __weak UIView *weakBG = bgv;
+              dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.65 * NSEC_PER_SEC)),
+                             dispatch_get_main_queue(), ^{
+                  CAShapeLayer *a = weakArc;
+                  UIView *v = weakBG;
+                  if (a && v) p2ScheduleLightning(a, v, lightningPaths);
+              });
+              UIView *bgd = [[UIView alloc] initWithFrame:bgv.bounds]; bgd.backgroundColor = [UIColor colorWithRed:0.075 green:0.008 blue:0.018 alpha:0.28];
+              bgd.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; [bgv addSubview:bgd];
+
+              /* One-time opening lightning strike: glow, white-hot core and screen flash. */
+              CALayer *launchFlash = [CALayer layer];
+              launchFlash.frame = bgv.bounds;
+              launchFlash.backgroundColor = [UIColor colorWithRed:0.72 green:0.88 blue:1 alpha:1].CGColor;
+              launchFlash.opacity = 0;
+              [bgv.layer addSublayer:launchFlash];
+
+              CAShapeLayer *launchGlow = [CAShapeLayer layer];
+              launchGlow.frame = bgv.bounds;
+              launchGlow.path = bolt.CGPath;
+              launchGlow.fillColor = UIColor.clearColor.CGColor;
+              launchGlow.strokeColor = [UIColor colorWithRed:0.18 green:0.58 blue:1 alpha:1].CGColor;
+              launchGlow.lineWidth = 13;
+              launchGlow.lineCap = kCALineCapRound;
+              launchGlow.lineJoin = kCALineJoinRound;
+              launchGlow.shadowColor = [UIColor colorWithRed:0.18 green:0.58 blue:1 alpha:1].CGColor;
+              launchGlow.shadowRadius = 28;
+              launchGlow.shadowOpacity = 1;
+              launchGlow.opacity = 0;
+              [bgv.layer addSublayer:launchGlow];
+
+              CAShapeLayer *launchCore = [CAShapeLayer layer];
+              launchCore.frame = bgv.bounds;
+              launchCore.path = bolt.CGPath;
+              launchCore.fillColor = UIColor.clearColor.CGColor;
+              launchCore.strokeColor = [UIColor colorWithRed:0.88 green:0.96 blue:1 alpha:1].CGColor;
+              launchCore.lineWidth = 8;
+              launchCore.lineCap = kCALineCapRound;
+              launchCore.lineJoin = kCALineJoinRound;
+              launchCore.shadowColor = UIColor.whiteColor.CGColor;
+              launchCore.shadowRadius = 16;
+              launchCore.shadowOpacity = 1;
+              launchCore.opacity = 0;
+              [bgv.layer addSublayer:launchCore];
+
+              CAKeyframeAnimation *openingDraw = [CAKeyframeAnimation animationWithKeyPath:@"strokeEnd"];
+              openingDraw.values = @[@0, @1, @1];
+              openingDraw.keyTimes = @[@0, @0.58, @1];
+
+              CAKeyframeAnimation *openingOpacity = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+              openingOpacity.values = @[@0, @1, @0];
+              openingOpacity.keyTimes = @[@0, @0.16, @1];
+
+              CAAnimationGroup *openingStrike = [CAAnimationGroup animation];
+              openingStrike.animations = @[openingDraw, openingOpacity];
+              openingStrike.duration = 1.15;
+              openingStrike.beginTime = CACurrentMediaTime() + 0.35;
+              openingStrike.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+              [launchGlow addAnimation:openingStrike forKey:@"p2-opening-lightning"];
+              [launchCore addAnimation:openingStrike forKey:@"p2-opening-core"];
+
+              CAKeyframeAnimation *openingFlash = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+              openingFlash.values = @[@0, @0.48, @0];
+              openingFlash.keyTimes = @[@0, @0.16, @1];
+              openingFlash.duration = 0.72;
+              openingFlash.beginTime = CACurrentMediaTime() + 0.35;
+              openingFlash.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+              [launchFlash addAnimation:openingFlash forKey:@"p2-opening-screen-flash"];
+
+              self.panelGlass = [[UIVisualEffectView alloc] initWithEffect:p2GlassEffect()]; p2StyleGlassView(self.panelGlass, 32); [self.menu addSubview:self.panelGlass];
+              self.listGlass = [[UIVisualEffectView alloc] initWithEffect:p2GlassEffect()]; p2StyleGlassView(self.listGlass, 32); [self.menu addSubview:self.listGlass];
+
+              self.icon = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"LauncherIcon"]];
+              self.icon.backgroundColor = UIColor.secondarySystemFillColor; self.icon.clipsToBounds = YES; self.icon.contentMode = UIViewContentModeScaleAspectFill;
+              self.icon.layer.cornerCurve = kCACornerCurveContinuous; [self.menu addSubview:self.icon];
+              self.name = [self label:@"Prototype 2" size:34 weight:UIFontWeightBold color:UIColor.whiteColor];
+              NSString *v = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+              self.ver = [self label:[NSString stringWithFormat:@"Version %@", v ? v : @"?"] size:17 weight:UIFontWeightRegular color:UIColor.secondaryLabelColor];
+              UIButtonConfiguration *cf = p2GlassButtonConfig(YES) ?: [UIButtonConfiguration filledButtonConfiguration];   /* v86: tinted Liquid Glass Play button (iOS 26), filled before that */
+              cf.cornerStyle = UIButtonConfigurationCornerStyleCapsule; cf.baseBackgroundColor = [UIColor colorWithRed:0.62 green:0.12 blue:0.17 alpha:1]; cf.baseForegroundColor = UIColor.whiteColor;
+              self.play = [UIButton buttonWithConfiguration:cf primaryAction:nil];
+              [self setPlayTitle:@"Play"];
+              [self.play addTarget:self action:@selector(playTapped) forControlEvents:UIControlEventTouchUpInside]; [self.menu addSubview:self.play];
+              self.credit = [self label:@"iOS port by Lestat\nOriginal port by EliteMV\nNot for sale. Free to distribute with credits." size:12 weight:UIFontWeightRegular color:UIColor.secondaryLabelColor];
+
+              SettingsVC *sv = [SettingsVC new]; sv.onHz = self.onHz;
+              self.nav = [[UINavigationController alloc] initWithRootViewController:sv];
+              __weak RootVC *wself = self;
+              sv.onLogs = ^{ [wself.nav pushViewController:[LogVC new] animated:YES]; };
+              sv.isRunning = ^BOOL{ return wself.started; };
+              self.nav.view.backgroundColor = UIColor.clearColor; self.nav.view.opaque = NO; self.nav.view.clipsToBounds = YES;
+              [self addChildViewController:self.nav]; [self.listGlass.contentView addSubview:self.nav.view]; [self.nav didMoveToParentViewController:self];
+          /* v79/v83: custom buttons host, unchanged gear (top left) now opens the in-game settings panel, and the Done moving pill. All hidden while the launcher menu is up. */
+          gCbHost = [[CbHost alloc] initWithFrame:self.view.bounds]; gCbHost.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; gCbHost.backgroundColor = UIColor.clearColor;
+          [self.view insertSubview:gCbHost belowSubview:self.menu];
+          cbLoad(gCbHost);
+          self.gear = [UIButton buttonWithType:UIButtonTypeSystem];
+          [self.gear setImage:[UIImage systemImageNamed:@"gearshape.fill"] forState:UIControlStateNormal];
+          p2GlassCircleButton(self.gear, 0.85, [UIColor colorWithWhite:0 alpha:0.35]);   /* v86: Liquid Glass circle on iOS 26 */
+          self.gear.accessibilityLabel = @"Settings";
+          [self.gear addTarget:self action:@selector(openSettingsPanel) forControlEvents:UIControlEventTouchUpInside];
+          [gCbHost addSubview:self.gear]; gCbGear = self.gear;
+          UIButtonConfiguration *dcf = [UIButtonConfiguration filledButtonConfiguration];
+          dcf.cornerStyle = UIButtonConfigurationCornerStyleCapsule; dcf.baseBackgroundColor = UIColor.systemYellowColor; dcf.baseForegroundColor = UIColor.blackColor; dcf.title = @"Done";
+          self.doneMove = [UIButton buttonWithConfiguration:dcf primaryAction:nil]; self.doneMove.hidden = YES;
+          [self.doneMove addTarget:self action:@selector(doneMoving) forControlEvents:UIControlEventTouchUpInside];
+          [gCbHost addSubview:self.doneMove]; gCbDone = self.doneMove;
+          self.plus = [UIButton buttonWithType:UIButtonTypeSystem];
+          [self.plus setImage:[UIImage systemImageNamed:@"plus" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightBold]] forState:UIControlStateNormal];
+          p2GlassCircleButton(self.plus, 0.9, [UIColor colorWithWhite:0 alpha:0.35]);
+          self.plus.accessibilityLabel = @"Add button"; self.plus.hidden = YES;
+          [self.plus addTarget:self action:@selector(openAddPanel) forControlEvents:UIControlEventTouchUpInside];
+          [gCbHost addSubview:self.plus]; gCbPlus = self.plus;
+          gXBtn = [CbXBtn buttonWithType:UIButtonTypeCustom];   /* the little x on the selected button; one view, moved and scaled by cbSelUpdate */
+          gXBtn.backgroundColor = [UIColor colorWithRed:0.90 green:0.22 blue:0.20 alpha:1]; gXBtn.tintColor = UIColor.whiteColor;
+          gXBtn.layer.borderWidth = 1.5; gXBtn.layer.borderColor = UIColor.whiteColor.CGColor; gXBtn.accessibilityLabel = @"Delete button"; gXBtn.hidden = YES;
+          [gXBtn addTarget:self action:@selector(xTapped) forControlEvents:UIControlEventTouchUpInside];
+          [gCbHost addSubview:gXBtn];
+          self.pinch = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(pinched:)];   /* on the whole screen; resizes whatever is selected */
+          self.pinch.cancelsTouchesInView = NO; self.pinch.delaysTouchesBegan = NO; self.pinch.delaysTouchesEnded = NO; self.pinch.enabled = NO;
+          [self.view addGestureRecognizer:self.pinch];
+          gCbHost.hidden = YES;
+          [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(cbEditChanged) name:@"P2CbEdit" object:nil];
+
+          }
+
+          - (void)openSettingsPanel {
+              if (self.settingsPanel) return;
+              cbSetEdit(NO); cbReleaseAll();
+              UIView *shade = [[UIView alloc] initWithFrame:self.view.bounds]; shade.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+              shade.backgroundColor = [UIColor colorWithWhite:0 alpha:(p2HasGlass() ? 0.18 : 0.30)];
+              UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closeSettingsPanel)]; [shade addGestureRecognizer:tap];
+              shade.alpha = 0; [self.view addSubview:shade]; self.settingsBackdrop = shade;
+              UIVisualEffectView *panel = [[UIVisualEffectView alloc] initWithEffect:(p2HasGlass() ? nil : p2GlassEffect())];   /* v86: glass materializes in the animation below */
+              panel.alpha = 0; p2StyleGlassView(panel, 28);
+              panel.autoresizingMask = UIViewAutoresizingNone; [self.view addSubview:panel]; self.settingsPanel = panel;
+              HostSettingsVC *root = [HostSettingsVC new]; __weak RootVC *weakSelf = self; root.onClose = ^{ [weakSelf closeSettingsPanel]; };
+              root.onEdit = ^{ [weakSelf closeSettingsPanel]; cbSetEdit(YES); };   /* v84: straight to the game screen, no menu in between */
+              UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:root]; nav.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+              nav.view.backgroundColor = UIColor.clearColor; nav.view.opaque = NO; nav.view.clipsToBounds = YES;
+              nav.navigationBar.translucent = YES; nav.navigationBar.backgroundColor = UIColor.clearColor; nav.navigationBar.barTintColor = UIColor.clearColor;
+              UINavigationBarAppearance *appearance = [UINavigationBarAppearance new]; [appearance configureWithTransparentBackground]; appearance.titleTextAttributes = @{NSForegroundColorAttributeName: UIColor.whiteColor}; appearance.largeTitleTextAttributes = @{NSForegroundColorAttributeName: UIColor.whiteColor};
+              nav.navigationBar.standardAppearance = appearance; nav.navigationBar.scrollEdgeAppearance = appearance; nav.navigationBar.compactAppearance = appearance;
+              [self addChildViewController:nav]; [panel.contentView addSubview:nav.view]; [nav didMoveToParentViewController:self]; self.settingsNav = nav;
+              [self.view bringSubviewToFront:shade]; [self.view bringSubviewToFront:panel];
+              [UIView animateWithDuration:0.22 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{ shade.alpha = 1; panel.alpha = 1; if (p2HasGlass()) panel.effect = p2GlassEffect(); } completion:nil];
+              [self.view setNeedsLayout]; [self.view layoutIfNeeded];
+          }
+          - (void)closeSettingsPanel {
+              if (!self.settingsPanel) return;
+              UIView *shade = self.settingsBackdrop; UIVisualEffectView *panel = self.settingsPanel; UINavigationController *nav = self.settingsNav;
+              [UIView animateWithDuration:0.18 animations:^{ shade.alpha = 0; panel.alpha = 0; if (p2HasGlass()) panel.effect = nil; } completion:^(BOOL done) {
+                  [nav willMoveToParentViewController:nil]; [nav.view removeFromSuperview]; [nav removeFromParentViewController];
+                  [panel removeFromSuperview]; [shade removeFromSuperview];
+              }];
+              self.settingsBackdrop = nil; self.settingsPanel = nil; self.settingsNav = nil;
+          }
+          - (void)doneMoving { cbSetEdit(NO); }
+          - (void)cbEditChanged {   /* v84: in the editor the gear gives way to "+" and "Done" */
+              self.gear.hidden = gCbEdit; self.plus.hidden = !gCbEdit; self.doneMove.hidden = !gCbEdit; self.pinch.enabled = gCbEdit;
+              if (!gCbEdit) { [self closeAddPanel]; if (gCbPinch) gCbPinch = NO; }
+          }
+          - (void)xTapped { cbSelDelete(); }
+          - (void)pinched:(UIPinchGestureRecognizer *)g {
+              if (!gCbEdit) return;
+              if (g.state == UIGestureRecognizerStateBegan) cbPinchBegin();
+              else if (g.state == UIGestureRecognizerStateChanged) { if (gCbPinch) cbPinchApply(g.scale, NO); }
+              else if (g.state == UIGestureRecognizerStateEnded || g.state == UIGestureRecognizerStateCancelled || g.state == UIGestureRecognizerStateFailed) { if (gCbPinch) cbPinchEnd(); }
+          }
+          - (void)openAddPanel {
+              if (self.addPanel) { [self closeAddPanel]; return; }
+              if (gCbList.count >= CB_MAX) {
+                  UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Limit reached" message:[NSString stringWithFormat:@"You can have up to %d buttons. Delete one first.", CB_MAX] preferredStyle:UIAlertControllerStyleAlert];
+                  [al addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]]; [self presentViewController:al animated:YES completion:nil]; return;
+              }
+              UIView *shade = [[UIView alloc] initWithFrame:self.view.bounds]; shade.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight; shade.backgroundColor = UIColor.clearColor;
+              [shade addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closeAddPanel)]];
+              [self.view addSubview:shade]; self.addBackdrop = shade;
+              UIVisualEffectView *panel = [[UIVisualEffectView alloc] initWithEffect:(p2HasGlass() ? nil : p2GlassEffect())];   /* v86: glass materializes in the animation below */
+              panel.alpha = 0; p2StyleGlassView(panel, 28);
+              panel.autoresizingMask = UIViewAutoresizingNone; [self.view addSubview:panel]; self.addPanel = panel;
+              KeyPickerVC *kp = [KeyPickerVC new]; __weak RootVC *weakSelf = self;
+              kp.onClose = ^{ [weakSelf closeAddPanel]; };
+              kp.onPick = ^(int code) { if (code == CB_RSTICK) rsToggle(); else cbAdd(code, cbShort(code)); [weakSelf closeAddPanel]; };
+              UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:kp]; nav.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+              nav.view.backgroundColor = UIColor.clearColor; nav.view.opaque = NO; nav.view.clipsToBounds = YES;
+              nav.navigationBar.translucent = YES; nav.navigationBar.backgroundColor = UIColor.clearColor; nav.navigationBar.barTintColor = UIColor.clearColor;
+              UINavigationBarAppearance *appearance = [UINavigationBarAppearance new]; [appearance configureWithTransparentBackground]; appearance.titleTextAttributes = @{NSForegroundColorAttributeName: UIColor.whiteColor};
+              nav.navigationBar.standardAppearance = appearance; nav.navigationBar.scrollEdgeAppearance = appearance; nav.navigationBar.compactAppearance = appearance;
+              [self addChildViewController:nav]; [panel.contentView addSubview:nav.view]; [nav didMoveToParentViewController:self]; self.addNav = nav;
+              [self.view bringSubviewToFront:shade]; [self.view bringSubviewToFront:panel];
+              [self.view setNeedsLayout]; [self.view layoutIfNeeded];
+              [UIView animateWithDuration:0.2 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{ panel.alpha = 1; if (p2HasGlass()) panel.effect = p2GlassEffect(); } completion:nil];
+          }
+          - (void)closeAddPanel {
+              if (!self.addPanel) return;
+              UIView *shade = self.addBackdrop; UIVisualEffectView *panel = self.addPanel; UINavigationController *nav = self.addNav;
+              self.addBackdrop = nil; self.addPanel = nil; self.addNav = nil;
+              [UIView animateWithDuration:0.16 animations:^{ panel.alpha = 0; if (p2HasGlass()) panel.effect = nil; } completion:^(BOOL done) {
+                  [nav willMoveToParentViewController:nil]; [nav.view removeFromSuperview]; [nav removeFromParentViewController];
+                  [panel removeFromSuperview]; [shade removeFromSuperview];
+              }];
+              [shade removeFromSuperview];   /* the tap catcher goes at once so the screen answers right away */
+          }
+          - (void)syncCb { gCbHost.hidden = !self.menu.hidden; if (!gCbHost.hidden) { [self.view bringSubviewToFront:gCbHost]; for (CbButton *b in gCbList) [b place]; } }
+          - (void)viewDidLayoutSubviews {
+              [super viewDidLayoutSubviews];
+              CGRect b = self.menu.bounds; UIEdgeInsets si = self.view.safeAreaInsets;
+              BOOL land = b.size.width > b.size.height;
+              CGRect panel, list;
+              if (land) { CGFloat pw = MAX(280, floor(b.size.width * 0.34)); panel = CGRectMake(si.left, si.top, pw - si.left, b.size.height - si.top - si.bottom); list = CGRectMake(pw, 0, b.size.width - pw, b.size.height); }
+              else { CGFloat ph = 330; panel = CGRectMake(0, si.top, b.size.width, ph); list = CGRectMake(0, si.top + ph, b.size.width, b.size.height - si.top - ph); }
+              {   /* v86: the two glass cards; the left card replaces the plain panel rectangle for centring the icon, name and Play */
+                  CGFloat gm = 12, top = MAX(si.top, gm), bot = MAX(si.bottom, gm), left = MAX(si.left, gm), right = MAX(si.right, gm);
+                  CGRect pc, lc;
+                  if (land) {
+                      CGFloat pw = panel.origin.x + panel.size.width;
+                      pc = CGRectMake(left, top, pw - left - gm / 2, b.size.height - top - bot);
+                      lc = CGRectMake(pw + gm / 2, top, b.size.width - pw - gm / 2 - right, b.size.height - top - bot);
+                  } else {
+                      pc = CGRectMake(gm, top, b.size.width - 2 * gm, panel.size.height);
+                      lc = CGRectMake(gm, CGRectGetMaxY(pc) + gm, b.size.width - 2 * gm, b.size.height - CGRectGetMaxY(pc) - gm - bot);
+                  }
+                  self.panelGlass.frame = pc; self.listGlass.frame = lc;
+                  self.nav.view.frame = CGRectMake(0, 0, lc.size.width, lc.size.height);
+                  panel = pc; list = lc;
+              }
+              CGFloat pad = 24, w = panel.size.width - 2 * pad, iconS = land ? 128 : 88, btnW = MIN(w, 320), btnH = 54;
+              CGSize ns = [self.name sizeThatFits:CGSizeMake(w, CGFLOAT_MAX)], vs = [self.ver sizeThatFits:CGSizeMake(w, CGFLOAT_MAX)];
+              CGSize cs = [self.credit sizeThatFits:CGSizeMake(w, CGFLOAT_MAX)];
+              CGFloat total = iconS + 14 + ns.height + 4 + vs.height + 18 + btnH + 14 + cs.height;
+              CGFloat y = panel.origin.y + MAX(8, (panel.size.height - total) / 2), cx = panel.origin.x + panel.size.width / 2;
+              self.icon.frame = CGRectMake(cx - iconS / 2, y, iconS, iconS); self.icon.layer.cornerRadius = iconS * 0.2237; y += iconS + 14;
+              self.name.frame = CGRectMake(cx - w / 2, y, w, ns.height); y += ns.height + 4;
+              self.ver.frame = CGRectMake(cx - w / 2, y, w, vs.height); y += vs.height + 18;
+              self.play.frame = CGRectMake(cx - btnW / 2, y, btnW, btnH); y += btnH + 14;
+              self.credit.frame = CGRectMake(cx - w / 2, y, w, cs.height); 
+
+          UIEdgeInsets gi = self.view.safeAreaInsets;
+          self.gear.frame = CGRectMake(gi.left + 10, gi.top + 10, 40, 40);
+          self.plus.frame = self.gear.frame;
+          self.doneMove.frame = CGRectMake(CGRectGetMaxX(self.plus.frame) + 10, gi.top + 12, 84, 36);
+          if (self.addPanel) {   /* v84: left centred, clear of the + and Done buttons above it */
+              CGFloat aw = MIN(320, floor(b.size.width * 0.42)), ah = floor(b.size.height * 0.74);
+              self.addPanel.frame = CGRectMake(gi.left + 12, floor((b.size.height - ah) / 2) + 14, aw, ah);
+              self.addNav.view.frame = self.addPanel.contentView.bounds;
+          }
+          if (self.settingsPanel) {
+              CGFloat pw = floor(b.size.width * 0.82), ph = floor(b.size.height * 0.80);
+              self.settingsPanel.frame = CGRectMake((b.size.width - pw) / 2, (b.size.height - ph) / 2, pw, ph);
+              self.settingsNav.view.frame = self.settingsPanel.contentView.bounds;
+          }
+          for (CbButton *cbb in gCbList) [cbb place];
+          cbSelUpdate();
+          }
+          - (void)playTapped {
+              if (!self.started && !uiGameFilesOK()) {
+                  UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Game files not found" message:@"Game files not found or hashes don't match the expected version. Unpacked game files go in On My iPhone > Prototype 2 > Prototype2 > game, so that prototype2.exe, prototype2engine.dll, woi.rcf, etc. all land in /game/." preferredStyle:UIAlertControllerStyleAlert];
+                  [al addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                  [self presentViewController:al animated:YES completion:nil]; return;
+              }
+              if (!self.started) { self.started = YES; [self setPlayTitle:@"Resume"]; if (self.onPlay) self.onPlay(); }
+              self.menu.hidden = YES; [self syncCb]; [self setNeedsStatusBarAppearanceUpdate]; [self setNeedsUpdateOfHomeIndicatorAutoHidden];
+          }
+          - (void)showMenu {
+              self.menu.hidden = NO; [self syncCb]; [self setNeedsStatusBarAppearanceUpdate]; [self setNeedsUpdateOfHomeIndicatorAutoHidden];
+          }
+          - (UIInterfaceOrientationMask)supportedInterfaceOrientations { return UIInterfaceOrientationMaskLandscape; }
+          - (BOOL)shouldAutorotate { return YES; }
+          - (BOOL)prefersStatusBarHidden { return self.menu.hidden; }
+          - (BOOL)prefersHomeIndicatorAutoHidden { return self.menu.hidden; }
+          @end
+
+          @interface AD : UIResponder <UIApplicationDelegate>
+          @property(strong, nonatomic) UIWindow *window;
+          @end
+          @implementation AD
+          @synthesize window = _window;
+          - (void)note:(const char *)s { emit(s); if (!gFlags) gFlags = [NSMutableString new]; [gFlags appendFormat:@"%s\n", s]; }
+          - (void)startFlags {
+              static const struct { const char *n; int pre; const char *m; } K[] = {
+                  {"hz_off",0,"120 Hz lock OFF"}, {"rt_render",0,"render thread real-time policy ON (6000 us budget)"}, {"hz_90",0,"display locked to 90 Hz"}, {"hz_60",0,"display locked to 60 Hz"},
+                  {"waittrace_off",0,"WAITTRACE recording OFF"}, {"rbtrace_off",0,"RBTRACE (render-thread trace + GPU timing) OFF"}, {"gpuhud_off",0,"GPU % for the dev HUD OFF"}, {"threaddump_on",0,"timed THREADDUMP at 20/45/90 s ON"}, {"gpuhud_est",0,"GPU % estimated from RBTRACE timing (not the Apple counter)"},
+                  {"textrace_off",0,"TEXTRACE + UPLOADGAP OFF"}, {"maxlod_",1,"sampler max-LOD cap (maxlod_0 = full-size level only; read at launch)"},
+                  {"pcprof_on",0,"PC sampler ON"}, {"futex_off",0,"real futex OFF"}, {"audio_off",0,"audio OFF"}, {"auto_exit",0,"auto exit"},
+                  {"qos_off",0,"thread QoS left at default"}, {"qos_initiated",0,"thread QoS USER_INITIATED"},
+                  {"vk_loadop_fix_off",0,"LOAD_OP_NONE rewrite OFF"}, {"vkshot",0,"vkshot"}, {"vktrace_now",0,"VKTRACE dump now"},
+                  {"settle_s6",0,"settle at state 6"}, {"swapchain_alpha_keep",0,"keep swapchain alpha"}, {"imgdelay_all",0,"image delay for all images"},
+                  {"mvk_argbuf_off",0,"MoltenVK argument buffers OFF"}, {"mvk_dumpshaders",0,"MoltenVK dump shaders"},
+                  {"mvk_fastmath_auto",0,"MoltenVK fast math auto"}, {"mvk_fastmath_on",0,"MoltenVK fast math ON (default since v72)"}, {"mvk_fastmath_off",0,"MoltenVK fast math OFF"}, {"shadowmin_off",0,"built-in shadow min OFF (every caster drawn)"}, {"passtime_on",0,"PASSSIG pass signature log"}, {"passskip_",1,"skip the draws of pass signature K (diagnostic)"}, {"ringsprint_",1,"stick sprints past a ring in ANY direction, radius N per mille of screen height"}, {"inputtap_on",0,"INPUTTAP log: finger movement vs what the game receives"}, {"mvk_log_info",0,"MoltenVK info logging"},
+                  {"own_layout",0,"own controls on (v76)"}, {"rstick_on",0,"right camera stick added to own controls (v87)"}, {"rstick_speed_",1,"right stick: full push in percent of screen width per second (v87)"}, {"rstick_vert_",1,"right stick: up/down speed in percent (v87)"}, {"rstick_invy",0,"right stick: flip up/down (v87)"}, {"ovl_trace",0,"dev overlay measured (v75)"}, {"ovl_hide",0,"dev overlay hidden (v75)"}, {"ovl_off",0,"dev overlay builder not called (v75)"}, {"passtrace_now",0,"dev one-frame pass trace trigger (v75)"}, {"drawtrace_now",0,"dev one-frame draw trace trigger (v75)"}, {"dbgoff_",1,"dev renderer feature switched off via debugoff file (v75)"}, {"env",0,"env switch (see loader help)"}, {"nosplash",0,"skip the autosave splash and the Disclaimer (the original port credits EliteMV; credited in the launcher instead)"},
+                  {"fakeaspect_",1,"fake screen aspect ratio x 10000 (loader writes Documents/fake_aspect)"}, {"touch_coalesce",0,"touch moves coalesced to one per display tick (ignored while smooth panning is on)"}, {"pan_smooth_off",0,"smooth camera panning OFF: every touch move goes to the game raw (v81)"}, {"pan_lag_",1,"smooth panning: fixed lag in ms instead of the measured one (v81)"}, {"pan_clock_off",0,"steady pan clock OFF: camera steps follow the real time the game thread drains, as in v81 (v82)"}, {"inputtap_on",0,"INPUTTAP lines: raw finger px vs what the loader handed the game per frame (v81)"}, {"touch_trace",0,"touch trace (logs TOUCHTRACE lines while touching)"}, {"waitspin_",1,"wait spin in us"}, {"rt_render_",1,"render thread real-time policy, budget in us"}, {"imgdelay_",1,"image delay"}, {"sleepcap_",1,"guest sleep cap in us"},
+                  {"hold_s5_",1,"hold at state 5"}, {"hold_s6_",1,"hold at state 6"}, {"ncpu_",1,"reported CPU count"},
+                  {"pdelay_",1,"present delay"}, {"pthrottle_",1,"present throttle"}, {"setenv_",1,"sets an env var for the game"},
+              };
+              NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
+              NSArray *names = [[NSFileManager.defaultManager contentsOfDirectoryAtPath:docs error:nil] sortedArrayUsingSelector:@selector(compare:)];
+              int n = 0;
+              [self note:"FLAGS (folders in Documents when the app started):"];
+              for (NSString *nm in names) {
+                  BOOL isDir = NO; [NSFileManager.defaultManager fileExistsAtPath:[docs stringByAppendingPathComponent:nm] isDirectory:&isDir];
+                  if (!isDir || [nm hasPrefix:@"."]) continue;
+                  const char *c = nm.UTF8String, *meaning = NULL;
+                  for (size_t i = 0; i < sizeof K / sizeof K[0]; i++)
+                      if (K[i].pre ? strncmp(c, K[i].n, strlen(K[i].n)) == 0 : strcmp(c, K[i].n) == 0) { meaning = K[i].m; break; }
+                  [self note:[NSString stringWithFormat:@"  %@  ->  %s", nm, meaning ? meaning : "not a known switch (ignored)"].UTF8String]; n++;
+              }
+              if (!n) [self note:"  (no flag folders)"];
+              [self note:"  no folder = defaults: 120 Hz lock on, RBTRACE on, WAITTRACE on, waitspin 1000 us, QoS interactive, rt_render off, futex on, LOAD_OP rewrite on"];
+          }
+          - (void)hzTick:(CADisplayLink *)l { tcTick(l); }   /* v69: still no real work unless touch_trace or touch_coalesce is on; the link mainly tells iOS which refresh rate this app wants */
+          - (void)publishFlags { if (gFlags.length > 1000) [gFlags deleteCharactersInRange:NSMakeRange(1000, gFlags.length - 1000)]; p2_boot_flags = strdup(gFlags.UTF8String); }
+          - (void)startHz {
+              NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
+              NSFileManager *fm = NSFileManager.defaultManager;
+              NSInteger maxHz = UIScreen.mainScreen.maximumFramesPerSecond;
+              p2_set_tick(1.0 / (double)(maxHz > 0 ? maxHz : 60));   /* v82: the pan clock steps in whole screen refreshes */
+              float want = 120;
+              BOOL off = [fm fileExistsAtPath:[docs stringByAppendingPathComponent:@"hz_off"]];
+              if ([fm fileExistsAtPath:[docs stringByAppendingPathComponent:@"hz_90"]]) want = 90;
+              if ([fm fileExistsAtPath:[docs stringByAppendingPathComponent:@"hz_60"]]) want = 60;
+              if (off) { [self note:"HZ: hz_off folder present, display rate left to iOS"]; [self publishFlags]; return; }
+              if (maxHz < 120 && want > maxHz) { [self note:[NSString stringWithFormat:@"HZ: display tops out at %ld Hz, nothing to lock (need a ProMotion screen)", (long)maxHz].UTF8String]; [self publishFlags]; return; }
+              gHzLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(hzTick:)];
+              gHzLink.preferredFrameRateRange = CAFrameRateRangeMake(want, want, want);
+              p2_set_tick(1.0 / (double)want);
+              [gHzLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+              [self note:[NSString stringWithFormat:@"HZ: locked display to %.0f Hz (screen max %ld Hz, CADisableMinimumFrameDurationOnPhone set). Folders: hz_off, hz_90, hz_60", want, (long)maxHz].UTF8String]; [self publishFlags];
+          }
+          - (void)applicationDidReceiveMemoryWarning:(UIApplication *)a { p2_note("iOS: MEMORY WARNING received"); }
+          - (void)applicationWillResignActive:(UIApplication *)a { p2_note("iOS: app will resign active (home gesture, control centre or a system overlay)"); }
+          - (void)applicationDidEnterBackground:(UIApplication *)a { p2_note("iOS: app entered the background"); }
+          - (void)applicationWillTerminate:(UIApplication *)a { p2_note("iOS: applicationWillTerminate"); }
+          - (void)applyHz { gTcLink = NO; tcFlush(); [gHzLink invalidate]; gHzLink = nil; [self startHz]; }
+          - (BOOL)application:(UIApplication *)a didFinishLaunchingWithOptions:(NSDictionary *)o {
+              gText = [NSMutableString string];
+              { NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;   /* nosplash is ON by default: create the folder once, on the first launch of v66; after that the user's choice sticks */
+                if (![ud boolForKey:@"nosplash_seeded"]) { uiSet(@"nosplash", YES); [ud setBool:YES forKey:@"nosplash_seeded"]; }
+                if (![ud boolForKey:@"traces_off_seeded"]) { uiSet(@"rbtrace_off", YES); uiSet(@"waittrace_off", YES); uiSet(@"textrace_off", YES); [ud setBool:YES forKey:@"traces_off_seeded"]; } }
+              self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+              gView = [[UITextView alloc] initWithFrame:CGRectZero];
+              gView.editable = NO; gView.selectable = YES; gView.font = [UIFont fontWithName:@"Menlo" size:10]; gView.backgroundColor = UIColor.blackColor; gView.textColor = UIColor.greenColor;
+              gGame = [[GameView alloc] initWithFrame:UIScreen.mainScreen.bounds];
+              CAMetalLayer *ml = (CAMetalLayer *)gGame.layer; ml.device = MTLCreateSystemDefaultDevice(); ml.pixelFormat = MTLPixelFormatBGRA8Unorm;
+              ml.contentsScale = UIScreen.mainScreen.nativeScale; gGame.backgroundColor = UIColor.blackColor; gGame.multipleTouchEnabled = YES; gGame.userInteractionEnabled = YES;
+              RootVC *vc = [RootVC new]; vc.game = gGame;
+              vc.onPlay = ^{ [self run]; };
+              vc.onHz = ^{ [self applyHz]; };
+              self.window.rootViewController = vc; [self.window makeKeyAndVisible]; [self startFlags]; [self startHz]; return YES;
+          }
+          - (void)run {
+              if (gRan) { emit("(already ran in this launch: close the app from the app switcher and open it again to repeat)"); return; }
+              gRan = YES;
+              NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
+              sFw = [[NSBundle mainBundle].privateFrameworksPath stringByAppendingString:@"/P2Code.framework/P2Code"];
+              sRes = [NSBundle mainBundle].resourcePath;
+              sRep = [docs stringByAppendingString:@"/p2_loader_log.txt"];
+              { CGFloat sc = UIScreen.mainScreen.nativeScale; CGSize b = gGame.bounds.size;
+            p2_win_w = (int)(b.width * sc); p2_win_h = (int)(b.height * sc); p2_metal_layer = (__bridge void *)gGame.layer;
+            emit([NSString stringWithFormat:@"game surface %dx%d px (landscape is locked)", p2_win_w, p2_win_h].UTF8String); }
+          emit("loader started on a background thread; this screen updates while it runs");
+              NSThread *t = [[NSThread alloc] initWithBlock:^{ p2_run(emit, sFw.UTF8String, sRes.UTF8String, sRep.UTF8String); }];
+              t.stackSize = 16 << 20; t.name = @"p2-loader"; [t start];
+          }
+          @end
+
+          int main(int argc, char **argv) { @autoreleasepool { return UIApplicationMain(argc, argv, nil, @"AD"); } }
+          EOF_UI_MAIN_2_M
+      - name: Upload the pieces
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-src-ui
+          path: parts/
+          if-no-files-found: error
