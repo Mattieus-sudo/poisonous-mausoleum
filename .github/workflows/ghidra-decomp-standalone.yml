@@ -1,0 +1,992 @@
+name: Ghidra decompile (standalone)
+
+# Runs only the Ghidra decompilation workflow. No macOS IPA build is included.
+on:
+  push:
+    branches:
+      - chatgpt
+    paths:
+      - .github/workflows/ghidra-decomp.yml
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: Drive share link to the APK containing libp2re.so
+        default: https://drive.google.com/file/d/1fRUv76Ykc6-sKM-qR2VDfQZgO9b8C1Sl/view?usp=share_link
+        required: true
+        type: string
+      run_ghidra:
+        description: Run the Ghidra decompile job
+        type: boolean
+        default: true
+      ghidra_version:
+        description: Ghidra release (needs JDK 21 = 11.2 or newer)
+        default: "11.3.2"
+        required: true
+        type: string
+      decomp_targets:
+        description: "EXTRA targets on top of the built-in set. Space separated: 0xSTART-0xSTOP elf ranges, name:SUBSTRING, addr:0xADDR (ELF address = the elf+0x... label in decomp.c; addr:g0xADDR = raw Ghidra address)"
+        default: "addr:0x59e19a0 addr:0x59c0cb0 addr:0x59b6840 addr:0x59b5780 addr:0x59b6760 addr:0x59c0d60 addr:0x59b6de0 addr:0x59c09f0 addr:0x59ba320 addr:0x59cffa0 addr:0x59d5cc0 addr:0x59ba160 addr:0x59ba2c0 addr:0x59b85a0 addr:0x59c5e20 addr:0x59b9600 addr:0x59e2860 addr:0x59c5fa0 addr:0x59d5dd0 addr:0x59d5d80 addr:0x5a50b00 addr:0x59c5b80 addr:0x59c09b0 addr:0x59c5ba0 addr:0x59c6140 addr:0x59bf180 addr:0x59c61b0 addr:0x59c57d0 addr:0x59c57e0 addr:0x59c57f0 addr:0x59c5880 addr:0x59c5910 addr:0x59c5b60 addr:0x59c5bc0 addr:0x59c5f40 addr:0x59c6160 addr:0x59c6190 addr:0x59e0da0 name:ngfx4Core6Submit name:f_109a6240_lifted name:TsoXchg32 name:TsoXchg8 name:TextureUpload name:TextureBinding name:TextureCreate"
+        required: true
+        type: string
+      ghidra_sha:
+        description: "SHA-256 accepted for libp2re.so. Use any to decompile whatever APK was supplied; the job log prints its SHA-256."
+        default: "767b1552fc3c965d9dada8e0dd1528f2f018aa5263dd232b7ddc8710f35b9a16"
+        required: true
+        type: string
+
+jobs:
+  ghidra:
+    # Decompiles chosen parts of the UNTOUCHED libp2re.so with Ghidra (headless) on a cheap Linux runner. Separate from the IPA build, runs in parallel, never blocks it.
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_ghidra }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Refuse to run in a public repo
+        run: |
+          if [ "${{ github.event.repository.private }}" != "true" ]; then
+            echo "This repo is PUBLIC. Make it private first."; exit 1
+          fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Download APK and extract libp2re.so
+        env:
+          APK_URL: ${{ inputs.apk_url || 'https://drive.google.com/file/d/1fRUv76Ykc6-sKM-qR2VDfQZgO9b8C1Sl/view?usp=share_link' }}
+        run: |
+          set -e
+          python3 -m venv .venv && . .venv/bin/activate && pip install -q gdown
+          ID=$(echo "$APK_URL" | sed -E 's#.*/d/([^/]+).*#\1#')
+          gdown "https://drive.google.com/uc?id=$ID" -O game.apk
+          unzip -tq game.apk >/dev/null || { echo "not a zip"; exit 1; }
+          mkdir -p work && unzip -o -j game.apk lib/arm64-v8a/libp2re.so -d work
+          SHA=$(sha256sum work/libp2re.so | cut -d' ' -f1)
+          echo "libp2re sha256 $SHA  size $(stat -c %s work/libp2re.so)"
+          WANT="${{ inputs.ghidra_sha || '767b1552fc3c965d9dada8e0dd1528f2f018aa5263dd232b7ddc8710f35b9a16' }}"
+          if [ "$WANT" = "any" ]; then
+            echo "ghidra_sha=any: decompiling whatever libp2re.so this APK holds ($SHA)"
+          elif [ "$SHA" != "$WANT" ]; then
+            echo "libp2re.so SHA-256 mismatch (want $WANT), stopping"; exit 1
+          fi
+      - name: Imports and Vulkan names (cheap, no Ghidra)
+        run: |
+          mkdir -p out
+          nm -D --undefined-only by work/libp2re.so > out/imports.txt 2>out/imports.err || true
+          nm -D --defined-only -S -n work/libp2re.so 2>>out/imports.err | gzip -9 > out/zz-exports.txt.gz || true
+          python3 - <<'EOF_VKNAMES'
+          import re
+          d = open('work/libp2re.so', 'rb').read()
+          vk = sorted({m.group().decode() for m in re.finditer(rb'vk[A-Z][A-Za-z0-9]{3,60}', d[:0x9c77a0])})
+          open('out/vk-names.txt', 'w').write("\n".join(vk) + "\n")
+          print("vk* names in rodata/dynstr:", len(vk))
+          EOF_VKNAMES
+          echo "undefined dynamic symbols: $(wc -l < out/imports.txt)   defined: $(zcat out/zz-exports.txt.gz | wc -l)"
+          grep -c ' vk' out/imports.txt || true
+      - name: Download Ghidra
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GHIDRA_VERSION: ${{ inputs.ghidra_version || '11.3.2' }}
+        run: |
+          set -e
+          TAG="Ghidra_${GHIDRA_VERSION}_build"
+          URL=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/tags/$TAG" | python3 -c "import sys,json; d=json.load(sys.stdin); print([a['browser_download_url'] for a in d['assets'] if a['name'].startswith('ghidra_') and a['name'].endswith('.zip')][0])")
+          echo "Ghidra: $URL"
+          curl -fsSL -o ghidra.zip "$URL"
+          unzip -q ghidra.zip -d ghidra_dist
+          G=$(ls -d ghidra_dist/ghidra_*)
+          echo "$G" > ghidra_home.txt
+          if grep -q '^MAXMEM=' "$G/support/launch.properties"; then sed -i 's/^MAXMEM=.*/MAXMEM=5G/' "$G/support/launch.properties"; else echo "MAXMEM=5G" >> "$G/support/launch.properties"; fi
+          grep MAXMEM "$G/support/launch.properties"
+      - name: Import libp2re.so (no auto-analysis) and decompile the targets
+        timeout-minutes: 150
+        env:
+          TARGETS: ${{ inputs.decomp_targets || 'addr:0x59e19a0 addr:0x59c0cb0 addr:0x59b6840 addr:0x59b5780 addr:0x59b6760 addr:0x59c0d60 addr:0x59b6de0 addr:0x59c09f0 addr:0x59ba320 addr:0x59cffa0 addr:0x59d5cc0 addr:0x59ba160 addr:0x59ba2c0 addr:0x59b85a0 addr:0x59c5e20 addr:0x59b9600 addr:0x59e2860 addr:0x59c5fa0 addr:0x59d5dd0 addr:0x59d5d80 addr:0x5a50b00 addr:0x59c5b80 addr:0x59c09b0 addr:0x59c5ba0 addr:0x59c6140 addr:0x59bf180 addr:0x59c61b0 addr:0x59c57d0 addr:0x59c57e0 addr:0x59c57f0 addr:0x59c5880 addr:0x59c5910 addr:0x59c5b60 addr:0x59c5bc0 addr:0x59c5f40 addr:0x59c6160 addr:0x59c6190 addr:0x59e0da0 name:ngfx4Core6Submit name:f_109a6240_lifted name:TsoXchg32 name:TsoXchg8 name:TextureUpload name:TextureBinding name:TextureCreate' }}
+        run: |
+          set -eo pipefail
+          G=$(cat ghidra_home.txt)
+          mkdir -p ghscripts ghproj out
+          tr ' ' '\n' <<< "$TARGETS" | grep . > targets.txt
+          echo "targets:"; cat targets.txt
+          cat > ghscripts/P2Decomp.java <<'EOF_P2DECOMP'
+          // P2Decomp.java  (v63)  headless Ghidra script for libp2re.so (AArch64, no auto-analysis)
+          //
+          // Why raw decoding: in headless mode without analysis the Listing has no instructions, so
+          // every pass that walks instructions finds nothing (v61/v62: "direct callees made into functions: 0").
+          // This script therefore decodes the AArch64 words itself (BL / B / ADRP+ADD) straight from memory.
+          //
+          // Script args (all optional, any order):
+          //   <file>           a text file of tokens, one or more per line (the workflow passes targets.txt)
+          //   <dir>            an existing directory = the output directory (the workflow passes out/)
+          //   out=<dir>        output directory (default: env P2OUT, else the current directory)
+          //   name:<substr>    also decompile every function whose mangled name contains <substr>   (v62 style)
+          //   fn=<substr>      same as name:
+          //   0xA-0xB          also decompile every function whose entry is in that ELF range (v62 style)
+          //   addr:<hex>       also decompile the function at this ELF virtual address (the elf+0x... label, e.g. 0x59b9160); addr:g<hex> = raw Ghidra address (ELF + image base)
+          //   nodefault        do not decompile the built-in default set (all vkpddi + ngfx host code)
+          //   max=<n>          cap on number of functions decompiled (default 1500)
+          //   guest            also include recompiled guest functions (f_xxxx) matched by name:/fn= (off by default)
+          //
+          // Outputs (all in the output directory):
+          //   decomp.c              decompiled C, each function preceded by a header (callers, callees, strings),
+          //                         DAT_/UNK_/PTR_/FUN_/func_0x addresses annotated with symbol or string
+          //   functions.txt         the decompiled set (name, elf address, size)
+          //   host-functions.txt    every NON-guest function: address, size, guest callers, callees, strings
+          //   host-callgraph.txt    host function -> host callees / guest callees
+          //   callers-of.txt        for every host function: who calls it (host callers, number of guest callers)
+          //   strings-xref.txt      every C string referenced via ADRP+ADD by host code, with the referencing functions
+          //   knobs.txt             the subset of those strings that look like switches / env names / files / tuning
+          //   strings-rodata.txt.gz every printable NUL-terminated string in the read-only data
+          //   namespaces.txt        host namespaces and function counts
+          //   allfuncs.txt.gz       every function: address, size, name
+          //   vk-usage.txt          every Vulkan entry point the host references (call-site counts) + the never-referenced ones
+          //   vk-by-function.txt    host function -> Vulkan entry points, renderer globals and imports it touches
+          //   import-usage.txt      libc/Android imports called by host code (sleep, wait, mutex, clock ... marked *)
+          //   globals-xref.txt      renderer data symbols and who touches them
+          //   rewrite-sizing.txt    sizes and counts for estimating a renderer rewrite
+          //   summary.txt           counts and timings
+          //
+          // Addresses printed as elf+0x... are ELF virtual addresses (Ghidra address minus the image base).
+
+          import ghidra.app.script.GhidraScript;
+          import ghidra.app.decompiler.DecompInterface;
+          import ghidra.app.decompiler.DecompileResults;
+          import ghidra.program.model.address.Address;
+          import ghidra.program.model.address.AddressSpace;
+          import ghidra.program.model.listing.Function;
+          import ghidra.program.model.mem.Memory;
+          import ghidra.program.model.mem.MemoryBlock;
+          import ghidra.program.model.symbol.Symbol;
+          import ghidra.program.model.reloc.Relocation;
+
+          import java.io.BufferedWriter;
+          import java.io.File;
+          import java.io.FileOutputStream;
+          import java.io.OutputStreamWriter;
+          import java.io.PrintWriter;
+          import java.nio.ByteBuffer;
+          import java.nio.ByteOrder;
+          import java.util.ArrayList;
+          import java.util.Arrays;
+          import java.util.HashMap;
+          import java.util.LinkedHashMap;
+          import java.util.LinkedHashSet;
+          import java.util.List;
+          import java.util.Map;
+          import java.util.Set;
+          import java.util.TreeMap;
+          import java.util.regex.Matcher;
+          import java.util.regex.Pattern;
+          import java.util.zip.GZIPOutputStream;
+
+          public class P2Decomp extends GhidraScript {
+
+              // ---- program model ------------------------------------------------------------------
+              private long base;
+              private Memory mem;
+              private AddressSpace space;
+              private MemoryBlock[] blocks;
+              private int n;                 // number of functions
+              private long[] ent;            // sorted entry addresses (Ghidra addresses)
+              private String[] nm;           // mangled names
+              private long[] size;           // extent: distance to next function entry, capped
+              private boolean[] guest;       // recompiled guest function f_xxxx(Cpu*)
+              private int[] guestCallers;    // number of BL sites in guest code that call this function
+              private int[] callerSites;     // number of BL sites in total
+              private List<LinkedHashSet<Integer>> callees = new ArrayList<>();
+              private List<LinkedHashSet<Integer>> callers = new ArrayList<>();
+              private List<LinkedHashSet<Long>> hostStrings = new ArrayList<>();
+              private Map<Long, String> strCache = new HashMap<>();
+              private Map<Long, LinkedHashSet<Integer>> strHostRefs = new TreeMap<>();
+              private Map<Long, int[]> strGuestRefs = new HashMap<>();
+              private Map<Long, String> dataSyms = new HashMap<>();      // data symbol address -> mangled name (vk table, globals)
+              private Map<Long, String> pltCache = new HashMap<>();      // PLT stub address -> import name ("" = not a stub)
+              private Map<Long, String> gotCache = new HashMap<>();      // GOT slot address -> symbol name ("" = none)
+              private List<LinkedHashSet<String>> hostGlobals = new ArrayList<>();   // data symbols / vk entries a host function touches
+              private List<LinkedHashSet<String>> hostImports = new ArrayList<>();   // libc / Android imports a host function calls
+              private Map<String, int[]> globalSites = new TreeMap<>();
+              private Map<String, LinkedHashSet<Integer>> globalFuncs = new HashMap<>();
+              private Map<String, int[]> importSites = new TreeMap<>();
+              private Map<String, LinkedHashSet<Integer>> importFuncs = new HashMap<>();
+              private static final long CAP = 65536;
+              private static final Pattern SYNC = Pattern.compile("(?i)sleep|yield|wait|cond_|futex|sem_|mutex|pthread_join|clock_gettime|mach_|dispatch_|sched_|setpriority|nice|affinity");
+              private static final Pattern GUEST = Pattern.compile("^_Z\\d+f_[0-9a-fA-F]+P3Cpu$");
+
+              private String hex(long v) { return Long.toHexString(v); }
+              private String elf(long ghidraAddr) { return "elf+0x" + hex(ghidraAddr - base); }
+              private Address addr(long off) { return space.getAddress(off); }
+
+              @Override
+              public void run() throws Exception {
+                  long t0 = System.currentTimeMillis();
+                  mem = currentProgram.getMemory();
+                  space = currentProgram.getAddressFactory().getDefaultAddressSpace();
+                  base = currentProgram.getImageBase().getOffset();
+                  blocks = mem.getBlocks();
+                  println("P2Decomp v63: image base " + hex(base));
+
+                  // ---- args ----
+                  String outPath = System.getenv("P2OUT");
+                  boolean noDefault = false, withGuest = false;
+                  int max = 1500;
+                  List<String> subs = new ArrayList<>();
+                  List<Long> addrs = new ArrayList<>();
+                  List<long[]> ranges = new ArrayList<>();
+                  String[] args = getScriptArgs();
+                  List<String> toks = new ArrayList<>();
+                  if (args != null) {
+                      for (String a : args) {
+                          if (a == null) continue;
+                          a = a.trim();
+                          if (a.isEmpty()) continue;
+                          File af = new File(a);
+                          if (af.isFile()) {                       // v62 style: first arg = targets file, one token per line
+                              for (String line : java.nio.file.Files.readAllLines(af.toPath())) {
+                                  for (String t : line.trim().split("\\s+")) if (!t.isEmpty()) toks.add(t);
+                              }
+                          } else if (af.isDirectory()) {           // v62 style: second arg = output directory
+                              outPath = a;
+                          } else {
+                              toks.add(a);
+                          }
+                      }
+                  }
+                  for (String a : toks) {
+                      if (a.startsWith("out=")) outPath = a.substring(4);
+                      else if (a.equals("nodefault")) noDefault = true;
+                      else if (a.equals("guest")) withGuest = true;
+                      else if (a.startsWith("max=")) max = Integer.parseInt(a.substring(4));
+                      else if (a.startsWith("name:")) subs.add(a.substring(5));
+                      else if (a.startsWith("fn=")) subs.add(a.substring(3));
+                      else if (a.startsWith("addr:")) addrs.add(parseAddr(a.substring(5)));
+                      else if (a.matches("0x[0-9a-fA-F]+-0x[0-9a-fA-F]+")) {
+                          String[] pr = a.split("-");
+                          ranges.add(new long[] { parseAddr(pr[0]), parseAddr(pr[1]) });
+                      }
+                      else subs.add(a);
+                  }
+                  if (outPath == null || outPath.isEmpty()) outPath = ".";
+                  File out = new File(outPath);
+                  out.mkdirs();
+                  println("P2Decomp: output directory " + out.getAbsolutePath());
+
+                  // ---- v74: addr: targets that have no function of their own (unnamed internal code: pass begin/end helpers, queued lambdas) ----
+                  // The function table below only holds functions Ghidra already knows. For every addr: target with no function starting exactly there, disassemble and create one,
+                  // so it appears in the table and can be decompiled. (If the address lies inside another function's body, Ghidra may refuse; that is printed.)
+                  for (long a : addrs) {
+                      try {
+                          Address ad = currentProgram.getAddressFactory().getDefaultAddressSpace().getAddress(a);
+                          if (currentProgram.getFunctionManager().getFunctionAt(ad) == null) {
+                              disassemble(ad);
+                              Function nf = createFunction(ad, "p2fn_" + Long.toHexString(a - base));
+                              println("P2Decomp: addr target " + elf(a) + (nf != null ? " -> created function " + nf.getName() : " -> could not create a function there"));
+                          }
+                      } catch (Exception ex) {
+                          println("P2Decomp: addr target " + elf(a) + " -> create failed: " + ex);
+                      }
+                  }
+
+                  // ---- function table ----
+                  List<Function> fl = new ArrayList<>();
+                  for (Function f : currentProgram.getFunctionManager().getFunctions(true)) fl.add(f);
+                  fl.sort((x, y) -> Long.compare(x.getEntryPoint().getOffset(), y.getEntryPoint().getOffset()));
+                  // de-duplicate identical entry addresses (aliases)
+                  List<Function> uniq = new ArrayList<>();
+                  long last = -1;
+                  for (Function f : fl) {
+                      long e = f.getEntryPoint().getOffset();
+                      if (e != last) uniq.add(f);
+                      last = e;
+                  }
+                  n = uniq.size();
+                  ent = new long[n];
+                  nm = new String[n];
+                  size = new long[n];
+                  guest = new boolean[n];
+                  guestCallers = new int[n];
+                  callerSites = new int[n];
+                  int guestCount = 0;
+                  for (int i = 0; i < n; i++) {
+                      ent[i] = uniq.get(i).getEntryPoint().getOffset();
+                      nm[i] = uniq.get(i).getName();
+                      guest[i] = GUEST.matcher(nm[i]).matches();
+                      if (guest[i]) guestCount++;
+                      callees.add(guest[i] ? null : new LinkedHashSet<Integer>());
+                      callers.add(guest[i] ? null : new LinkedHashSet<Integer>());
+                      hostStrings.add(guest[i] ? null : new LinkedHashSet<Long>());
+                      hostGlobals.add(guest[i] ? null : new LinkedHashSet<String>());
+                      hostImports.add(guest[i] ? null : new LinkedHashSet<String>());
+                  }
+                  for (int i = 0; i < n; i++) {
+                      long next = (i + 1 < n) ? ent[i + 1] : ent[i] + 4096;
+                      size[i] = Math.min(next - ent[i], CAP);
+                  }
+                  println("P2Decomp: functions " + n + " (guest " + guestCount + ", host " + (n - guestCount) + ")");
+
+                  // ---- data symbols (Vulkan function-pointer table, renderer globals) ----
+                  try {
+                      for (Symbol sy : currentProgram.getSymbolTable().getAllSymbols(true)) {
+                          String sn = sy.getName();
+                          if (sn == null || !(sn.startsWith("_Z") || sn.startsWith("g_"))) continue;
+                          long so = sy.getAddress().getOffset();
+                          if (inData(so)) dataSyms.putIfAbsent(so, sn);
+                      }
+                  } catch (Throwable t) {
+                      println("P2Decomp: data symbol pass failed: " + t);
+                  }
+                  println("P2Decomp: data symbols " + dataSyms.size());
+
+                  // ---- raw AArch64 scan: BL / B / ADRP+ADD ----
+                  long scanned = rawScan();
+                  println("P2Decomp: scanned " + scanned + " instruction words");
+
+                  writeFunctionFiles(out);
+                  writeStringFiles(out);
+                  writeRodataStrings(out);
+                  writeVkFiles(out);
+
+                  // ---- choose decompile set ----
+                  LinkedHashSet<Integer> sel = new LinkedHashSet<>();
+                  Map<Integer, String> why = new HashMap<>();
+                  if (!noDefault) {
+                      for (int i = 0; i < n; i++) {
+                          if (guest[i]) continue;
+                          if (nm[i].contains("6vkpddi") || nm[i].contains("4ngfx")) {
+                              sel.add(i);
+                              why.put(i, "default");
+                          }
+                      }
+                  }
+                  if (!noDefault) {
+                      // host functions anywhere in the binary that use a Vulkan entry point, or call a wait / sleep / lock / clock import
+                      int extra = 0;
+                      for (int i = 0; i < n; i++) {
+                          if (guest[i] || sel.contains(i)) continue;
+                          boolean vk = false, sync = false;
+                          for (String g : hostGlobals.get(i)) if (g.startsWith("vk")) { vk = true; break; }
+                          for (String im : hostImports.get(i)) if (SYNC.matcher(im).find()) { sync = true; break; }
+                          if (vk || sync) { sel.add(i); why.put(i, vk ? "uses-vulkan" : "uses-sync-import"); extra++; }
+                      }
+                      println("P2Decomp: extra host functions (Vulkan users, sync/wait/clock importers): " + extra);
+                  }
+                  for (String s : subs) {
+                      int c = 0;
+                      for (int i = 0; i < n; i++) {
+                          if (!withGuest && guest[i]) continue;
+                          if (nm[i].contains(s)) {
+                              if (sel.add(i)) why.put(i, "name:" + s);
+                              c++;
+                          }
+                      }
+                      println("P2Decomp: target name:" + s + " -> " + c + " function(s)");
+                  }
+                  for (long a : addrs) {
+                      int i = indexOf(a);
+                      if (i >= 0) {
+                          if (sel.add(i)) why.put(i, "addr:" + hex(a - base));
+                          println("P2Decomp: target addr " + elf(a) + " -> " + nm[i]);
+                      } else {
+                          println("P2Decomp: target addr " + elf(a) + " -> none");
+                      }
+                  }
+                  for (long[] r : ranges) {
+                      int c = 0;
+                      for (int i = 0; i < n; i++) {
+                          if (ent[i] >= r[0] && ent[i] < r[1]) {
+                              if (sel.add(i)) why.put(i, "range:" + hex(r[0] - base));
+                              c++;
+                          }
+                      }
+                      println("P2Decomp: target range " + elf(r[0]) + "-" + elf(r[1]) + " -> " + c + " function(s)");
+                  }
+                  List<Integer> order = new ArrayList<>(sel);
+                  order.sort((x, y) -> Long.compare(ent[x], ent[y]));
+                  if (order.size() > max) {
+                      println("P2Decomp: capping decompile set " + order.size() + " -> " + max);
+                      order = order.subList(0, max);
+                  }
+                  println("P2Decomp: decompiling " + order.size() + " function(s)");
+
+                  // ---- decompile ----
+                  DecompInterface ifc = new DecompInterface();
+                  ifc.openProgram(currentProgram);
+                  PrintWriter cw = writer(new File(out, "decomp.c"), false);
+                  PrintWriter fw = writer(new File(out, "functions.txt"), false);
+                  fw.println("# function, entry (elf virtual address), size in bytes, why selected, decompile ok?");
+                  Pattern ref = Pattern.compile("(?:[A-Za-z]+_)+([0-9a-fA-F]{8})\\b|func_0x([0-9a-fA-F]{8})");
+                  int ok = 0, fail = 0;
+                  for (int idx : order) {
+                      if (monitor.isCancelled()) break;
+                      Function f = currentProgram.getFunctionManager().getFunctionAt(addr(ent[idx]));
+                      String status = "ok";
+                      String c = null;
+                      try {
+                          if (f == null) throw new RuntimeException("no function object");
+                          DecompileResults r = ifc.decompileFunction(f, 90, monitor);
+                          if (r != null && r.decompileCompleted() && r.getDecompiledFunction() != null) {
+                              c = r.getDecompiledFunction().getC();
+                          } else {
+                              status = "FAILED " + (r == null ? "null" : r.getErrorMessage());
+                          }
+                      } catch (Throwable t) {
+                          status = "FAILED " + t;
+                      }
+                      fw.println(nm[idx] + " " + elf(ent[idx]) + " " + size[idx] + " " + why.get(idx) + " " + status);
+                      cw.println("// ======================================================================");
+                      cw.println("// " + nm[idx] + "  " + elf(ent[idx]) + "  size " + size[idx] + "  [" + why.get(idx) + "]");
+                      cw.println("// guest call sites: " + guestCallers[idx] + ", all call sites: " + callerSites[idx]);
+                      cw.println("// host callers: " + names(callers.get(idx), 12));
+                      cw.println("// host callees: " + names(callees.get(idx), 40));
+                      cw.println("// strings: " + strs(hostStrings.get(idx), 25));
+                      cw.println("// vulkan / globals: " + joinS(hostGlobals.get(idx), 60));
+                      cw.println("// imports: " + joinS(hostImports.get(idx), 40));
+                      if (c == null) {
+                          cw.println("// DECOMPILE " + status);
+                          fail++;
+                          continue;
+                      }
+                      ok++;
+                      StringBuffer sb = new StringBuffer();
+                      Matcher m = ref.matcher(c);
+                      while (m.find()) {
+                          String h = m.group(1) != null ? m.group(1) : m.group(2);
+                          String note = annotate(Long.parseLong(h, 16));
+                          if (note == null) m.appendReplacement(sb, Matcher.quoteReplacement(m.group()));
+                          else m.appendReplacement(sb, Matcher.quoteReplacement(m.group() + " /* " + note + " */"));
+                      }
+                      m.appendTail(sb);
+                      cw.println(sb.toString());
+                  }
+                  cw.close();
+                  fw.close();
+                  ifc.dispose();
+                  println("P2Decomp: decompiled " + ok + " ok, " + fail + " failed");
+
+                  PrintWriter sw = writer(new File(out, "summary.txt"), false);
+                  sw.println("P2Decomp v63");
+                  sw.println("functions " + n + " guest " + guestCount + " host " + (n - guestCount));
+                  sw.println("words scanned " + scanned);
+                  sw.println("string literals referenced by host code " + strHostRefs.size());
+                  sw.println("decompiled ok " + ok + " failed " + fail);
+                  sw.println("seconds " + (System.currentTimeMillis() - t0) / 1000);
+                  sw.close();
+                  println("P2Decomp: done in " + (System.currentTimeMillis() - t0) / 1000 + " s");
+              }
+
+              // ---- helpers -------------------------------------------------------------------------
+              private long parseAddr(String s) {
+                  s = s.trim().toLowerCase();
+                  // v74b: plain hex is ALWAYS an ELF virtual address (the elf+0x... labels in every output file); g0x... = raw Ghidra address.
+                  // The old rule (v < base ? v + base : v) guessed from the value, but the image base is only 0x100000 and every renderer address
+                  // (0x59c0cb0 ...) is far above it, so ELF addresses were taken as Ghidra addresses and every target landed 0x100000 too low.
+                  boolean raw = s.startsWith("g");
+                  if (raw) s = s.substring(1);
+                  if (s.startsWith("0x")) s = s.substring(2);
+                  long v = Long.parseLong(s, 16);
+                  return raw ? v : v + base;
+              }
+
+              private int indexOf(long a) {
+                  int p = Arrays.binarySearch(ent, a);
+                  if (p >= 0) return p;
+                  p = -p - 2;
+                  if (p < 0) return -1;
+                  return (a - ent[p] <= size[p]) ? p : -1;
+              }
+
+              private String names(Set<Integer> s, int limit) {
+                  if (s == null || s.isEmpty()) return "-";
+                  StringBuilder b = new StringBuilder();
+                  int c = 0;
+                  for (int i : s) {
+                      if (c++ >= limit) { b.append(" ... (+").append(s.size() - limit).append(")"); break; }
+                      if (b.length() > 0) b.append(", ");
+                      b.append(nm[i]);
+                  }
+                  return b.toString();
+              }
+
+              private String strs(Set<Long> s, int limit) {
+                  if (s == null || s.isEmpty()) return "-";
+                  StringBuilder b = new StringBuilder();
+                  int c = 0;
+                  for (long a : s) {
+                      if (c++ >= limit) { b.append(" ... (+").append(s.size() - limit).append(")"); break; }
+                      if (b.length() > 0) b.append(" | ");
+                      b.append('"').append(esc(strCache.get(a))).append('"');
+                  }
+                  return b.toString();
+              }
+
+              private String esc(String s) {
+                  if (s == null) return "";
+                  return s.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t").replace("*/", "* /");
+              }
+
+              private String annotate(long a) {
+                  try {
+                      String s = cstring(a);
+                      if (s != null) return "\"" + esc(s) + "\"";
+                      int i = indexOf(a);
+                      if (i >= 0 && ent[i] == a) return nm[i];
+                      Symbol sym = currentProgram.getSymbolTable().getPrimarySymbol(addr(a));
+                      if (sym != null && sym.getName() != null && !sym.getName().startsWith("DAT_")
+                              && !sym.getName().startsWith("UNK_") && !sym.getName().startsWith("PTR_")) {
+                          return sym.getName() + " " + elf(a);
+                      }
+                      return elf(a);
+                  } catch (Throwable t) {
+                      return null;
+                  }
+              }
+
+              private MemoryBlock dataBlockAt(long a) {
+                  for (MemoryBlock b : blocks) {
+                      if (!b.isExecute() && b.isInitialized() && a >= b.getStart().getOffset() && a <= b.getEnd().getOffset()) return b;
+                  }
+                  return null;
+              }
+
+              // printable NUL-terminated string at Ghidra address a (>= 3 chars), else null; cached
+              private String cstring(long a) {
+                  if (strCache.containsKey(a)) return strCache.get(a);
+                  String r = null;
+                  MemoryBlock b = dataBlockAt(a);
+                  if (b != null) {
+                      try {
+                          byte[] buf = new byte[256];
+                          long end = b.getEnd().getOffset();
+                          int len = (int) Math.min(256, end - a + 1);
+                          mem.getBytes(addr(a), buf, 0, len);
+                          int k = 0;
+                          while (k < len && ((buf[k] >= 0x20 && buf[k] < 0x7f) || buf[k] == '\t' || buf[k] == '\n' || buf[k] == '\r')) k++;
+                          if (k >= 3 && k < len && buf[k] == 0) r = new String(buf, 0, k, "ISO-8859-1");
+                      } catch (Throwable t) {
+                          r = null;
+                      }
+                  }
+                  if (r != null) strCache.put(a, r);
+                  return r;
+              }
+
+              private boolean inData(long a) {
+                  for (MemoryBlock b : blocks) {
+                      if (!b.isExecute() && a >= b.getStart().getOffset() && a <= b.getEnd().getOffset()) return true;
+                  }
+                  return false;
+              }
+
+              private String shortName(String m) {
+                  Matcher x = Pattern.compile("^_ZN4ngfx2vk\\d+(vk\\w+?)E$").matcher(m);
+                  return x.find() ? x.group(1) : m;
+              }
+
+              private boolean isLoader(int idx) {
+                  return nm[idx].matches("_ZN4ngfx2vk\\d+Load.*");
+              }
+
+              // symbol name behind a GOT slot (relocation first, then a label at the slot); "" if none
+              private String slotName(long slot) {
+                  String c = gotCache.get(slot);
+                  if (c != null) return c;
+                  String r = "";
+                  try {
+                      for (Relocation rl : currentProgram.getRelocationTable().getRelocations(addr(slot))) {
+                          String n = rl.getSymbolName();
+                          if (n != null && !n.isEmpty()) { r = n; break; }
+                      }
+                      if (r.isEmpty()) {
+                          Symbol sy = currentProgram.getSymbolTable().getPrimarySymbol(addr(slot));
+                          if (sy != null && sy.getName() != null && !sy.getName().startsWith("PTR_") && !sy.getName().startsWith("DAT_")) r = sy.getName();
+                      }
+                  } catch (Throwable t) {
+                      r = "";
+                  }
+                  gotCache.put(slot, r);
+                  return r;
+              }
+
+              // if tgt is an AArch64 PLT stub (adrp x16 / ldr x17,[x16,#o] / (add x16) / br x17) return the import name, else null
+              private String pltName(long tgt) {
+                  String c = pltCache.get(tgt);
+                  if (c != null) return c.isEmpty() ? null : c;
+                  String r = "";
+                  try {
+                      byte[] b = new byte[20];
+                      mem.getBytes(addr(tgt), b, 0, 20);
+                      ByteBuffer bb = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN);
+                      int o = 0;
+                      if (bb.getInt(0) == 0xD503245F) o = 4;               // bti c
+                      int w0 = bb.getInt(o), w1 = bb.getInt(o + 4), w3 = bb.getInt(o + 12);
+                      if (o + 16 <= 20 && (w0 & 0x9F00001F) == 0x90000010 && (w1 & 0xFFC003FF) == 0xF9400211 && w3 == 0xD61F0220) {
+                          long pc = tgt + o;
+                          long immlo = (w0 >> 29) & 3, immhi = (w0 >> 5) & 0x7FFFF;
+                          long imm21 = (immhi << 2) | immlo;
+                          if ((imm21 & 0x100000) != 0) imm21 |= ~0x1FFFFFL;
+                          long page = (pc & ~0xFFFL) + (imm21 << 12);
+                          long slot = page + (((w1 >> 10) & 0xFFF) << 3);
+                          String n = slotName(slot);
+                          r = n.isEmpty() ? ("plt@" + elf(tgt)) : n;
+                      }
+                  } catch (Throwable t) {
+                      r = "";
+                  }
+                  pltCache.put(tgt, r);
+                  return r.isEmpty() ? null : r;
+              }
+
+              private void noteImport(int cur, String name) {
+                  hostImports.get(cur).add(name);
+                  int[] k = importSites.get(name);
+                  if (k == null) { k = new int[1]; importSites.put(name, k); }
+                  k[0]++;
+                  LinkedHashSet<Integer> fs = importFuncs.get(name);
+                  if (fs == null) { fs = new LinkedHashSet<>(); importFuncs.put(name, fs); }
+                  fs.add(cur);
+              }
+
+              private void noteGlobal(int cur, long a) {
+                  if (isLoader(cur)) return;                      // LoadDevice etc. store every pointer once: not a use
+                  String name = dataSyms.get(a);
+                  if (name == null && inData(a)) {
+                      String sl = slotName(a);                     // GOT slot of an exported global
+                      if (!sl.isEmpty() && (sl.startsWith("_Z") || sl.startsWith("g_"))) name = sl;
+                  }
+                  if (name == null) return;
+                  name = shortName(name);
+                  hostGlobals.get(cur).add(name);
+                  int[] k = globalSites.get(name);
+                  if (k == null) { k = new int[1]; globalSites.put(name, k); }
+                  k[0]++;
+                  LinkedHashSet<Integer> fs = globalFuncs.get(name);
+                  if (fs == null) { fs = new LinkedHashSet<>(); globalFuncs.put(name, fs); }
+                  fs.add(cur);
+              }
+
+              // ---- raw scan ------------------------------------------------------------------------
+              private long rawScan() throws Exception {
+                  long words = 0;
+                  long[] regPage = new long[32];
+                  long[] regAt = new long[32];
+                  for (MemoryBlock b : blocks) {
+                      if (!b.isExecute() || !b.isInitialized()) continue;
+                      long start = b.getStart().getOffset();
+                      long len = b.getSize();
+                      println("P2Decomp: scanning exec block " + b.getName() + " " + elf(start) + " size " + len);
+                      int cur = 0;
+                      Arrays.fill(regAt, 0L);
+                      final int CH = 1 << 20;
+                      byte[] buf = new byte[CH];
+                      for (long off = 0; off < len; off += CH) {
+                          if (monitor.isCancelled()) return words;
+                          int cnt = (int) Math.min(CH, len - off);
+                          cnt &= ~3;
+                          if (cnt <= 0) break;
+                          try {
+                              mem.getBytes(addr(start + off), buf, 0, cnt);
+                          } catch (Throwable t) {
+                              continue;
+                          }
+                          ByteBuffer bb = ByteBuffer.wrap(buf, 0, cnt).order(ByteOrder.LITTLE_ENDIAN);
+                          for (int i = 0; i < cnt; i += 4) {
+                              int w = bb.getInt(i);
+                              words++;
+                              long pc = start + off + i;
+                              int top = w & 0xFC000000;
+                              if (top == 0x94000000 || top == 0x14000000) {
+                                  while (cur + 1 < n && ent[cur + 1] <= pc) cur++;
+                                  if (cur >= n || pc < ent[cur]) continue;
+                                  long imm = (w << 6) >> 6;
+                                  long tgt = pc + (imm << 2);
+                                  int ti = Arrays.binarySearch(ent, tgt);
+                                  if (ti < 0) {
+                                      String pn = pltName(tgt);
+                                      if (pn != null) {
+                                          if (!guest[cur]) noteImport(cur, pn);
+                                          continue;
+                                      }
+                                      if (top == 0x14000000) continue;       // plain branch to a non-entry: ignore
+                                      ti = -ti - 2;
+                                      if (ti < 0 || tgt - ent[ti] > size[ti]) continue;
+                                  }
+                                  if (top == 0x14000000 && ti == cur) continue;   // loop / local branch
+                                  callerSites[ti]++;
+                                  if (guest[cur]) {
+                                      if (!guest[ti]) guestCallers[ti]++;
+                                  } else if (ti != cur) {
+                                      callees.get(cur).add(ti);
+                                      if (!guest[ti]) callers.get(ti).add(cur);
+                                  }
+                                  continue;
+                              }
+                              if ((w & 0x9F000000) == 0x90000000) {            // ADRP
+                                  int rd = w & 31;
+                                  long immlo = (w >> 29) & 3;
+                                  long immhi = (w >> 5) & 0x7FFFF;
+                                  long imm21 = (immhi << 2) | immlo;
+                                  if ((imm21 & 0x100000) != 0) imm21 |= ~0x1FFFFFL;
+                                  regPage[rd] = (pc & ~0xFFFL) + (imm21 << 12);
+                                  regAt[rd] = pc;
+                                  continue;
+                              }
+                              if ((w & 0x3B000000) == 0x39000000) {            // LDR/STR (unsigned immediate): global variable / GOT slot access
+                                  int rn2 = (w >> 5) & 31;
+                                  if (regAt[rn2] == 0 || pc - regAt[rn2] > 96) continue;
+                                  while (cur + 1 < n && ent[cur + 1] <= pc) cur++;
+                                  if (cur >= n || pc < ent[cur] || guest[cur]) continue;
+                                  long sh = (w >> 30) & 3;
+                                  long a2 = regPage[rn2] + (((long) ((w >> 10) & 0xFFF)) << sh);
+                                  noteGlobal(cur, a2);
+                                  continue;
+                              }
+                              if ((w & 0xFF800000) == 0x91000000) {            // ADD (immediate), 64-bit
+                                  int rn = (w >> 5) & 31;
+                                  if (regAt[rn] == 0 || pc - regAt[rn] > 96) continue;
+                                  long imm12 = (w >> 10) & 0xFFF;
+                                  if (((w >> 22) & 1) != 0) imm12 <<= 12;
+                                  long a = regPage[rn] + imm12;
+                                  while (cur + 1 < n && ent[cur + 1] <= pc) cur++;
+                                  if (cur >= n || pc < ent[cur]) continue;
+                                  if (!guest[cur]) noteGlobal(cur, a);
+                                  String s = cstring(a);
+                                  if (s == null) continue;
+                                  if (guest[cur]) {
+                                      int[] g = strGuestRefs.get(a);
+                                      if (g == null) { g = new int[1]; strGuestRefs.put(a, g); }
+                                      g[0]++;
+                                  } else {
+                                      hostStrings.get(cur).add(a);
+                                      LinkedHashSet<Integer> set = strHostRefs.get(a);
+                                      if (set == null) { set = new LinkedHashSet<>(); strHostRefs.put(a, set); }
+                                      set.add(cur);
+                                  }
+                              }
+                          }
+                      }
+                  }
+                  return words;
+              }
+
+              // ---- outputs -------------------------------------------------------------------------
+              private PrintWriter writer(File f, boolean gz) throws Exception {
+                  FileOutputStream fo = new FileOutputStream(f);
+                  if (gz) return new PrintWriter(new BufferedWriter(new OutputStreamWriter(new GZIPOutputStream(fo), "UTF-8"), 1 << 16));
+                  return new PrintWriter(new BufferedWriter(new OutputStreamWriter(fo, "UTF-8"), 1 << 16));
+              }
+
+              private void writeFunctionFiles(File out) throws Exception {
+                  PrintWriter all = writer(new File(out, "allfuncs.txt.gz"), true);
+                  for (int i = 0; i < n; i++) all.println(elf(ent[i]) + " " + size[i] + " " + (guest[i] ? "G " : "H ") + nm[i]);
+                  all.close();
+
+                  PrintWriter hf = writer(new File(out, "host-functions.txt"), false);
+                  hf.println("# elf address, size, guest call sites, callees, strings, mangled name   (host = not a recompiled f_xxxx guest function)");
+                  PrintWriter cg = writer(new File(out, "host-callgraph.txt"), false);
+                  PrintWriter co = writer(new File(out, "callers-of.txt"), false);
+                  Map<String, Integer> ns = new TreeMap<>();
+                  Pattern nsp = Pattern.compile("^_Z(?:N|ZN|L)?(?:K)?(\\d+)([A-Za-z_][A-Za-z0-9_]*)");
+                  for (int i = 0; i < n; i++) {
+                      if (guest[i]) continue;
+                      hf.println(elf(ent[i]) + " " + size[i] + " g" + guestCallers[i] + " c" + callees.get(i).size()
+                              + " s" + hostStrings.get(i).size() + " " + nm[i]);
+                      cg.println(nm[i] + "  " + elf(ent[i]) + "  size " + size[i]);
+                      StringBuilder hc = new StringBuilder();
+                      StringBuilder gc = new StringBuilder();
+                      int gcount = 0;
+                      for (int t : callees.get(i)) {
+                          if (guest[t]) { gcount++; if (gcount <= 8) gc.append(' ').append(elf(ent[t])); }
+                          else hc.append("    -> ").append(nm[t]).append('\n');
+                      }
+                      cg.print(hc);
+                      if (gcount > 0) cg.println("    -> guest functions: " + gcount + " (first:" + gc + ")");
+                      co.println(nm[i] + "  " + elf(ent[i]) + "  guest call sites " + guestCallers[i]);
+                      for (int c : callers.get(i)) co.println("    <- " + nm[c]);
+                      Matcher m = nsp.matcher(nm[i]);
+                      String key = m.find() ? m.group(2) : "(other)";
+                      ns.merge(key, 1, Integer::sum);
+                  }
+                  hf.close();
+                  cg.close();
+                  co.close();
+                  PrintWriter nw = writer(new File(out, "namespaces.txt"), false);
+                  for (Map.Entry<String, Integer> e : ns.entrySet()) nw.println(e.getValue() + "\t" + e.getKey());
+                  nw.close();
+              }
+
+              private String joinS(Set<String> st, int limit) {
+                  if (st == null || st.isEmpty()) return "-";
+                  StringBuilder b = new StringBuilder();
+                  int c = 0;
+                  for (String x : st) {
+                      if (c++ >= limit) { b.append(" ... (+").append(st.size() - limit).append(")"); break; }
+                      if (b.length() > 0) b.append(", ");
+                      b.append(x);
+                  }
+                  return b.toString();
+              }
+
+              private List<Map.Entry<String, int[]>> sortedBySites(Map<String, int[]> m) {
+                  List<Map.Entry<String, int[]>> l = new ArrayList<>(m.entrySet());
+                  l.sort((x, y) -> Integer.compare(y.getValue()[0], x.getValue()[0]));
+                  return l;
+              }
+
+              // Vulkan usage, import usage and the numbers needed to size a rewrite of the host renderer
+              private void writeVkFiles(File out) throws Exception {
+                  // vk-usage.txt
+                  PrintWriter vu = writer(new File(out, "vk-usage.txt"), false);
+                  vu.println("# Vulkan entry points (ngfx::vk::vk* function-pointer globals) referenced by host code.");
+                  vu.println("# sites = adrp+ldr/add reference sites (a call site or a pointer test); LoadDevice/LoadInstance/LoadGlobal excluded.");
+                  vu.println("# sites | host functions | name | first functions");
+                  int used = 0, defined = 0;
+                  Set<String> vkDefined = new LinkedHashSet<>();
+                  for (String m : dataSyms.values()) if (m.startsWith("_ZN4ngfx2vk")) { String sn = shortName(m); if (sn.startsWith("vk")) vkDefined.add(sn); }
+                  defined = vkDefined.size();
+                  for (Map.Entry<String, int[]> e : sortedBySites(globalSites)) {
+                      if (!e.getKey().startsWith("vk")) continue;
+                      used++;
+                      LinkedHashSet<Integer> fs = globalFuncs.get(e.getKey());
+                      vu.println(e.getValue()[0] + " | " + fs.size() + " | " + e.getKey() + " | " + names(fs, 5));
+                  }
+                  vu.println();
+                  vu.println("# defined in the table but never referenced by host code (" + (defined - used) + "):");
+                  for (String sn : vkDefined) if (!globalSites.containsKey(sn)) vu.println("  " + sn);
+                  vu.println("# summary: " + defined + " Vulkan entry points in the table, " + used + " referenced by host code");
+                  vu.close();
+
+                  // vk-by-function.txt
+                  PrintWriter vf = writer(new File(out, "vk-by-function.txt"), false);
+                  vf.println("# host function -> Vulkan entry points / renderer globals / imports it touches (static, direct references only)");
+                  for (int i = 0; i < n; i++) {
+                      if (guest[i]) continue;
+                      if (hostGlobals.get(i).isEmpty() && hostImports.get(i).isEmpty()) continue;
+                      vf.println(nm[i] + "  " + elf(ent[i]) + "  size " + size[i]);
+                      if (!hostGlobals.get(i).isEmpty()) vf.println("    globals: " + joinS(hostGlobals.get(i), 400));
+                      if (!hostImports.get(i).isEmpty()) vf.println("    imports: " + joinS(hostImports.get(i), 400));
+                  }
+                  vf.close();
+
+                  // import-usage.txt
+                  PrintWriter iu = writer(new File(out, "import-usage.txt"), false);
+                  iu.println("# imports (libc / Android / PLT stubs) called directly by host code");
+                  iu.println("# sites | host functions | name | first functions     (sync-looking names are marked *)");
+                  for (Map.Entry<String, int[]> e : sortedBySites(importSites)) {
+                      LinkedHashSet<Integer> fs = importFuncs.get(e.getKey());
+                      iu.println(e.getValue()[0] + " | " + fs.size() + " | " + (SYNC.matcher(e.getKey()).find() ? "*" : "") + e.getKey() + " | " + names(fs, 5));
+                  }
+                  iu.close();
+
+                  // globals-xref.txt
+                  PrintWriter gx = writer(new File(out, "globals-xref.txt"), false);
+                  gx.println("# renderer / runtime data symbols referenced by host code: sites | host functions | name | first functions");
+                  for (Map.Entry<String, int[]> e : sortedBySites(globalSites)) {
+                      if (e.getKey().startsWith("vk")) continue;
+                      LinkedHashSet<Integer> fs = globalFuncs.get(e.getKey());
+                      gx.println(e.getValue()[0] + " | " + fs.size() + " | " + e.getKey() + " | " + names(fs, 6));
+                  }
+                  gx.close();
+
+                  // rewrite-sizing.txt
+                  PrintWriter rs = writer(new File(out, "rewrite-sizing.txt"), false);
+                  rs.println("# Numbers for sizing a rewrite of the host renderer (static; sizes are distance to the next function, capped at 64 KB)");
+                  Map<String, long[]> byNs = new TreeMap<>();
+                  long hostBytes = 0, guestBytes = 0;
+                  int hostCount = 0, guestCount = 0;
+                  List<Integer> hostIdx = new ArrayList<>();
+                  for (int i = 0; i < n; i++) {
+                      if (guest[i]) { guestBytes += size[i]; guestCount++; continue; }
+                      hostBytes += size[i]; hostCount++; hostIdx.add(i);
+                      String k = nm[i].contains("6vkpddi") ? "vkpddi" : nm[i].contains("4ngfx") ? "ngfx" : (nm[i].contains("St6__ndk1") || nm[i].contains("NSt3__1") || nm[i].contains("__cxa") || nm[i].startsWith("_ZNSt")) ? "libc++ / runtime" : "other host";
+                      long[] v = byNs.get(k);
+                      if (v == null) { v = new long[3]; byNs.put(k, v); }
+                      v[0]++; v[1] += size[i];
+                      int ins = 0;
+                      if (!hostGlobals.get(i).isEmpty()) ins = 1;
+                      v[2] += ins;
+                  }
+                  rs.println("guest (recompiled) functions: " + guestCount + ", " + guestBytes + " bytes");
+                  rs.println("host functions: " + hostCount + ", " + hostBytes + " bytes");
+                  for (Map.Entry<String, long[]> e : byNs.entrySet())
+                      rs.println("  " + e.getKey() + ": " + e.getValue()[0] + " functions, " + e.getValue()[1] + " bytes (" + (e.getValue()[1] / 4) + " instruction words), " + e.getValue()[2] + " touch Vulkan/renderer globals");
+                  rs.println("Vulkan entry points defined: " + defined + ", referenced by host code: " + used);
+                  rs.println("imports called by host code: " + importSites.size());
+                  rs.println();
+                  rs.println("## vkpddi functions: size, guest call sites, Vulkan entry points used");
+                  for (int i : hostIdx) {
+                      if (!nm[i].contains("6vkpddi")) continue;
+                      int vk = 0;
+                      for (String g : hostGlobals.get(i)) if (g.startsWith("vk")) vk++;
+                      rs.println(size[i] + " bytes | guest sites " + guestCallers[i] + " | callees " + callees.get(i).size() + " | vk " + vk + " | " + nm[i]);
+                  }
+                  rs.println();
+                  rs.println("## 60 largest host functions");
+                  List<Integer> big = new ArrayList<>(hostIdx);
+                  big.sort((x, y) -> Long.compare(size[y], size[x]));
+                  for (int k = 0; k < Math.min(60, big.size()); k++) rs.println(size[big.get(k)] + " bytes | " + elf(ent[big.get(k)]) + " | " + nm[big.get(k)]);
+                  rs.close();
+                  println("P2Decomp: Vulkan entry points defined " + defined + ", referenced " + used + "; imports used by host code " + importSites.size());
+              }
+
+              private void writeStringFiles(File out) throws Exception {
+                  PrintWriter sx = writer(new File(out, "strings-xref.txt"), false);
+                  PrintWriter kb = writer(new File(out, "knobs.txt"), false);
+                  sx.println("# elf address | guest refs | string | referencing host functions");
+                  kb.println("# strings referenced by host code that look like switches, env names, files, tuning values");
+                  kb.println("# elf address | string | referencing host functions");
+                  Pattern knob = Pattern.compile("(?i)(P2RE|env|switch|debug|\\boff\\b|\\bon\\b|spin|scale|thread|queue|pcprof|vkshot|hud|fps|hitch|cache|prewarm|\\blod|shadow|msaa|aniso|vsync|present|frame|force|disable|enable|\\.txt|\\.bin|\\.ini|\\.log|%d|%u|%s)");
+                  for (Map.Entry<Long, LinkedHashSet<Integer>> e : strHostRefs.entrySet()) {
+                      long a = e.getKey();
+                      String s = strCache.get(a);
+                      int[] g = strGuestRefs.get(a);
+                      String refs = names(e.getValue(), 6);
+                      sx.println(elf(a) + " | g" + (g == null ? 0 : g[0]) + " | \"" + esc(s) + "\" | " + refs);
+                      if (knob.matcher(s).find() && s.length() <= 120) kb.println(elf(a) + " | \"" + esc(s) + "\" | " + refs);
+                  }
+                  sx.close();
+                  kb.close();
+              }
+
+              private void writeRodataStrings(File out) throws Exception {
+                  PrintWriter rw = writer(new File(out, "strings-rodata.txt.gz"), true);
+                  long total = 0;
+                  for (MemoryBlock b : blocks) {
+                      if (b.isExecute() || !b.isInitialized()) continue;
+                      long start = b.getStart().getOffset();
+                      long len = b.getSize();
+                      if (len > (96L << 20)) continue;
+                      byte[] buf = new byte[(int) Math.min(len, Integer.MAX_VALUE - 16)];
+                      try {
+                          mem.getBytes(addr(start), buf, 0, buf.length);
+                      } catch (Throwable t) {
+                          continue;
+                      }
+                      int i = 0;
+                      int L = buf.length;
+                      while (i < L) {
+                          int j = i;
+                          while (j < L && ((buf[j] >= 0x20 && buf[j] < 0x7f) || buf[j] == '\t' || buf[j] == '\n')) j++;
+                          if (j < L && buf[j] == 0 && j - i >= 5) {
+                              rw.println(elf(start + i) + " " + b.getName() + " " + esc(new String(buf, i, j - i, "ISO-8859-1")));
+                              total++;
+                          }
+                          i = j + 1;
+                      }
+                  }
+                  rw.close();
+                  println("P2Decomp: rodata strings " + total);
+              }
+          }
+          EOF_P2DECOMP
+          # Whole-program auto-analysis is skipped on purpose (the library is ~100 MB of recompiled code); the script makes functions only where asked.
+          "$G/support/analyzeHeadless" "$PWD/ghproj" p2 -import work/libp2re.so -noanalysis -readOnly -max-cpu 2 -scriptPath "$PWD/ghscripts" -postScript P2Decomp.java "$PWD/targets.txt" "$PWD/out" 2>&1 | tee out/ghidra.log | tail -n 400
+      - name: Step summary
+        if: always()
+        continue-on-error: true
+        run: |
+          { echo '```'; grep -E 'P2Decomp|target |roots:|ERROR|Exception' out/ghidra.log 2>/dev/null | head -n 80; echo '--- functions.txt (first 80) ---'; head -n 80 out/functions.txt 2>/dev/null; echo '```'; } >> $GITHUB_STEP_SUMMARY
+      - name: Upload decompile output (contains decompiled game code, private repo only)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-decomp
+          path: out/
+          retention-days: 3
