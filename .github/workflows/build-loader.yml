@@ -1,4 +1,4 @@
-name: "Build loader v94 (right stick per layout, no left stick in menu or video)"
+name: "Build loader v95 (taps held at least two game frames)"
 # PRIVATE REPOS ONLY. The IPA artifact contains the patched game code. Delete the artifact after downloading.
 # Pushes run the download/disassembly/prep inspection. A full IPA build requires manual dispatch with inspect_only=false.
 on:
@@ -2670,7 +2670,27 @@ jobs:
               }
               busy = 0;
           }
+          /* v95: MINIMUM HOLD. The loader used to send a key or click down and up the instant your finger touched and left. At a low clock the game draws a frame every 30-40 ms, so a quick tap could go down and up
+             between two of its frames and the game never saw it (a missed jump or attack). Now a press stays down for at least about two game frames (never under 45 ms, never over 110 ms): if the finger lifts sooner,
+             the release is sent later. A new press during that wait just keeps the key down. gFrameMs is the measured time between presented frames. Folder hold_off = the old instant release. */
+          static volatile double gFrameMs = 16.7;
+          double p2_frame_ms(void) { return gFrameMs; }
+          double p2_hold_ms(void) { static int off = -1; if (off < 0 && gDocs[0]) off = mk_has("hold_off") ? 1 : 0; if (off > 0) return 0.0; double h = gFrameMs * 2.0; return h < 45.0 ? 45.0 : h > 110.0 ? 110.0 : h; }
+          static void p2_key_now(int dik, int down);
+          static double gKeyDownAt[256]; static unsigned gKeyGen[256]; static unsigned char gKeyPend[256];
+          typedef struct { int k; unsigned g; } KeyUp;
+          static void key_up_tramp(void *ctx) { KeyUp *u = (KeyUp *)ctx; if (gKeyPend[u->k] && gKeyGen[u->k] == u->g) { gKeyPend[u->k] = 0; p2_key_now(u->k, 0); } free(u); }
           void p2_key(int dik, int down) {
+              int k = dik & 0xff; double now = (double)fx_now_ns(CLOCK_UPTIME_RAW) / 1e6;
+              if (down) { gKeyGen[k]++; if (gKeyPend[k]) { gKeyPend[k] = 0; gKeyDownAt[k] = now; return; } gKeyDownAt[k] = now; p2_key_now(dik, 1); return; }   /* a press while the release was waiting: the key never came up */
+              double held = now - gKeyDownAt[k], need = p2_hold_ms();
+              if (gKeyDownAt[k] > 0.0 && held < need && !gKeyPend[k]) {
+                  KeyUp *u = malloc(sizeof *u); if (u) { u->k = k; u->g = gKeyGen[k]; gKeyPend[k] = 1; dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((need - held) * 1e6)), dispatch_get_main_queue(), u, key_up_tramp); return; }
+              }
+              if (gKeyPend[k]) return;   /* an up is already on its way */
+              p2_key_now(dik, 0);
+          }
+          static void p2_key_now(int dik, int down) {
               static int ok = -1; if (!gBase) return;
               if (ok < 0) {
                   uintptr_t host = 0, cur = 0;
@@ -2695,6 +2715,7 @@ jobs:
               return ok;
           }
           static void trace_present(void) {
+              { static long long lastNs; long long nn = fx_now_ns(CLOCK_UPTIME_RAW); if (lastNs) { double d = (double)(nn - lastNs) / 1e6; if (d > 2.0 && d < 250.0) gFrameMs += (d - gFrameMs) * 0.1; } lastNs = nn; }   /* v95: frame time for the minimum hold */
               static int dumps; unsigned fr = __sync_add_and_fetch(&gFrame, 1); rb_report(fr); sig_poll(fr); rs_poll(fr); it_frame(fr); inq_rearm(); ovl_poll(fr);
               if (fr % 900 == 0 && dumps < 20) { dumps++; trace_dump(fr, "automatic, every 15 s"); }
               else if (fr % 30 == 0 && mk_has("vktrace_now")) { mk_eat("vktrace_now"); trace_dump(fr, "vktrace_now folder"); }
