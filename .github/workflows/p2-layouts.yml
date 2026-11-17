@@ -29,18 +29,20 @@ jobs:
           static void layStart(UIView *gv);
           EOF_LAY_HEAD_M
           cat > parts/lay_main.m <<'EOF_LAY_MAIN_M'
-          /* ---- LAYOUTS (2/2): which layout is in use, the switch, the "Editing layout" badge. Documents/layouts/contexts.txt (written the first time) names the dev's layouts:
-               layout 3 video      the game's touch layout 3 gets the name "video", so its buttons live in Documents/layouts/video/
-             The log (p2.log) prints a LAYOUT line every time the game changes layout, with the number, so you can see which number a video or a vehicle has and name it.
-             Edit a layout by being in that part of the game: open the gear, Move mode, change the buttons; it is saved for that layout only. The layout does not switch while Move mode is on. ---- */
+          /* ---- LAYOUTS (2/2): which layout is in use, the switch, and the layout picker that sits next to "Done" while the editor is open.
+             The picker lists On foot, In vehicle, Menu, Video and any layout you add, so you can build any of them from wherever you are in the game: pick one, the screen shows it, move / add / delete buttons, it is
+             saved for that layout only. When you tap Done the game's own layout takes over again. Under the list: New layout..., "assign to the game's current screen" (names the game's layout 3 and up, e.g. the one a
+             video has) and Reset this layout. Documents/layouts/contexts.txt holds the names (layout 3 video); p2.log prints a LAYOUT line each time the game changes layout. ---- */
           static NSMutableDictionary<NSNumber *, NSString *> *gLayNames;
+          static int gLayRaw;   /* the game's touch layout number right now */
+          static NSString *layCtxFile(void) { return [[layDocs() stringByAppendingPathComponent:@"layouts"] stringByAppendingPathComponent:@"contexts.txt"]; }
           static NSString *layName(int c) {
               if (!gLayNames) {
-                  gLayNames = [NSMutableDictionary new]; NSFileManager *fm = NSFileManager.defaultManager; NSString *d = [layDocs() stringByAppendingPathComponent:@"layouts"], *f = [d stringByAppendingPathComponent:@"contexts.txt"];
+                  gLayNames = [NSMutableDictionary new]; NSFileManager *fm = NSFileManager.defaultManager; NSString *d = [layDocs() stringByAppendingPathComponent:@"layouts"], *f = layCtxFile();
                   if (![fm fileExistsAtPath:d]) {   /* first run: the folder, the names file, and a video layout that is just a Skip (M) button with no stick */
                       [fm createDirectoryAtPath:[d stringByAppendingPathComponent:@"video"] withIntermediateDirectories:YES attributes:nil error:nil];
-                      [@"# Names for the game's touch layouts. layout N name. Built in: 0 foot (the plain files), 1 vehicle, 2 menu (pause, options, any screen with the game's cursor). Others are called layoutN until named here.\n# Watch p2.log for lines starting LAYOUT: while you are in a video or a vehicle; they show the number. Then add e.g.  layout 3 video\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
-                      [@"# video layout: only a Skip button (M). Used once a layout number is named video in contexts.txt.\nbtn 32 0.8300 0.7800 0.1000 0.1700 M\n" writeToFile:[d stringByAppendingPathComponent:@"video/custom_buttons.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                      [@"# Names for the game's touch layouts. layout N name. Built in: 0 foot (the plain files), 1 vehicle, 2 menu (pause, options, any screen with the game's cursor). Others are called layoutN until named here.\n# Easiest: be in a video or a vehicle, open the editor, pick the layout in the picker and choose \"Assign to the game's current screen\". Or watch p2.log for LAYOUT: lines and add e.g.  layout 3 video\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                      [@"# video layout: only a Skip button (M).\nbtn 32 0.8300 0.7800 0.1000 0.1700 M\n" writeToFile:[d stringByAppendingPathComponent:@"video/custom_buttons.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
                       [@"# video layout: no stick, no buttons from the plain layout.\n" writeToFile:[d stringByAppendingPathComponent:@"video/own_layout.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
                   }
                   for (NSString *ln in [[NSString stringWithContentsOfFile:f encoding:NSUTF8StringEncoding error:nil] componentsSeparatedByString:@"\n"]) {
@@ -51,20 +53,42 @@ jobs:
               NSString *n = gLayNames[@(c)]; if (n) return n;
               return c == 0 ? @"foot" : c == 1 ? @"vehicle" : c == 2 ? @"menu" : [NSString stringWithFormat:@"layout%d", c];
           }
-          static UILabel *gLayBadge;
-          static void layBadge(void) {   /* "Editing layout: menu" at the top while Move mode is on */
-              if (!gCbHost) return;
-              if (!gLayBadge) {
-                  gLayBadge = [UILabel new]; gLayBadge.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold]; gLayBadge.textColor = UIColor.whiteColor; gLayBadge.textAlignment = NSTextAlignmentCenter;
-                  gLayBadge.backgroundColor = [UIColor colorWithWhite:0 alpha:0.6]; gLayBadge.layer.cornerRadius = 10; gLayBadge.clipsToBounds = YES; gLayBadge.userInteractionEnabled = NO;
-              }
-              if (gLayBadge.superview != gCbHost) [gCbHost addSubview:gLayBadge];
-              gLayBadge.hidden = !gCbEdit; if (!gCbEdit) return;
-              gLayBadge.text = [NSString stringWithFormat:@"Editing layout: %@", gLayCtx];
-              CGFloat w = [gLayBadge sizeThatFits:CGSizeMake(400, 20)].width + 20; gLayBadge.frame = CGRectMake((gCbHost.bounds.size.width - w) / 2, 8, w, 20);
+          static NSString *layPretty(NSString *n) {
+              if ([n isEqualToString:@"foot"]) return @"On foot";
+              if ([n isEqualToString:@"vehicle"]) return @"In vehicle";
+              if ([n isEqualToString:@"menu"]) return @"Menu";
+              if ([n isEqualToString:@"video"]) return @"Video";
+              NSString *s = [n stringByReplacingOccurrencesOfString:@"_" withString:@" "]; return s.length ? [[[s substringToIndex:1] uppercaseString] stringByAppendingString:[s substringFromIndex:1]] : s;
           }
-          static void laySwitch(NSString *ctx) {
-              if ([ctx isEqualToString:gLayCtx]) return;
+          static NSString *laySlug(NSString *t) {   /* "Boss fight!" -> "boss_fight" */
+              NSMutableString *o = [NSMutableString new]; BOOL gap = NO;
+              for (NSUInteger i = 0; i < t.length && o.length < 20; i++) {
+                  unichar c = [t characterAtIndex:i]; if (c >= 'A' && c <= 'Z') c = (unichar)(c + 32);
+                  if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { if (gap && o.length) [o appendString:@"_"]; gap = NO; [o appendFormat:@"%C", c]; } else gap = YES;
+              }
+              return o;
+          }
+          static NSArray<NSString *> *layList(void) {   /* the four built in names first, then every other layout that has a name or a folder */
+              layName(0); NSMutableArray<NSString *> *r = [NSMutableArray arrayWithObjects:@"foot", @"vehicle", @"menu", @"video", nil];
+              NSMutableArray<NSString *> *more = [NSMutableArray new];
+              for (NSNumber *k in gLayNames) { NSString *n = gLayNames[k]; if (![r containsObject:n] && ![more containsObject:n]) [more addObject:n]; }
+              for (NSString *n in [NSFileManager.defaultManager contentsOfDirectoryAtPath:[layDocs() stringByAppendingPathComponent:@"layouts"] error:nil]) {
+                  BOOL dir = NO; [NSFileManager.defaultManager fileExistsAtPath:[[layDocs() stringByAppendingPathComponent:@"layouts"] stringByAppendingPathComponent:n] isDirectory:&dir];
+                  if (dir && ![r containsObject:n] && ![more containsObject:n]) [more addObject:n];
+              }
+              if (![r containsObject:gLayCtx] && ![more containsObject:gLayCtx]) [more addObject:gLayCtx];
+              [r addObjectsFromArray:[more sortedArrayUsingSelector:@selector(compare:)]]; return r;
+          }
+          static void layAssign(int n, NSString *name) {   /* contexts.txt: "layout N name" (one line per number) */
+              layName(0); gLayNames[@(n)] = name;
+              NSMutableArray<NSString *> *keep = [NSMutableArray new]; NSString *pre = [NSString stringWithFormat:@"layout %d ", n];
+              for (NSString *ln in [[NSString stringWithContentsOfFile:layCtxFile() encoding:NSUTF8StringEncoding error:nil] componentsSeparatedByString:@"\n"]) if (ln.length && ![ln hasPrefix:pre]) [keep addObject:ln];
+              [keep addObject:[NSString stringWithFormat:@"layout %d %@", n, name]];
+              [[[keep componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] writeToFile:layCtxFile() atomically:YES encoding:NSUTF8StringEncoding error:nil];
+              p2_note([NSString stringWithFormat:@"LAYOUT: the game's touch layout %d now uses \"%@\"", n, name].UTF8String);
+          }
+          static void layApply(NSString *ctx, BOOL force) {   /* show this layout: its custom buttons and its own_layout elements. Also works while the editor is open. */
+              if (!force && [ctx isEqualToString:gLayCtx]) return;
               ownReleaseAll(); cbReleaseAll(); cbSelClear();
               gLayCtx = ctx;
               for (CbButton *b in [gCbList copy]) [b removeFromSuperview];
@@ -75,16 +99,68 @@ jobs:
               gOwnKnob = nil; gOwnKnob2 = nil; gOwnN = 0; gOwnLoaded = 0; gSelOwn = -1;
               ownLoad();
               UIView *gv = gLayGV; if (gv && ownAny()) ownShow(gv);
-              p2_note([NSString stringWithFormat:@"LAYOUT: switched to \"%@\" (%d custom buttons, %d own_layout elements)", ctx, (int)gCbList.count, gOwnN].UTF8String);
+              p2_note([NSString stringWithFormat:@"LAYOUT: showing \"%@\" (%d custom buttons, %d own_layout elements)", ctx, (int)gCbList.count, gOwnN].UTF8String);
+          }
+          static UIViewController *layTopVC(void) {
+              UIWindow *w = nil;
+              for (UIScene *s in UIApplication.sharedApplication.connectedScenes) if ([s isKindOfClass:UIWindowScene.class]) for (UIWindow *x in ((UIWindowScene *)s).windows) if (x.isKeyWindow) w = x;
+              UIViewController *v = w.rootViewController; while (v.presentedViewController) v = v.presentedViewController; return v;
+          }
+          static void layNew(void) {
+              UIAlertController *al = [UIAlertController alertControllerWithTitle:@"New layout" message:@"Name it, for example Boss fight. It starts as a copy of the plain layout and is saved on its own. It switches in by itself once you assign it to a game screen (the picker has the entry)." preferredStyle:UIAlertControllerStyleAlert];
+              [al addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"Name"; }];
+              __weak UIAlertController *wal = al;
+              [al addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+              [al addAction:[UIAlertAction actionWithTitle:@"Create" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+                  NSString *n = laySlug(wal.textFields.firstObject.text); if (!n.length) return;
+                  [NSFileManager.defaultManager createDirectoryAtPath:[[layDocs() stringByAppendingPathComponent:@"layouts"] stringByAppendingPathComponent:n] withIntermediateDirectories:YES attributes:nil error:nil];
+                  layApply(n, NO);
+              }]];
+              [layTopVC() presentViewController:al animated:YES completion:nil];
+          }
+          static NSArray<UIMenuElement *> *layMenuItems(void) {
+              NSMutableArray<UIMenuElement *> *sel = [NSMutableArray new], *more = [NSMutableArray new]; NSString *here = layName(gLayRaw);
+              for (NSString *n in layList()) {
+                  NSString *t = [n isEqualToString:here] ? [layPretty(n) stringByAppendingString:@"  (the game is here)"] : layPretty(n);
+                  UIAction *a = [UIAction actionWithTitle:t image:nil identifier:nil handler:^(UIAction *x) { layApply(n, NO); }];
+                  a.state = [n isEqualToString:gLayCtx] ? UIMenuElementStateOn : UIMenuElementStateOff; [sel addObject:a];
+              }
+              [more addObject:[UIAction actionWithTitle:@"New layout…" image:nil identifier:nil handler:^(UIAction *x) { layNew(); }]];
+              UIAction *as = [UIAction actionWithTitle:(gLayRaw >= 3 ? [NSString stringWithFormat:@"Assign \"%@\" to the game's current screen", layPretty(gLayCtx)] : @"Assign to the game's current screen (only for its layouts 3 and up)") image:nil identifier:nil handler:^(UIAction *x) { layAssign(gLayRaw, gLayCtx); }];
+              if (gLayRaw < 3) as.attributes = UIMenuElementAttributesDisabled; [more addObject:as];
+              if (![gLayCtx isEqualToString:@"foot"]) {
+                  UIAction *rs = [UIAction actionWithTitle:@"Reset this layout (use the plain one)" image:nil identifier:nil handler:^(UIAction *x) {
+                      NSString *d = [[layDocs() stringByAppendingPathComponent:@"layouts"] stringByAppendingPathComponent:gLayCtx];
+                      [NSFileManager.defaultManager removeItemAtPath:[d stringByAppendingPathComponent:@"custom_buttons.txt"] error:nil]; [NSFileManager.defaultManager removeItemAtPath:[d stringByAppendingPathComponent:@"own_layout.txt"] error:nil];
+                      layApply(gLayCtx, YES);
+                  }];
+                  rs.attributes = UIMenuElementAttributesDestructive; [more addObject:rs];
+              }
+              return @[[UIMenu menuWithTitle:@"Layout to edit" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:sel], [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:more]];
+          }
+          static UIButton *gLayChip;
+          static void layChip(void) {   /* "Layout: On foot ▾" to the right of Done while the editor is open */
+              if (!gCbHost || !gCbDone) return;
+              if (!gLayChip) {
+                  gLayChip = [UIButton buttonWithType:UIButtonTypeSystem]; gLayChip.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold]; [gLayChip setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+                  gLayChip.backgroundColor = [UIColor colorWithWhite:0 alpha:0.55]; gLayChip.layer.cornerRadius = 18; gLayChip.clipsToBounds = YES;
+                  gLayChip.showsMenuAsPrimaryAction = YES;
+                  gLayChip.menu = [UIMenu menuWithTitle:@"" children:@[[UIDeferredMenuElement elementWithUncachedProvider:^(void (^done)(NSArray<UIMenuElement *> *)) { done(layMenuItems()); }]]];
+              }
+              if (gLayChip.superview != gCbHost) [gCbHost addSubview:gLayChip];
+              gLayChip.hidden = !gCbEdit; if (!gCbEdit) return;
+              [gLayChip setTitle:[NSString stringWithFormat:@"Layout: %@  ▾", layPretty(gLayCtx)] forState:UIControlStateNormal];
+              CGRect d = gCbDone.frame; CGFloat w = [gLayChip sizeThatFits:CGSizeMake(400, d.size.height)].width + 28;
+              gLayChip.frame = CGRectMake(CGRectGetMaxX(d) + 10, d.origin.y, w, d.size.height);
           }
           static void layTick(void) {
               static int raw = -9, same;
-              int c = p2_ctx();
-              if (c != raw) { raw = c; same = 0; p2_note([NSString stringWithFormat:@"LAYOUT: the game is now in touch layout %d = \"%@\"%s", c, layName(c), gCbEdit ? " (kept as it is, Move mode is on)" : ""].UTF8String); }
+              int c = p2_ctx(); gLayRaw = c;
+              if (c != raw) { raw = c; same = 0; p2_note([NSString stringWithFormat:@"LAYOUT: the game is now in touch layout %d = \"%@\"%s", c, layName(c), gCbEdit ? " (not switched, the editor is open)" : ""].UTF8String); }
               else if (same < 100) same++;
-              layBadge();
-              if (gCbEdit || same < 2) return;   /* three polls in a row (about 0.3 s) with the same answer, and never while Move mode is on */
-              laySwitch(layName(c));
+              layChip();
+              if (gCbEdit || same < 2) return;   /* three polls in a row (about 0.3 s) with the same answer, and never while the editor is open; Done hands the screen back to the game's own layout */
+              layApply(layName(c), NO);
           }
           static void layStart(UIView *gv) {
               gLayGV = gv;
