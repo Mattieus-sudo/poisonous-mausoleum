@@ -225,7 +225,11 @@ jobs:
               if (now - gPlStart > 500000000LL) { gPlPh = 0; { static int n; if (n++ < 20) L("MENUPLACE: timed out in phase, the game never read the accumulators"); } return; }
               if (gPlPh == 1) { if (!acc_pending()) { gPlPh = 2; gPlAt = now; } }
               else if (gPlPh == 2) { if (now - gPlAt > 20000000LL) { acc_write(gPlX, gPlY, 0); gPlPh = 3; } }
-              else if (gPlPh == 3) { if (!acc_pending()) { gPlPh = 0; gPlLastX = gPlX; gPlLastY = gPlY; int rx = -1, ry = -1, rl = -1; cur_rd(&rx, &ry, &rl); static int n; if (n++ < 60) L("MENUPLACE: placed %d,%d (client %dx%d), game cursor now reads %d,%d", gPlX, gPlY, gCliW, gCliH, rx, ry); } }
+              else if (gPlPh == 3) { if (!acc_pending()) { gPlPh = 4; gPlAt = now; } }   /* the game zeroes the counters when it reads them, but applies them to its cursor a little later: wait for the cursor itself */
+              else if (gPlPh == 4) {
+                  int rx = -1, ry = -1, rl = -1; cur_rd(&rx, &ry, &rl); int ok = rx >= 0 && abs(rx - gPlX) <= 3 && abs(ry - gPlY) <= 3;
+                  if (ok || now - gPlAt > 200000000LL) { gPlPh = 0; gPlLastX = gPlX; gPlLastY = gPlY; static int n; if (n++ < 60) L("MENUPLACE: placed %d,%d (client %dx%d), game cursor reads %d,%d after %.0f ms: %s", gPlX, gPlY, gCliW, gCliH, rx, ry, (now - gPlAt) / 1e6, ok ? "OK" : "NOT REACHED"); }
+              }
           }
           static void menu_touch_tick(void) {   /* v90, game thread, gInMu NOT held: the menu finger -> the game's cursor (warp, press 50 ms later, drag, release 80 ms after the lift) */
               if (gBase && gPlPh) menu_place_step();
@@ -254,7 +258,7 @@ jobs:
               if (cx < 0) cx = 0; if (cy < 0) cy = 0; if (cx > gCliW - 1) cx = gCliW - 1; if (cy > gCliH - 1) cy = gCliH - 1;
               if (doWarp && !held) { gPlX = cx; gPlY = cy; gPlStart = fx_now_ns(CLOCK_UPTIME_RAW); acc_write(-30000, -30000, 0); gPlPh = 1; }
               else if (doWarp) { acc_write(cx - gPlLastX, cy - gPlLastY, 1); gPlLastX = cx; gPlLastY = cy; }
-              if (doPress || doRel) { int px = 0, py = 0, pl = 0; if (!cur_rd(&px, &py, &pl)) { px = gPlLastX; py = gPlLastY; } ((void (*)(int, int, unsigned char))(gBase + EO_SETTOUCHMOUSE))(px, py, (unsigned char)(doPress ? 1 : 0)); }
+              if (doPress || doRel) { int px = 0, py = 0, pl = 0; if (!cur_rd(&px, &py, &pl) || abs(px - gPlLastX) > 3 || abs(py - gPlLastY) > 3) { px = gPlLastX; py = gPlLastY; } ((void (*)(int, int, unsigned char))(gBase + EO_SETTOUCHMOUSE))(px, py, (unsigned char)(doPress ? 1 : 0)); }
               { static int n; if (n++ < 120) { int rx = -1, ry = -1, rl = -1; cur_rd(&rx, &ry, &rl); L("MENUTOUCH: %s finger %.0f,%.0f of view %.0fx%.0f (hardcoded win %dx%d) -> cursor %d,%d of client %dx%d; game cursor reads back %d,%d left %d", doPress ? "press" : doRel ? "release" : held ? "drag" : "warp", fx, fy, tvw, tvh, p2_win_w, p2_win_h, cx, cy, gCliW, gCliH, rx, ry, rl); } }
           }
           static void menu_cursor_apply(void) {   /* game thread, gInMu NOT held: the menu finger, then move the game's cursor by what the stick owes, keeping the button as it is (hold Left Click and push = drag) */
