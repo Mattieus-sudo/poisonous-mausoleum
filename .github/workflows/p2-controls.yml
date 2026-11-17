@@ -1042,7 +1042,7 @@ jobs:
           }
           - (void)layoutSubviews {
               [super layoutSubviews]; CGFloat d = MIN(self.bounds.size.width, self.bounds.size.height);
-              self.layer.cornerRadius = d / 2; self.tl.frame = CGRectInset(self.bounds, d * 0.1, d * 0.1); self.iv.frame = self.bounds;
+              self.layer.cornerRadius = d / 2; self.tl.frame = CGRectInset(self.bounds, d * 0.1, d * 0.1); self.iv.frame = gIcoFlat ? self.bounds : CGRectInset(self.bounds, d * 0.17, d * 0.17);
               self.cap.frame = CGRectMake(-d * 0.3, self.bounds.size.height + 1, self.bounds.size.width + d * 0.6, 14);
           }
           - (void)place {

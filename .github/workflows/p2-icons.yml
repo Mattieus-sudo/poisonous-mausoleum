@@ -46,8 +46,8 @@ jobs:
                1. Documents/button_icons/key_XX.png        one picture for one exact key (XX = scancode in hex, 101 = Left Click, 102 = Right Click)
                2. Documents/button_icons/<name>.png        <name> = the action id (attack2, jump, grab ...) or what icon_map.txt says; Files-app drops win over the build
                3. <app>/icons/<name>.png                   the p2-icons folder of the repo, packed in by p2-icons.yml
-             icon_map.txt (Documents/button_icons/, written the first time) lines:  map KEY name | map KEY none | bind ACTION KEY | caption KEY text | caption KEY none | captions 0/1 | flat 0/1
-             flat 1 (default) = the picture alone, no circle. In Move mode the yellow ring comes back so the button can be found and dragged. A pressed button is drawn a little smaller and dimmer.
+             icon_map.txt (Documents/button_icons/, written the first time) lines:  map KEY name | map KEY none | bind ACTION KEY | caption KEY text | caption KEY none | captions 0/1 | picture inside/alone
+             picture inside (default) = the picture sits inside the circle of the button. picture alone = no circle behind it; in Move mode the yellow ring comes back so the button can be found and dragged. A pressed button is drawn a little smaller and dimmer.
              Everything is read once at launch, so relaunch after changing a file. ---- */
           typedef struct { const char *id, *name, *cap; int dik; } IcoAct;
           static const IcoAct kAct[] = {
@@ -63,7 +63,7 @@ jobs:
           static NSMutableDictionary<NSNumber *, NSString *> *gIcoMap;      /* "map": key -> picture name */
           static NSMutableDictionary<NSNumber *, NSString *> *gIcoCap;      /* "caption": key -> text ("none" = no caption) */
           static NSMutableDictionary<NSNumber *, id> *gIcoCache;            /* key -> UIImage, or NSNull when there is none */
-          static BOOL gIcoFlat = YES, gIcoCaps = YES, gIcoInit;
+          static BOOL gIcoFlat = NO, gIcoCaps = YES, gIcoInit;   /* v96: NO = the picture sits INSIDE the circle of the button (the default); "picture alone" in icon_map.txt takes the circle away */
           static NSString *icoDir(void) { return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] stringByAppendingPathComponent:@"button_icons"]; }
           static NSString *icoFindCI(NSString *dir, NSString *name) {   /* the file whose name matches ignoring capitals, or nil: Key_2a.png, KEY_2A.png and key_2A.png are all the same picture */
               for (NSString *f in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil])
@@ -85,7 +85,7 @@ jobs:
               gIcoMap = [NSMutableDictionary new]; gIcoCap = [NSMutableDictionary new]; gIcoCache = [NSMutableDictionary new];
               NSFileManager *fm = NSFileManager.defaultManager; NSString *d = icoDir(), *f = [d stringByAppendingPathComponent:@"icon_map.txt"];
               [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:nil];   /* so the folder shows up in the Files app */
-              if (![fm fileExistsAtPath:f]) [@"# button icons and captions. KEY = DirectInput scancode in hex (101 = Left Click, 102 = Right Click).\n# Pictures: drop <action>.png (attack1 attack2 target jump sprint autosprint walk block hunt shapeshift heller_form power_wheel grab devastator bio_bomb pack_leader pack_attack skip confirm pause up down left right)\n# into this folder, or key_XX.png for one exact key. Relaunch after a change.\n# bind ACTION KEY      the game's key for an action if you rebound it, e.g.  bind grab 12\n# map KEY name         use name.png for this key (map KEY none = keep the text label)\n# caption KEY text     the small text under the button (caption KEY none = no caption)\n# captions 0           no captions at all\n# flat 0               the picture inside the usual circle instead of alone\nflat 1\ncaptions 1\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
+              if (![fm fileExistsAtPath:f]) [@"# button icons and captions. KEY = DirectInput scancode in hex (101 = Left Click, 102 = Right Click).\n# Pictures: drop <action>.png (attack1 attack2 target jump sprint autosprint walk block hunt shapeshift heller_form power_wheel grab devastator bio_bomb pack_leader pack_attack skip confirm pause up down left right)\n# into this folder, or key_XX.png for one exact key. Relaunch after a change.\n# bind ACTION KEY      the game's key for an action if you rebound it, e.g.  bind grab 12\n# map KEY name         use name.png for this key (map KEY none = keep the text label)\n# caption KEY text     the small text under the button (caption KEY none = no caption)\n# captions 0           no captions at all\n# picture alone       no circle behind the picture (default: picture inside, in the circle)\npicture inside\ncaptions 1\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
               NSString *txt = [NSString stringWithContentsOfFile:f encoding:NSUTF8StringEncoding error:nil];
               for (NSString *ln in [txt componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
                   if ([ln hasPrefix:@"#"]) continue;
@@ -93,7 +93,7 @@ jobs:
                   for (NSString *s in [ln componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceCharacterSet]) if (s.length) [w addObject:s];
                   if (w.count < 2) continue;
                   unsigned v = 0;
-                  if ([w[0] isEqualToString:@"flat"]) gIcoFlat = w[1].intValue != 0;
+                  if ([w[0] isEqualToString:@"picture"]) gIcoFlat = [w[1] isEqualToString:@"alone"];   /* the old "flat" line is ignored on purpose: older icon_map.txt files have "flat 1" in them */
                   else if ([w[0] isEqualToString:@"captions"]) gIcoCaps = w[1].intValue != 0;
                   else if (w.count >= 3 && [w[0] isEqualToString:@"map"]) { if ([[NSScanner scannerWithString:w[1]] scanHexInt:&v]) gIcoMap[@(v)] = w[2].lowercaseString; }
                   else if (w.count >= 3 && [w[0] isEqualToString:@"caption"]) { if ([[NSScanner scannerWithString:w[1]] scanHexInt:&v]) gIcoCap[@(v)] = [[w subarrayWithRange:NSMakeRange(2, w.count - 2)] componentsJoinedByString:@" "]; }
@@ -136,7 +136,7 @@ jobs:
           static void icoLayoutLayer(CALayer *l) {
               CGFloat w = l.bounds.size.width, h = l.bounds.size.height;
               for (CALayer *s in l.sublayers) {
-                  if ([s.name isEqualToString:@"icon"]) { s.bounds = CGRectMake(0, 0, w, h); s.position = CGPointMake(w / 2, h / 2); }
+                  if ([s.name isEqualToString:@"icon"]) { CGFloat k = gIcoFlat ? 1.0 : 0.66; s.bounds = CGRectMake(0, 0, w * k, h * k); s.position = CGPointMake(w / 2, h / 2); }   /* inside the circle: 66 percent, the square that fits the circle */
                   else if ([s.name isEqualToString:@"cap"]) s.frame = CGRectMake(-w * 0.3, h + 1, w * 1.6, 14);
               }
           }
