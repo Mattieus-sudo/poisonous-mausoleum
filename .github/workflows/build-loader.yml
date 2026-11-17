@@ -1,4 +1,4 @@
-name: "Build loader v88 (stick menu, swipe camera, split jobs)"
+name: "Build loader v89 (menu mode: the game's own cursor and click, stick menu, swipe camera)"
 # PRIVATE REPOS ONLY. The IPA artifact contains the patched game code. Delete the artifact after downloading.
 # Pushes run the download/disassembly/prep inspection. A full IPA build requires manual dispatch with inspect_only=false.
 on:
@@ -2675,20 +2675,17 @@ jobs:
               { static int n; if (n++ < 40) L("OWNKEY: PushKey(0x%02x, %d) %s", dik & 0xff, down ? 1 : 0, ok > 0 ? "sent" : "NOT sent (layout not confirmed)"); }
               if (ok > 0) ((void (*)(unsigned char, unsigned char))(gBase + 0x5a699e0))((unsigned char)dik, (unsigned char)(down ? 1 : 0));
           }
-          /* v84: Left Click / Right Click buttons from the layout editor. [UNVERIFIED, the first device test decides]
-             PostMouseMessage (elf+0x5abc320, _Z16PostMouseMessagejjii) is ASSUMED to take (Win32 mouse message, wParam, x, y):
-             0x201/0x202 left down/up, 0x204/0x205 right down/up, wParam MK_LBUTTON 1 / MK_RBUTTON 2 while held. Its body is not decompiled and nothing here proves
-             the argument order. Same layout guard as p2_key. The OWNMOUSE log lines say what was sent, so a dead button is easy to tell from a button that never fired. */
-          void p2_mouse(int button, int down) {
-              static int ok = -1; if (!gBase) return;
+          /* v89: the 1.0.7 layout check that p2_key does, shared. p2_mouse and the menu cursor (both in the controls piece, ctl_core.c) call it before they touch any elf address.
+             p2_mouse moved there: it used to post the click with PostMouseMessage at x=0,y=0 and never set the game's own button state, which is why Left Click did nothing. */
+          int p2_layout_ok(void) {
+              static int ok = -1; if (!gBase) return 0;
               if (ok < 0) {
                   uintptr_t host = 0, cur = 0;
-                  if (!safe_rd(gBase + OVL_SLOT, &host, sizeof host) || !host || !safe_rd(host + 0x208, &cur, sizeof cur)) return;
+                  if (!safe_rd(gBase + OVL_SLOT, &host, sizeof host) || !host || !safe_rd(host + 0x208, &cur, sizeof cur)) return 0;
                   ok = (cur == gBase + OVL_BUILDER || cur == (uintptr_t)ovl_wrap) ? 1 : 0;
+                  L("INPUT: %s (g_host+0x208 = %p)", ok ? "1.0.7 layout confirmed, mouse click and menu cursor calls enabled" : "NOT the 1.0.7 layout, mouse click and menu cursor calls disabled", (void *)cur);
               }
-              unsigned msg = button ? (down ? 0x204u : 0x205u) : (down ? 0x201u : 0x202u), wp = down ? (button ? 2u : 1u) : 0u;
-              { static int n; if (n++ < 40) L("OWNMOUSE: PostMouseMessage(0x%03x, %u, 0, 0) = %s click %s %s", msg, wp, button ? "right" : "left", down ? "down" : "up", ok > 0 ? "sent" : "NOT sent (layout not confirmed)"); }
-              if (ok > 0) ((void (*)(unsigned, unsigned, int, int))(gBase + 0x5abc320))(msg, wp, 0, 0);
+              return ok;
           }
           static void trace_present(void) {
               static int dumps; unsigned fr = __sync_add_and_fetch(&gFrame, 1); rb_report(fr); sig_poll(fr); rs_poll(fr); it_frame(fr); inq_rearm(); ovl_poll(fr);
