@@ -122,7 +122,7 @@ jobs:
               }
               NSString *cap = icoCaption(dik);
               if (cap) {
-                  CATextLayer *t = [CATextLayer layer]; t.name = @"cap"; t.string = cap; t.fontSize = 10; t.alignmentMode = kCAAlignmentCenter; t.foregroundColor = [UIColor colorWithWhite:1 alpha:0.9].CGColor;
+                  CATextLayer *t = [CATextLayer layer]; t.name = @"cap"; t.string = cap; t.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10 weight:UIFontWeightBold]; t.fontSize = 10; t.alignmentMode = kCAAlignmentCenter; t.foregroundColor = [UIColor colorWithWhite:1 alpha:0.9].CGColor;
                   t.contentsScale = UIScreen.mainScreen.scale; t.shadowColor = UIColor.blackColor.CGColor; t.shadowOpacity = 1; t.shadowRadius = 2; t.shadowOffset = CGSizeZero; [l addSublayer:t];
               }
           }
