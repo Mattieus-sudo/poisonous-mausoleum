@@ -144,7 +144,7 @@ jobs:
               CGFloat w = l.bounds.size.width, h = l.bounds.size.height;
               for (CALayer *s in l.sublayers) {
                   if ([s.name isEqualToString:@"iconBorder"]) s.frame = l.bounds;
-                  else if ([s.name isEqualToString:@"icon"]) { CGFloat k = gIcoFlat ? 1.0 : 0.66; s.bounds = CGRectMake(0, 0, w * k, h * k); s.position = CGPointMake(w / 2, h / 2); }   /* inside the circle: 66 percent, the square that fits the circle */
+                  else if ([s.name isEqualToString:@"icon"]) { CGFloat k = 0.75; s.bounds = CGRectMake(0, 0, w * k, h * k); s.position = CGPointMake(w / 2, h / 2); }   /* inside the circle: 66 percent, the square that fits the circle */
                   else if ([s.name isEqualToString:@"cap"]) s.frame = CGRectMake(-w * 0.3, h + 1, w * 1.6, 14);
               }
           }
