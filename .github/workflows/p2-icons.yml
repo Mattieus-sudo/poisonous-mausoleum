@@ -123,7 +123,12 @@ jobs:
           /* own_layout buttons are CALayers: the picture is a sublayer named "icon" (the key name, sublayer "label", is hidden when there is one), the caption a sublayer named "cap" under the circle. */
           static void icoDressLayer(CALayer *l, int dik) {
               UIImage *border = icoLoad(@"border");
-              if (border) { CALayer *b = [CALayer layer]; b.name = @"iconBorder"; b.contents = (__bridge id)border.CGImage; b.contentsGravity = kCAGravityResizeAspect; b.contentsScale = border.scale; [l addSublayer:b]; l.borderWidth = 0; }
+              if (border) {
+                  CALayer *b = [CALayer layer]; b.name = @"iconBorder"; b.contents = (__bridge id)border.CGImage;
+                  b.contentsGravity = kCAGravityResizeAspect; b.contentsScale = border.scale; b.frame = l.bounds;
+                  [l addSublayer:b]; l.borderWidth = 0; l.backgroundColor = UIColor.clearColor.CGColor;
+                  l.shadowOpacity = 0; l.shadowRadius = 0; l.shadowPath = nil;
+              }
               UIImage *im = icoForDik(dik);
               if (im) {
                   CALayer *ic = [CALayer layer]; ic.name = @"icon"; ic.contents = (__bridge id)im.CGImage; ic.contentsGravity = kCAGravityResizeAspect; ic.contentsScale = im.scale; [l addSublayer:ic];
@@ -147,8 +152,8 @@ jobs:
               CALayer *ic = nil; for (CALayer *s in l.sublayers) if ([s.name isEqualToString:@"icon"]) ic = s;
               if (!ic) return;
               BOOL hasBorder = NO; for (CALayer *s in l.sublayers) if ([s.name isEqualToString:@"iconBorder"]) hasBorder = YES;
-              if (hasBorder) l.borderWidth = edit ? (sel ? 3 : 2) : 0;
-              if (gIcoFlat) { l.backgroundColor = nil; l.borderWidth = edit ? (sel ? 3 : 2) : 0; }
+              if (hasBorder) l.borderWidth = edit && sel ? 3 : 0;
+              if (gIcoFlat) { l.backgroundColor = hasBorder ? UIColor.clearColor.CGColor : nil; l.borderWidth = hasBorder ? (edit && sel ? 3 : 0) : (edit ? (sel ? 3 : 2) : 0); }
               [CATransaction begin]; [CATransaction setDisableActions:YES];
               ic.opacity = down ? 0.65f : 1.0f; ic.transform = down ? CATransform3DMakeScale(0.9, 0.9, 1) : CATransform3DIdentity;
               [CATransaction commit];
