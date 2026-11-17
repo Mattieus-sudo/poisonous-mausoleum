@@ -1,4 +1,4 @@
-name: "Build loader v89 (menu mode: the game's own cursor and click, stick menu, swipe camera)"
+name: "Build loader v90 (automatic menu mode: finger drives the game cursor, stick menu, real right click, swipe camera)"
 # PRIVATE REPOS ONLY. The IPA artifact contains the patched game code. Delete the artifact after downloading.
 # Pushes run the download/disassembly/prep inspection. A full IPA build requires manual dispatch with inspect_only=false.
 on:
