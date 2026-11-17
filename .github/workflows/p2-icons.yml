@@ -19,12 +19,12 @@ jobs:
           MAXPX = 256   # a button is at most about 150 px on screen, 256 keeps it sharp on a 3x display
           got = []
           for f in sorted(glob.glob("p2-icons/*.png")):
-              name = os.path.splitext(os.path.basename(f))[0].lower()
-              if not re.fullmatch(r"[a-z0-9_]+", name): print("SKIP (use a-z 0-9 _ only):", f); continue
+              name = os.path.splitext(os.path.basename(f))[0]   # the file name is kept exactly as you wrote it (capitals too); the loader finds it without caring about case
+              if not re.fullmatch(r"[A-Za-z0-9_]+", name): print("SKIP (use letters, 0-9 and _ only):", f); continue
               im = Image.open(f).convert("RGBA")
               if max(im.size) > MAXPX: im.thumbnail((MAXPX, MAXPX), Image.LANCZOS)
-              im.save("parts/icons/%s.png" % name, optimize=True); got.append(name)
-              print("PACKED %-14s %dx%d%s" % (name, im.size[0], im.size[1], "" if name in KNOWN or name.startswith("key_") else "   (custom name: use it with 'map KEY %s' in icon_map.txt)" % name))
+              im.save("parts/icons/%s.png" % name, optimize=True); got.append(name.lower())
+              print("PACKED %-14s %dx%d%s" % (name, im.size[0], im.size[1], "" if name.lower() in KNOWN or name.lower().startswith("key_") else "   (custom name: use it with 'map KEY %s' in icon_map.txt)" % name))
           with open(os.environ.get("GITHUB_STEP_SUMMARY", os.devnull), "a") as s:
               s.write("### Button icons\n\n")
               for a in KNOWN: s.write("- %s `%s.png`\n" % ("OK" if a in got else "missing", a))
@@ -65,9 +65,16 @@ jobs:
           static NSMutableDictionary<NSNumber *, id> *gIcoCache;            /* key -> UIImage, or NSNull when there is none */
           static BOOL gIcoFlat = YES, gIcoCaps = YES, gIcoInit;
           static NSString *icoDir(void) { return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] stringByAppendingPathComponent:@"button_icons"]; }
+          static NSString *icoFindCI(NSString *dir, NSString *name) {   /* the file whose name matches ignoring capitals, or nil: Key_2a.png, KEY_2A.png and key_2A.png are all the same picture */
+              for (NSString *f in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil])
+                  if ([f.pathExtension caseInsensitiveCompare:@"png"] == NSOrderedSame && [f.stringByDeletingPathExtension caseInsensitiveCompare:name] == NSOrderedSame) return [dir stringByAppendingPathComponent:f];
+              return nil;
+          }
           static UIImage *icoLoad(NSString *name) {
               UIImage *im = [UIImage imageWithContentsOfFile:[icoDir() stringByAppendingPathComponent:[name stringByAppendingString:@".png"]]];
               if (!im) { NSString *p = [NSBundle.mainBundle pathForResource:name ofType:@"png" inDirectory:@"icons"]; if (p) im = [UIImage imageWithContentsOfFile:p]; }
+              if (!im) { NSString *p = icoFindCI(icoDir(), name); if (p) im = [UIImage imageWithContentsOfFile:p]; }
+              if (!im) { NSString *p = icoFindCI([NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"icons"], name); if (p) im = [UIImage imageWithContentsOfFile:p]; }
               return im;
           }
           static int icoActDik(int i) { return gIcoBind[i] ? gIcoBind[i] : kAct[i].dik; }
