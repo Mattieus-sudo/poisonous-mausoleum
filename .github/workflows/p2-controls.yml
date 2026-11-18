@@ -953,7 +953,7 @@ jobs:
                   }
                   NSString *t = [[p subarrayWithRange:NSMakeRange(6, labelEnd - 6)] componentsJoinedByString:@" "];
                   CbButton *b = [[CbButton alloc] initWithDik:(int)k title:t fx:fx fy:fy fw:fw fh:fh];
-                  if (hasStyle) { b.hiddenButton = hidden; b.noBorder = noBorder; }
+                  if (hasStyle) { b.hiddenButton = hidden; b.noBorder = noBorder; [b look]; }   /* v97: init drew the button before these two were set, so a saved Remove Border / hidden showed up only after the gear ran look on every button */
                   [gCbList addObject:b]; [host addSubview:b];
               }
               p2_note([NSString stringWithFormat:@"CUSTOMBTN: %d buttons loaded from %@", (int)gCbList.count, cbPath()].UTF8String);
