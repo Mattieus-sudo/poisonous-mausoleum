@@ -448,15 +448,15 @@ jobs:
           /* v97: BUTTONS ON GAME-FRAME BOUNDARIES. Keys, Left Click and Right Click (the own buttons, the stick's W A S D, the custom buttons) no longer go to the game from the UI thread with a timer-based
              minimum hold. Each press and release is noted the moment the finger does it (nothing is lost, however short the tap) and is applied by the game thread at its next frame: a press at the first
              frame after the touch, a release at the first frame AFTER the press frame (the game polls once a frame, so that is the shortest hold it can see). A tap that is over before the next frame is
-             still a full press. A press for a key that is already down is not a new press; a press that arrives while its release is still waiting just keeps the key down. Folder btn_frame_off = the old direct path. */
+             still a full press. A press for a key that is already down is not a new press; a press that arrives while its release is still waiting just keeps the key down. Keys are sent with p2_key_now (the PushKey call) so p2_key's timer hold (p2_hold_ms) is bypassed. Folder btn_frame_off = the old path (p2_key with its hold). */
           #define BQ_N 258                                   /* 0..255 = DirectInput keys, 256 = Left Click, 257 = Right Click */
           static unsigned char gBqWant[BQ_N], gBqHeld[BQ_N], gBqTap[BQ_N]; static unsigned gBqFrame, gBqDownAt[BQ_N]; static double gBqLast;
           static int gBqOff = -1; static pthread_mutex_t gBqMu = PTHREAD_MUTEX_INITIALIZER;
-          static void btn_direct(int ch, int down) { if (ch >= 256) p2_mouse_now(ch - 256, down); else p2_key(ch, down); }
+          static void btn_direct(int ch, int down) { if (ch >= 256) p2_mouse_now(ch - 256, down); else p2_key_now(ch, down); }   /* p2_key_now = the game's PushKey itself (p2core_head.c). NOT p2_key: that one adds the two-frame timer hold this queue replaces */
           void p2_btn_edge(int ch, int down) {   /* any thread */
               if (ch < 0 || ch >= BQ_N) return;
               if (gBqOff < 0 && gDocs[0]) gBqOff = mk_has("btn_frame_off") ? 1 : 0;
-              if (gBqOff > 0 || !gInAttached) { btn_direct(ch, down ? 1 : 0); return; }   /* no game frame to wait for (launcher screen) or switched off */
+              if (gBqOff > 0 || !gInAttached) { if (ch >= 256) p2_mouse_now(ch - 256, down ? 1 : 0); else p2_key(ch, down ? 1 : 0); return; }   /* no game frame to wait for (launcher screen) or switched off */
               pthread_mutex_lock(&gBqMu);
               if (down) { gBqWant[ch] = 1; if (!gBqHeld[ch]) gBqTap[ch] = 1; } else gBqWant[ch] = 0;
               gBqAny = 1; pthread_mutex_unlock(&gBqMu);
