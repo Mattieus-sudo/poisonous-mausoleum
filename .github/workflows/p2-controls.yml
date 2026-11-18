@@ -310,7 +310,7 @@ jobs:
               { static int n; if (n++ < 40) L("MENUCUR: stick moved the cursor by %d,%d to %d,%d of %dx%d (left button %d)", ix, iy, x, y, gCliW, gCliH, l); }
           }
           /* v87: RIGHT CAMERA STICK, Madeira's model: the stick sets a camera RATE and the loader integrates it once per game frame, so the finger is never the camera.
-             p2_rstick(x, y) takes the on-screen deflection (-1..1): 15 percent dead zone, the rest rescaled to 0..1, linear rate. Full deflection = rstick_speed_N percent (default 100)
+             p2_rstick(x, y) takes the on-screen deflection (-1..1): 5 percent dead zone (v96, was 15), the rest rescaled to 0..1, linear rate. Full deflection = rstick_speed_N percent (default 100)
              of the screen width per second; up/down is rstick_vert_N percent (default 100) of that; folder rstick_invy flips it. Each frame the game gets ONE move of rate x real time in
              whole screen ticks (the v82 clock), in floats. The dev's handler sees one finger: DOWN in the right half, a MOVE per frame, CANCEL on release. At the edge of the
              right half the finger goes back to the far side inside the same drain (CANCEL, DOWN, MOVE) so a long turn never runs out of screen. A real finger always wins: the stick waits. */
@@ -350,7 +350,7 @@ jobs:
               if (!gRsInit && gDocs[0]) { gRsInit = 1; gRsInv = mk_has("rstick_invy");
                   L("RSTICK: full push = %d percent (left/right) and %d percent (up/down) of the screen width per second, flipped %s (the stick's menu sets the percents, folder rstick_invy flips)", gRsSpeed, gRsVert, gRsInv ? "yes" : "no"); }
               float m = hypotf(x, y); if (m > 1.0f) { x /= m; y /= m; m = 1.0f; }
-              if (m <= 0.15f) x = y = 0.0f; else { float k = (m - 0.15f) / 0.85f / m; x *= k; y *= k; }
+              if (m <= 0.05f) x = y = 0.0f; else { float k = (m - 0.05f) / 0.95f / m; x *= k; y *= k; }   /* v96: 5 percent dead zone (was 15) */
               pthread_mutex_lock(&gInMu);
               gRsX = x; gRsY = y;
               if (x != 0.0f || y != 0.0f) { if (!gRsStickOn) { gRsStickOn = 1; gRsLast = 0.0; } pan_arm_locked(); }
@@ -738,7 +738,7 @@ jobs:
               ownRefresh();
               return YES;
           }
-          /* v88: SWIPE CAMERA = A FLOATING RIGHT STICK (own controls on; folder swipe_classic = the old direct drag). A touch that starts in the right half is held back: if it moves past 10 points it
+          /* v88: SWIPE CAMERA = A FLOATING RIGHT STICK (own controls on; folder swipe_classic = the old direct drag). A touch that starts in the right half is held back: if it moves past 6 points (v96, was 10) it
              becomes a stick anchored where it went down (how far it is pushed from there is the camera rate, same percents as the stick's menu); if it lifts first it is a tap and the game gets a
              down and up; if it rests 0.3 s it is handed to the game as a normal touch (long presses, menu drags). */
           static BOOL swipeFeed(int ph, int s, CGPoint p, CGSize sz, CGFloat sc) {
@@ -753,7 +753,7 @@ jobs:
               int st = gSwState[s]; if (st == 0) return NO;
               if (st == 3) { if (ph >= 2) gSwState[s] = 0; return NO; }
               if (st == 1) {
-                  if (ph == 1 && hypot(p.x - gSwA[s].x, p.y - gSwA[s].y) > 10) { gSwState[s] = st = 2; gSwGen[s]++; }
+                  if (ph == 1 && hypot(p.x - gSwA[s].x, p.y - gSwA[s].y) > 6) { gSwState[s] = st = 2; gSwGen[s]++; }
                   else if (ph >= 2) {
                       gSwState[s] = 0; gSwGen[s]++;
                       if (ph == 2) { CGPoint a = gSwA[s]; p2_touch_ts(0, s, (float)(a.x * sc), (float)(a.y * sc), 0.0);
