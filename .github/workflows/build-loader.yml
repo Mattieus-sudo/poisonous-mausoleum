@@ -1,4 +1,4 @@
-name: "Build loader v95 (taps held at least two game frames)"
+name: "Build loader v96b (v95 + pass load/store log + DONT_CARE test, no extra per-frame work)"
 # PRIVATE REPOS ONLY. The IPA artifact contains the patched game code. Delete the artifact after downloading.
 # Pushes run the download/disassembly/prep inspection. A full IPA build requires manual dispatch with inspect_only=false.
 on:
@@ -1801,7 +1801,7 @@ jobs:
                   "fakeaspect_N         (v67) the loader writes Documents/fake_aspect = N/10000 (17778 = 16:9, 16000 = 16:10, 15000 = 3:2, 13333 = 4:3). The game then sees a screen of that shape, so its resolution list and window follow it. Applies at the next start. Only a file the loader wrote itself is removed when the folder is gone.\n"
                   "pan_smooth_off       (v81) smooth camera panning is ON by default: touch moves are kept with their real timestamps and the game gets one move per frame, interpolated on the finger path a measured few ms back (touch_coalesce is ignored while it is on). This folder gives the old raw behaviour.\n"
                   "pan_lag_N            (v81) smooth panning: use a fixed lag of N ms instead of the measured one (try 8 to 30). Less = more responsive, more = smoother on a bumpy touch feed. The PAN lines in p2.log show the measured lag.\n"
-                  "hold_ms_N            (v96) minimum time a key or click stays down after a quick tap, in ms (0 to 200). Default: two measured game frames (33 ms at 60 fps, 20 ms floor, 110 ms ceiling). hold_off = no minimum at all.\n"
+                  "hold_ms_N            (v97) minimum time a key or click stays down after a quick tap, in ms (0 to 200). Default: two measured game frames (33 ms at 60 fps, 20 ms floor, 110 ms ceiling). hold_off = no minimum at all.\n"
                   "pan_clock_off        (v82) turn OFF the steady pan clock: camera steps follow the real time the game thread drains (the v81 way). On by default: steps are whole screen refreshes.\n"
                   "inputtap_on          (v81) one INPUTTAP line per game frame while a finger moves in the right half: raw px, px the loader handed the game, and the game's own mouse entries (1.0.6 offsets).\n"
                   "touch_coalesce       (v69) keep only the newest touch-move position and hand it to the game once per display-link tick instead of on every UIKit move. Needs a display lock (hz_60 / hz_90 / default 120, not hz_off).\n"
@@ -1809,6 +1809,8 @@ jobs:
           "shadowmin_off        (v72) remove the built-in P2RE_VKSHADOWMIN=1024 so every shadow caster is drawn (the game's own behaviour). A setenv_P2RE_VKSHADOWMIN=N folder instead changes the number. P2RE_VKSHADOWHALF is built in and a setenv_ folder for it is ignored.\n"
           "passtime_on          (v72) every 5 s log PASSSIG lines: each kind of render pass (size, attachments) with its passes and draws per frame. Create it with the app CLOSED so the numbering is the same for the whole run. Needs the game to record passes with vkCmdBeginRendering (VKTRACE lines say dyn).\n"
           "passskip_K           (v72, DIAGNOSTIC) while the game runs: a folder like passskip_3 skips every draw of the passes numbered K in the PASSSIG list (the picture breaks; watch fps and the GPU ms). Delete the folder to bring it back. Checked twice a second. Does not touch indirect-count draws.\n"
+          "dontcare_auto       (v96, PERF TEST, EXPERIMENT) the loader learns which render passes are plain fullscreen post passes (3 draws or fewer, depth test off, viewport and scissor cover the whole target) and, once a pass slot has looked like that 60 times with no exception, begins it with COLOR LOAD_OP_LOAD -> DONT_CARE (saves the bandwidth of loading the old contents). Only colour attachments; depth is never touched. If it ever sees an exception in a learned slot it switches that slot off and logs DONTCARE: VIOLATED. Needs one thing it cannot check: blending (a blended pass reads the old contents and would go wrong). Create it together with passtime_on with the app CLOSED so the kind numbers match PASSSIG. Compare the vkpddi gpu: ms against a run without it, and look at the picture (fullscreen effects: bloom, fog, glow, UI).\n"
+          "dc_K / dcx_K        (v96, PERF TEST) dc_K forces DONT_CARE for the colour loads of EVERY pass of kind K (numbers from PASSSIG, create with the app closed, same run order as passtime_on); dcx_K excludes kind K from dontcare_auto. Use dc_K one kind at a time to find which fullscreen pass saves GPU ms and which one breaks the picture. Checked twice a second.\n"
           "own_layout   (v76, EXPERIMENT, APK 1.0.7 only) your own controls. The loader keeps touches that start on your buttons, stick or block regions away from the dev's input handler and presses keys itself (PushKey). Layout file: Documents/own_layout/own_layout.txt (created with defaults): stick cx cy r / btn KEYHEX x y w h LABEL / block x y w h, fractions of the screen. Use with ovl_off to hide the dev's own drawing. Applies at the next start.\n"
           "ovl_trace / ovl_hide / ovl_off   (v75, EXPERIMENT, APK 1.0.7 only) the dev's overlay (settings page, control editor, on-screen buttons, perf HUD, credits) is one vertex list drawn in one extra pass on the swapchain. ovl_trace measures it (OVERLAY lines), ovl_hide builds it but draws nothing and skips that pass, ovl_off does not even build it (the dev's touch controls may stop working). Live; delete the folder to bring it back. Keep a credit for the dev elsewhere.\n"
           "passtrace_now / drawtrace_now   (v75) create the folder once: the loader makes the dev's trigger file, the dev's renderer logs ONE frame to p2.log (every pass with clear/load per attachment and why it ended; drawtrace = every draw, long).\n"
@@ -1942,13 +1944,13 @@ jobs:
           }
           typedef struct { int used, fmt; unsigned w, h, usage; int load, store; float clr[4]; } PAtt;
           typedef struct { char ok; VkVp vp; int sc[4]; int cull, front, dt, dw, dop; } PSt;
-          typedef struct { unsigned seq, frame, w, h, nColor, draws; unsigned char kind; PAtt c[3], d; float raw[8]; unsigned nRaw; PSt s[2]; int sig; } PRec;
+          typedef struct { unsigned seq, frame, w, h, nColor, draws; unsigned char kind; PAtt c[3], d; float raw[8]; unsigned nRaw; PSt s[2]; int sig, ord, dcap; } PRec;
           #define PR_N 2048
           static PRec gPR[PR_N]; static volatile unsigned gPRn, gFrame, gDrawTot, gDrawOut;
           static __thread PRec *tCur; static __thread VkVp tVp; static __thread int tVpOK, tScOK, tSc[4], tCull = -1, tFront = -1, tDT = -1, tDW = -1, tDop = -1;
           static PRec *pr_new(int kind, unsigned w, unsigned h, unsigned nc) {
               unsigned i = __sync_fetch_and_add(&gPRn, 1); PRec *r = &gPR[i & (PR_N - 1)];
-              memset(r, 0, sizeof *r); r->seq = i; r->frame = gFrame; r->kind = (unsigned char)kind; r->w = w; r->h = h; r->nColor = nc; r->sig = -1; tCur = r; return r;
+              memset(r, 0, sizeof *r); r->seq = i; r->frame = gFrame; r->kind = (unsigned char)kind; r->w = w; r->h = h; r->nColor = nc; r->sig = -1; r->ord = -1; tCur = r; return r;
           }
           static void att_fill(PAtt *a, const VkRAI *s) {
               ImgE e, ie; if (!s) return; a->used = 1; a->load = s->loadOp; a->store = s->storeOp; memcpy(a->clr, s->clr, sizeof a->clr); a->fmt = -1;
@@ -2004,6 +2006,61 @@ jobs:
           #define SIG_N 48
           typedef struct { unsigned h, w, hh, nc, dw, dh; int cf, df; volatile unsigned passes, draws; } SigE;
           static SigE gSig[SIG_N]; static volatile unsigned gSigN, gSkipped; static volatile int gSigLk, gSigStats, gSkipSig = -1;
+          /* v96: load/store log + DONT_CARE test. Counts are per pass kind (the PASSSIG number), since the start of the run. Load op 0 = LOAD, 1 = CLEAR, 2 = DONT_CARE (other values land in the last slot); store op 0 = STORE, 1 = DONT_CARE. */
+          static volatile unsigned gSigC0Ld[SIG_N][4], gSigC0St[SIG_N][3], gSigDLd[SIG_N][4], gSigDSt[SIG_N][3], gDcApplied[SIG_N], gDcAppliedTot;
+          #define DC_ORD 64
+          #define DC_LEARN 60
+          typedef struct { unsigned short seen, bad; } DcSlot;
+          static DcSlot gDcSl[SIG_N][DC_ORD]; static unsigned char gOrdN[SIG_N]; static unsigned gOrdFrame;
+          static volatile int gDcAuto, gDcOn; static volatile unsigned long long gDcForce, gDcExcl; static unsigned gDcViol, gDcFirstLog;
+          /* position of this pass among the passes of the same kind in this frame (the dev's renderer has one render thread, so plain statics are enough) */
+          static int dc_ord(int sig) {
+              unsigned f = gFrame; if (f != gOrdFrame) { memset(gOrdN, 0, sizeof gOrdN); gOrdFrame = f; }
+              unsigned o = gOrdN[sig]; if (o < 255) gOrdN[sig] = (unsigned char)(o + 1);
+              return o < DC_ORD - 1 ? (int)o : DC_ORD - 1;
+          }
+          static int dc_decide(const PRec *r) {
+              if (!gDcOn || r->sig < 0 || r->kind != 1 || !r->nColor) return 0;
+              unsigned long long b = 1ULL << r->sig;
+              if (gDcExcl & b) return 0;
+              if (gDcForce & b) return 1;
+              if (!gDcAuto || r->ord < 0) return 0;
+              const DcSlot *sl = &gDcSl[r->sig][r->ord]; return sl->seen >= DC_LEARN && !sl->bad;
+          }
+          /* called when a pass ends: did it look like a plain fullscreen pass? */
+          static void dc_learn(PRec *r) {
+              if (!gDcAuto || r->sig < 0 || r->ord < 0 || r->kind != 1 || !r->nColor || !r->draws) return;
+              DcSlot *sl = &gDcSl[r->sig][r->ord]; const PSt *p = &r->s[0];
+              int ok = r->draws <= 3 && p->ok && p->dt == 0;
+              if (ok) { float vw = __builtin_fabsf(p->vp.w), vh = __builtin_fabsf(p->vp.h); if (!(vw >= (float)r->w - 0.5f && vh >= (float)r->h - 0.5f)) ok = 0; }
+              if (ok && !(p->sc[2] == 0 && p->sc[3] == 0)) { if (p->sc[0] > 0 || p->sc[1] > 0 || (unsigned)p->sc[2] < r->w || (unsigned)p->sc[3] < r->h) ok = 0; }
+              if (ok) { if (sl->seen < 65535) sl->seen++; return; }
+              if (sl->bad < 65535) sl->bad++;
+              if (r->dcap) { gDcViol++; if (gDcViol <= 20) L("DONTCARE: VIOLATED in kind %d slot %d (%ux%u, %u draws, depth test %d): that pass ran with DONT_CARE and was NOT a plain fullscreen pass; the slot is switched off. If the picture glitched for a frame, this is why.", r->sig, r->ord, r->w, r->h, r->draws, p->dt); }
+          }
+          static void dc_scan(void) {
+              unsigned long long f = 0, x = 0; int a = mk_has("dontcare_auto");
+              if (gDocs[0]) { DIR *d = opendir(gDocs);
+                  if (d) { struct dirent *e;
+                      while ((e = readdir(d))) {
+                          int n;
+                          if (!strncmp(e->d_name, "dc_", 3) && e->d_name[3] >= '0' && e->d_name[3] <= '9') { n = atoi(e->d_name + 3); if (n >= 0 && n < SIG_N) f |= 1ULL << n; }
+                          else if (!strncmp(e->d_name, "dcx_", 4) && e->d_name[4] >= '0' && e->d_name[4] <= '9') { n = atoi(e->d_name + 4); if (n >= 0 && n < SIG_N) x |= 1ULL << n; }
+                      }
+                      closedir(d); } }
+              if (a != gDcAuto || f != gDcForce || x != gDcExcl) L("DONTCARE: auto %s, forced kinds mask 0x%llx (folders dc_K), excluded kinds mask 0x%llx (folders dcx_K). Kind numbers are the PASSSIG numbers of THIS run.", a ? "ON" : "off", f, x);
+              gDcAuto = a; gDcForce = f; gDcExcl = x; gDcOn = a || f != 0;
+          }
+          static void dc_report(void) {
+              unsigned nel = 0, nbad = 0;
+              for (unsigned k = 0; k < gSigN && k < SIG_N; k++) {
+                  unsigned el = 0, bd = 0, sn = 0;
+                  for (int o = 0; o < DC_ORD; o++) { const DcSlot *sl = &gDcSl[k][o]; if (sl->seen) sn++; if (sl->bad) bd++; if (sl->seen >= DC_LEARN && !sl->bad) el++; }
+                  nel += el; nbad += bd;
+                  if (el || bd || gDcApplied[k] || ((gDcForce >> k) & 1)) L("DONTCARE #%u %ux%u: slots eligible %u, with exceptions %u (of %u seen), DONT_CARE applied to %u passes so far%s", k, gSig[k].w, gSig[k].hh, el, bd, sn, gDcApplied[k], ((gDcForce >> k) & 1) ? " [forced by folder dc_K]" : "");
+              }
+              L("DONTCARE: total %u passes started with DONT_CARE colour loads; eligible slots %u, slots with exceptions %u, violations on applied passes %u", gDcAppliedTot, nel, nbad, gDcViol);
+          }
           static int sig_get(const PRec *r) {
               unsigned dh = r->d.used ? (unsigned)(r->d.fmt + 5) * 8191u ^ (r->d.w * 31u + r->d.h) : 0;
               unsigned h = (r->w * 2654435761u) ^ ((r->h + 0x9e3779b9u) * 40503u) ^ (r->nColor * 7919u) ^ ((unsigned)(r->c[0].fmt + 3) * 131u) ^ dh;
@@ -2023,17 +2080,19 @@ jobs:
               L("PASSSIG ==== frame %u, %u pass kinds, rates over the last %u frames (skipping kind %d, %u draws skipped so far) ====", fr, n, fd, gSkipSig, gSkipped);
               for (unsigned i = 0; i < n; i++) {
                   SigE *e = &gSig[i]; unsigned a = e->passes, d = e->draws;
-                  L("PASSSIG #%u %ux%u colors %u (first fmt %d) depth fmt %d %ux%u | passes/frame %.2f draws/frame %.1f", i, e->w, e->hh, e->nc, e->cf, e->df, e->dw, e->dh, (double)(a - pp[i]) / fd, (double)(d - pd[i]) / fd);
+                  L("PASSSIG #%u %ux%u colors %u (first fmt %d) depth fmt %d %ux%u | passes/frame %.2f draws/frame %.1f | c0 load LOAD %u CLEAR %u DONTCARE %u other %u, store STORE %u DONTCARE %u other %u | depth load LOAD %u CLEAR %u DONTCARE %u other %u, store STORE %u DONTCARE %u other %u (totals since start)", i, e->w, e->hh, e->nc, e->cf, e->df, e->dw, e->dh, (double)(a - pp[i]) / fd, (double)(d - pd[i]) / fd, gSigC0Ld[i][0], gSigC0Ld[i][1], gSigC0Ld[i][2], gSigC0Ld[i][3], gSigC0St[i][0], gSigC0St[i][1], gSigC0St[i][2], gSigDLd[i][0], gSigDLd[i][1], gSigDLd[i][2], gSigDLd[i][3], gSigDSt[i][0], gSigDSt[i][1], gSigDSt[i][2]);
                   pp[i] = a; pd[i] = d;
               }
               if (n >= SIG_N) L("PASSSIG table full (%d kinds): later kinds are not tracked", SIG_N);
+              if (gDcOn) dc_report();
           }
           static void sig_poll(unsigned fr) {
               if (fr != 1 && fr % 30) return;
               int on = mk_has("passtime_on"), sk = mk_val("passskip_");
               if (on != gSigStats) { gSigStats = on; L("PASSTIME: %s (folder passtime_on)", on ? "ON" : "off"); }
               if (sk != gSkipSig) { gSkipSig = sk; L("PASSSKIP: %s", sk >= 0 ? "skipping the draws of pass kind (see PASSSIG numbers)" : "off"); if (sk >= 0) L("PASSSKIP: kind %d", sk); }
-              if (gSigStats && fr % 300 == 0) sig_report(fr);
+              if (fr == 1 || fr % 300 == 0 || gDcOn) dc_scan();   /* v96b: a directory read on the render thread; once per 300 frames unless a DONT_CARE folder is already active */
+              if ((gSigStats || gDcOn) && fr % 300 == 0) sig_report(fr);
           }
           static int pr_draw(void) {
               __sync_fetch_and_add(&gDrawTot, 1); PRec *r = tCur; if (!r) { __sync_fetch_and_add(&gDrawOut, 1); return 0; }
@@ -2041,7 +2100,7 @@ jobs:
                   PSt *s = &r->s[k ? 1 : 0]; s->ok = 1; if (tVpOK) s->vp = tVp; if (tScOK) memcpy(s->sc, tSc, sizeof s->sc);
                   s->cull = tCull; s->front = tFront; s->dt = tDT; s->dw = tDW; s->dop = tDop;
               }
-              if (r->sig >= 0) { if (gSigStats) __sync_fetch_and_add(&gSig[r->sig].draws, 1); if (r->sig == gSkipSig) { __sync_fetch_and_add(&gSkipped, 1); return 1; } }
+              if (r->sig >= 0) { if (gSigStats || gDcOn) __sync_fetch_and_add(&gSig[r->sig].draws, 1); if (r->sig == gSkipSig) { __sync_fetch_and_add(&gSkipped, 1); return 1; } }
               return 0;
           }
           static void (*gR_begin)(void *, const VkRI *), (*gR_end)(void *);
@@ -2057,18 +2116,40 @@ jobs:
               PRec *r = pr_new(1, ri->w, ri->h, ri->nColor);
               for (unsigned i = 0; i < ri->nColor && i < 3 && ri->pColor; i++) att_fill(&r->c[i], &ri->pColor[i]);
               if (ri->pDepth) att_fill(&r->d, ri->pDepth);
-              if (gSigStats || gSkipSig >= 0) { r->sig = sig_get(r); if (r->sig >= 0 && gSigStats) __sync_fetch_and_add(&gSig[r->sig].passes, 1); }
+              if (gSigStats || gSkipSig >= 0 || gDcOn) {
+                  r->sig = sig_get(r);
+                  if (r->sig >= 0) {
+                      int k = r->sig; r->ord = dc_ord(k);
+                      if (gSigStats || gDcOn) __sync_fetch_and_add(&gSig[k].passes, 1);
+                      if (r->c[0].used) { int l = r->c[0].load, st = r->c[0].store; __sync_fetch_and_add(&gSigC0Ld[k][l >= 0 && l < 3 ? l : 3], 1); __sync_fetch_and_add(&gSigC0St[k][st >= 0 && st < 2 ? st : 2], 1); }
+                      if (r->d.used) { int l = r->d.load, st = r->d.store; __sync_fetch_and_add(&gSigDLd[k][l >= 0 && l < 3 ? l : 3], 1); __sync_fetch_and_add(&gSigDSt[k][st >= 0 && st < 2 ? st : 2], 1); }
+                  }
+              }
               if (gLoadFix < 0) { gLoadFix = mk_has("vk_loadop_fix_off") ? 0 : 1; L("VKTRACE LOAD_OP_NONE/STORE_OP_NONE -> LOAD/STORE rewrite: %s", gLoadFix ? "ON (folder vk_loadop_fix_off turns it off)" : "off"); }
-              if (gLoadFix && ri->nColor <= 8) {
-                  int need = 0; VkRAI col[8], dep, stc; VkRI c2 = *ri;
-                  for (unsigned i = 0; i < ri->nColor && ri->pColor; i++) { col[i] = ri->pColor[i]; if (col[i].loadOp == LOADOP_NONE) { col[i].loadOp = 0; need = 1; } if (col[i].storeOp == STOREOP_NONE) { col[i].storeOp = 0; need = 1; } }
-                  if (ri->pDepth) { dep = *ri->pDepth; if (dep.loadOp == LOADOP_NONE) { dep.loadOp = 0; need = 1; } if (dep.storeOp == STOREOP_NONE) { dep.storeOp = 0; need = 1; } c2.pDepth = &dep; }
-                  if (ri->pStencil) { stc = *ri->pStencil; if (stc.loadOp == LOADOP_NONE) { stc.loadOp = 0; need = 1; } if (stc.storeOp == STOREOP_NONE) { stc.storeOp = 0; need = 1; } c2.pStencil = &stc; }
-                  if (need) { c2.pColor = ri->pColor ? col : NULL; if (gLoadFixed++ < 3) L("VKTRACE rewrote a NONE load/store op in a %ux%u pass", ri->w, ri->h); gR_begin(cb, &c2); return; }
+              {
+                  int dc = dc_decide(r);
+                  if ((gLoadFix || dc) && ri->nColor <= 8) {
+                      int need = 0, ndc = 0; VkRAI col[8], dep, stc; VkRI c2 = *ri;
+                      for (unsigned i = 0; i < ri->nColor && ri->pColor; i++) {
+                          col[i] = ri->pColor[i];
+                          if (gLoadFix && col[i].loadOp == LOADOP_NONE) { col[i].loadOp = 0; need = 1; }
+                          if (gLoadFix && col[i].storeOp == STOREOP_NONE) { col[i].storeOp = 0; need = 1; }
+                          if (dc && col[i].loadOp == 0) { col[i].loadOp = 2; ndc++; need = 1; }   /* LOAD -> DONT_CARE, colour only */
+                      }
+                      if (gLoadFix && ri->pDepth) { dep = *ri->pDepth; if (dep.loadOp == LOADOP_NONE) { dep.loadOp = 0; need = 1; } if (dep.storeOp == STOREOP_NONE) { dep.storeOp = 0; need = 1; } c2.pDepth = &dep; }
+                      if (gLoadFix && ri->pStencil) { stc = *ri->pStencil; if (stc.loadOp == LOADOP_NONE) { stc.loadOp = 0; need = 1; } if (stc.storeOp == STOREOP_NONE) { stc.storeOp = 0; need = 1; } c2.pStencil = &stc; }
+                      if (need) {
+                          c2.pColor = ri->pColor ? col : NULL;
+                          if (ndc) { r->dcap = 1; if (r->sig >= 0) __sync_fetch_and_add(&gDcApplied[r->sig], 1); __sync_fetch_and_add(&gDcAppliedTot, 1);
+                                     if (gDcFirstLog++ < 12) L("DONTCARE: kind %d slot %d (%ux%u): %d colour attachment(s) LOAD -> DONT_CARE (%s)", r->sig, r->ord, ri->w, ri->h, ndc, (gDcForce >> (r->sig < 0 ? 0 : r->sig)) & 1 ? "forced by dc_K" : "learned"); }
+                          else if (gLoadFixed++ < 3) L("VKTRACE rewrote a NONE load/store op in a %ux%u pass", ri->w, ri->h);
+                          gR_begin(cb, &c2); return;
+                      }
+                  }
               }
               gR_begin(cb, ri);
           }
-          static void w_end_rendering(void *cb) { tCur = NULL; gR_end(cb); }
+          static void w_end_rendering(void *cb) { if (tCur) dc_learn(tCur); tCur = NULL; gR_end(cb); }
           static void w_begin_renderpass(void *cb, const VkRPBI *bi, int contents) {
               ovl_early();
               PRec *r = pr_new(2, bi->w, bi->h, 0); r->nRaw = bi->nClear > 2 ? 2 : bi->nClear;
@@ -2680,11 +2761,11 @@ jobs:
               busy = 0;
           }
           /* v95: MINIMUM HOLD. The loader used to send a key or click down and up the instant your finger touched and left. At a low clock the game draws a frame every 30-40 ms, so a quick tap could go down and up
-             between two of its frames and the game never saw it (a missed jump or attack). Now a press stays down for at least about two game frames (v96: never under 20 ms, never over 110 ms): if the finger lifts sooner,
+             between two of its frames and the game never saw it (a missed jump or attack). Now a press stays down for at least about two game frames (v97: never under 20 ms, never over 110 ms): if the finger lifts sooner,
              the release is sent later. A new press during that wait just keeps the key down. gFrameMs is the measured time between presented frames. Folder hold_off = the old instant release. */
           static volatile double gFrameMs = 16.7;
           double p2_frame_ms(void) { return gFrameMs; }
-          double p2_hold_ms(void) {   /* v96: exactly two measured game frames (no 45 ms floor: at 60 fps that is 33 ms instead of 45 ms), never under 20 ms, never over 110 ms. Folder hold_ms_N = a fixed N ms (0-200). The folder is read once, not per press. */
+          double p2_hold_ms(void) {   /* v97: exactly two measured game frames (no 45 ms floor: at 60 fps that is 33 ms instead of 45 ms), never under 20 ms, never over 110 ms. Folder hold_ms_N = a fixed N ms (0-200). The folder is read once, not per press. */
               static int off = -1, fixed = -1; if (off < 0 && gDocs[0]) { off = mk_has("hold_off") ? 1 : 0; fixed = mk_val("hold_ms_"); }
               if (off > 0) return 0.0; if (fixed >= 0) return fixed > 200 ? 200.0 : (double)fixed;
               double h = gFrameMs * 2.0; return h < 20.0 ? 20.0 : h > 110.0 ? 110.0 : h; }
