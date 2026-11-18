@@ -28,6 +28,7 @@ jobs:
               return [NSFileManager.defaultManager fileExistsAtPath:p] ? p : rootPath;
           }
           static void layStart(UIView *gv);
+          static void layPrepareEdit(void);   /* sync the game's current layout before entering edit mode */
           EOF_LAY_HEAD_M
           cat > parts/lay_main.m <<'EOF_LAY_MAIN_M'
           /* ---- LAYOUTS (2/2): which layout is in use, the switch, and the layout picker that sits next to "Done" while the editor is open.
@@ -102,6 +103,10 @@ jobs:
               ownLoad();
               UIView *gv = gLayGV; if (gv && ownAny()) ownShow(gv);
               p2_note([NSString stringWithFormat:@"LAYOUT: showing \"%@\" (%d custom buttons, %d own_layout elements)", ctx, (int)gCbList.count, gOwnN].UTF8String);
+          }
+          static void layPrepareEdit(void) {
+              int c = p2_ctx(); gLayRaw = c;
+              layApply(layName(c), NO);   /* cbSetEdit calls this before setting gCbEdit, so the current layout is loaded and its own settings file receives the first save */
           }
           static UIViewController *layTopVC(void) {
               UIWindow *w = nil;
