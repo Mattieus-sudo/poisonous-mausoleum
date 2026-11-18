@@ -1772,8 +1772,9 @@ jobs:
                   "mvk_fastmath_off    (v72) turn shader fast-math OFF (the v29-v71 behaviour). Use it only to test a black or flickering shader.\n"
           "mvk_fastmath_auto   fast-math ON except for shaders that ask for strict NaN/Inf handling.\n"
                   "mvk_argbuf_off      do not use Metal argument buffers.\n"
-                  "mvk_argbuf_on       (v93, PERF TEST) force Metal argument buffers ON (cuts per-draw binding work; can break textures/shaders, so compare fps AND picture). Ignored if mvk_argbuf_off exists.\n"
-                  "mvk_prefill_on      (v93, PERF TEST) MVK_CONFIG_PREFILL_METAL_COMMAND_BUFFERS=1 (pre-build Metal command buffers at submit). mvk_prefill_N passes the number N instead. The MVKENV line in p2_loader_log.txt shows what was applied.\n"
+                  "mvk_prefill_on     (v93, PERF TEST, unlikely to win) MVK_CONFIG_PREFILL_METAL_COMMAND_BUFFERS=1; mvk_prefill_N sets N: 0 = default (encode everything at vkQueueSubmit, FASTEST overall, most memory), 1 = encode at vkEndCommandBuffer, 2 = encode each command immediately with an autorelease pool per command (slowest, least memory), 3 = immediate, no pools (needs the calling thread to have one; do not use on the guest render thread).\n"
+                  "mvk_syncsubmit_off  (v93, PERF TEST) MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=0: vkQueueSubmit/vkQueuePresent are processed on a GCD queue instead of the render thread (default is on the calling thread). Could unload the render thread; could add latency. Compare fps and frame-time spikes.\n"
+                  "mvk_perf_log        (v93, DIAGNOSTIC) MoltenVK performance tracking, logged every 300 frames into mvk_stderr.log (also sets MoltenVK log level 3). Shows MoltenVK's own time in command encoding, submit and shader work.\n"
                   "mvk_dumpshaders     write every SPIR-V and converted Metal shader to Documents/mvk_shaders (big; only for a short run).\n"
                   "mvk_log_info        MoltenVK logs info messages too (default: errors and warnings only) into mvk_stderr.log.\n"
                   "vk_loadop_fix_off   do NOT rewrite Vulkan LOAD_OP_NONE / STORE_OP_NONE to LOAD / STORE (v29 default rewrites them; see VKTRACE lines).\n"
@@ -1835,11 +1836,13 @@ jobs:
               setenv("MVK_CONFIG_FAST_MATH_ENABLED", fm == 1 ? "1" : fm == 2 ? "2" : "0", 1);
               setenv("MVK_CONFIG_LOG_LEVEL", mk_has("mvk_log_info") ? "3" : "2", 1);
               int ab = mk_has("mvk_argbuf_off"); if (ab) setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "0", 1);
-              int abon = (!ab && mk_has("mvk_argbuf_on")); if (abon) setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);   /* v93: perf test, MoltenVK "always" */
-              int pf = mk_val("mvk_prefill_"); if (pf < 0 && mk_has("mvk_prefill_on")) pf = 1;   /* v93: perf test; mvk_prefill_N passes N (0..2, meaning per MoltenVK 1.4.2 docs, unverified) */
+              /* v93 perf tests (MoltenVK Configuration Parameters doc, main branch): argument buffers already default ON, so only mvk_argbuf_off is an A/B. */
+              int pf = mk_val("mvk_prefill_"); if (pf < 0 && mk_has("mvk_prefill_on")) pf = 1; if (pf > 3) pf = 3;   /* 0 none, 1 on vkEnd, 2 immediate+pool per cmd, 3 immediate, app-managed pools */
               if (pf >= 0) { char pv[16]; snprintf(pv, sizeof pv, "%d", pf); setenv("MVK_CONFIG_PREFILL_METAL_COMMAND_BUFFERS", pv, 1); }
+              int ss = mk_has("mvk_syncsubmit_off"); if (ss) setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "0", 1);   /* default 1: submit/present run on the calling thread; 0 hands them to a GCD queue */
+              int pl = mk_has("mvk_perf_log"); if (pl) { setenv("MVK_CONFIG_PERFORMANCE_TRACKING", "1", 1); setenv("MVK_CONFIG_PERFORMANCE_LOGGING_FRAME_COUNT", "300", 1); setenv("MVK_CONFIG_LOG_LEVEL", "3", 1); }
               int ds = mk_has("mvk_dumpshaders"); if (ds) { snprintf(dump, sizeof dump, "%s/mvk_shaders", gDocs); mkdir(dump, 0755); setenv("MVK_CONFIG_SHADER_DUMP_DIR", dump, 1); }
-              L("MVKENV fast_math=%d log_level=%s argbuf_off=%d argbuf_on=%d prefill=%d dumpshaders=%d stderr->mvk_stderr.log (%s)", fm, mk_has("mvk_log_info") ? "3" : "2", ab, abon, pf, ds, fd >= 0 ? "ok" : "FAILED");
+              L("MVKENV fast_math=%d log_level=%s argbuf_off=%d prefill=%d syncsubmit_off=%d perf_log=%d dumpshaders=%d stderr->mvk_stderr.log (%s)", fm, (pl || mk_has("mvk_log_info")) ? "3" : "2", ab, pf, ss, pl, ds, fd >= 0 ? "ok" : "FAILED"); if (pf == 3) L("MVKENV WARNING: prefill 3 assumes every recording thread has an autorelease pool; the guest render thread probably does not");
           }
           static void p2re_env_setup(void) {
               if (!gDocs[0]) return;
