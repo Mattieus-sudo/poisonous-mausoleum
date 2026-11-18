@@ -49,13 +49,13 @@ jobs:
              icon_map.txt (Documents/button_icons/, written the first time) lines:  map KEY name | map KEY none | bind ACTION KEY | caption KEY text | caption KEY none | captions 0/1 | picture inside/alone
              picture inside (default) = the picture sits inside the circle of the button. picture alone = no circle behind it; in Move mode the yellow ring comes back so the button can be found and dragged. A pressed button is drawn a little smaller and dimmer.
              Everything is read once at launch, so relaunch after changing a file. ---- */
-          typedef struct { const char *id, *name, *cap; int dik; } IcoAct;
+          typedef struct { const char *id, *name, *cap; int dik; const char *ctx; } IcoAct;   /* v97: ctx = the layout this action applies in: NULL any, "video" only there, "!video" everywhere but there */
           static const IcoAct kAct[] = {
               {"attack1", "Attack 1", "Attack", 0x101}, {"attack2", "Attack 2", "Heavy", 0x102}, {"target", "Target", "Target", 0x13}, {"jump", "Jump", "Jump", 0x39},
               {"sprint", "Sprint", "Sprint", 0x2A}, {"autosprint", "Auto-sprint", "Auto-sprint", 0x2C}, {"walk", "Walk", "Walk", 0x38}, {"block", "Block", "Block", 0x1D},
               {"hunt", "Hunt", "Hunt", 0x10}, {"shapeshift", "Shapeshift", "Shapeshift", 0x21}, {"heller_form", "Heller form", "Heller", 0x22}, {"power_wheel", "Power wheel", "Powers", 0x04},
               {"grab", "Grab / Hijack", "Grab", 0x12}, {"devastator", "Devastator", "Devastator", 0x2F}, {"bio_bomb", "Bio-bomb", "Bio-bomb", 0x2D}, {"pack_leader", "Pack leader", "Pack leader", 0x30},
-              {"pack_attack", "Pack attack / Center camera", "Pack attack", 0x2E}, {"skip", "Skip cutscene", "Skip", 0x32},
+              {"pack_attack", "Pack attack / Center camera", "Pack attack", 0x2E}, {"skip", "Skip cutscene", "Skip", 0x32, "video"}, {"map", "Map", "Map", 0x32, "!video"},
               {"confirm", "Confirm (Enter)", "", 0x1C}, {"pause", "Pause (Esc)", "", 0x01}, {"up", "Up", "", 0xC8}, {"down", "Down", "", 0xD0}, {"left", "Left", "", 0xCB}, {"right", "Right", "", 0xCD},
           };
           #define ICO_NACT ((int)(sizeof kAct / sizeof kAct[0]))
@@ -79,32 +79,40 @@ jobs:
           }
           static int icoActDik(int i) { return gIcoBind[i] ? gIcoBind[i] : kAct[i].dik; }
           static int icoNorm(int dik) { return dik == 0x36 ? 0x2A : dik == 0x9D ? 0x1D : dik == 0xB8 ? 0x38 : dik; }   /* right Shift / Ctrl / Alt count as the left one */
-          static int icoActFor(int dik) { dik = icoNorm(dik); for (int i = 0; i < ICO_NACT; i++) if (icoActDik(i) == dik) return i; return -1; }
+          static NSString *icoCtx(void);   /* v97: defined in the layouts piece, the layout in use right now (foot, vehicle, menu, video ...) */
+          static BOOL icoActOn(int i) { const char *c = kAct[i].ctx; if (!c) return YES; NSString *cur = icoCtx().lowercaseString; return c[0] == '!' ? ![cur isEqualToString:@(c + 1)] : [cur isEqualToString:@(c)]; }
+          static int icoActFor(int dik) { dik = icoNorm(dik); for (int i = 0; i < ICO_NACT; i++) if (icoActDik(i) == dik && icoActOn(i)) return i; return -1; }
+          static NSMutableDictionary<NSString *, NSString *> *gIcoMapC, *gIcoCapC;   /* v97: "ctx:key" -> picture name / caption, from map@ctx and caption@ctx lines */
+          static NSString *gIcoCacheCtx;
+          static NSString *icoCK(int dik) { return [NSString stringWithFormat:@"%@:%d", icoCtx().lowercaseString, dik]; }
           static void icoInit(void) {
               if (gIcoInit) return; gIcoInit = YES;
-              gIcoMap = [NSMutableDictionary new]; gIcoCap = [NSMutableDictionary new]; gIcoCache = [NSMutableDictionary new];
+              gIcoMap = [NSMutableDictionary new]; gIcoCap = [NSMutableDictionary new]; gIcoCache = [NSMutableDictionary new]; gIcoMapC = [NSMutableDictionary new]; gIcoCapC = [NSMutableDictionary new];
               NSFileManager *fm = NSFileManager.defaultManager; NSString *d = icoDir(), *f = [d stringByAppendingPathComponent:@"icon_map.txt"];
               [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:nil];   /* so the folder shows up in the Files app */
-              if (![fm fileExistsAtPath:f]) [@"# button icons and captions. KEY = DirectInput scancode in hex (101 = Left Click, 102 = Right Click).\n# Optional overlays: border.png (outside every button icon); Lstick.png (left-stick sprint border); Rstick.png (right-stick moving knob).\n# Pictures: drop <action>.png (attack1 attack2 target jump sprint autosprint walk block hunt shapeshift heller_form power_wheel grab devastator bio_bomb pack_leader pack_attack skip confirm pause up down left right)\n# into this folder, or key_XX.png for one exact key. Relaunch after a change.\n# bind ACTION KEY      the game's key for an action if you rebound it, e.g.  bind grab 12\n# map KEY name         use name.png for this key (map KEY none = keep the text label)\n# caption KEY text     the small text under the button (caption KEY none = no caption)\n# captions 0           no captions at all\n# picture alone       no circle behind the picture (default: picture inside, in the circle)\npicture inside\ncaptions 1\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
+              if (![fm fileExistsAtPath:f]) [@"# button icons and captions. KEY = DirectInput scancode in hex (101 = Left Click, 102 = Right Click).\n# Optional overlays: border.png (outside every button icon); Lstick.png (left-stick sprint border); Rstick.png (right-stick moving knob).\n# Pictures: drop <action>.png (attack1 attack2 target jump sprint autosprint walk block hunt shapeshift heller_form power_wheel grab devastator bio_bomb pack_leader pack_attack skip confirm pause up down left right)\n# into this folder, or key_XX.png for one exact key. Relaunch after a change.\n# bind ACTION KEY      the game's key for an action if you rebound it, e.g.  bind grab 12\n# map KEY name         use name.png for this key (map KEY none = keep the text label)\n# caption KEY text     the small text under the button (caption KEY none = no caption)\n# map@LAYOUT KEY name / caption@LAYOUT KEY text   the same, but only in that layout (foot, vehicle, menu, video ...), e.g.  caption@video 32 Skip  and  map@foot 32 map\n# key_XX_LAYOUT.png   a picture for one exact key in one layout, e.g. key_32_video.png\n# captions 0           no captions at all\n# picture alone       no circle behind the picture (default: picture inside, in the circle)\npicture inside\ncaptions 1\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
               NSString *txt = [NSString stringWithContentsOfFile:f encoding:NSUTF8StringEncoding error:nil];
               for (NSString *ln in [txt componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
                   if ([ln hasPrefix:@"#"]) continue;
                   NSMutableArray<NSString *> *w = [NSMutableArray new];
                   for (NSString *s in [ln componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceCharacterSet]) if (s.length) [w addObject:s];
                   if (w.count < 2) continue;
-                  unsigned v = 0;
-                  if ([w[0] isEqualToString:@"picture"]) gIcoFlat = [w[1] isEqualToString:@"alone"];   /* the old "flat" line is ignored on purpose: older icon_map.txt files have "flat 1" in them */
-                  else if ([w[0] isEqualToString:@"captions"]) gIcoCaps = w[1].intValue != 0;
-                  else if (w.count >= 3 && [w[0] isEqualToString:@"map"]) { if ([[NSScanner scannerWithString:w[1]] scanHexInt:&v]) gIcoMap[@(v)] = w[2].lowercaseString; }
-                  else if (w.count >= 3 && [w[0] isEqualToString:@"caption"]) { if ([[NSScanner scannerWithString:w[1]] scanHexInt:&v]) gIcoCap[@(v)] = [[w subarrayWithRange:NSMakeRange(2, w.count - 2)] componentsJoinedByString:@" "]; }
-                  else if (w.count >= 3 && [w[0] isEqualToString:@"bind"]) { if ([[NSScanner scannerWithString:w[2]] scanHexInt:&v]) for (int i = 0; i < ICO_NACT; i++) if (strcmp(kAct[i].id, w[1].lowercaseString.UTF8String) == 0) gIcoBind[i] = (int)v; }
+                  unsigned v = 0; NSString *cmd = w[0], *cx = nil; NSRange at = [cmd rangeOfString:@"@"];
+                  if (at.location != NSNotFound) { cx = [cmd substringFromIndex:at.location + 1].lowercaseString; cmd = [cmd substringToIndex:at.location]; }   /* v97: map@video 32 skip, caption@foot 32 Map */
+                  if ([cmd isEqualToString:@"picture"]) gIcoFlat = [w[1] isEqualToString:@"alone"];   /* the old "flat" line is ignored on purpose: older icon_map.txt files have "flat 1" in them */
+                  else if ([cmd isEqualToString:@"captions"]) gIcoCaps = w[1].intValue != 0;
+                  else if (w.count >= 3 && [cmd isEqualToString:@"map"]) { if ([[NSScanner scannerWithString:w[1]] scanHexInt:&v]) { if (cx) gIcoMapC[[NSString stringWithFormat:@"%@:%u", cx, v]] = w[2].lowercaseString; else gIcoMap[@(v)] = w[2].lowercaseString; } }
+                  else if (w.count >= 3 && [cmd isEqualToString:@"caption"]) { if ([[NSScanner scannerWithString:w[1]] scanHexInt:&v]) { NSString *tx = [[w subarrayWithRange:NSMakeRange(2, w.count - 2)] componentsJoinedByString:@" "]; if (cx) gIcoCapC[[NSString stringWithFormat:@"%@:%u", cx, v]] = tx; else gIcoCap[@(v)] = tx; } }
+                  else if (w.count >= 3 && [cmd isEqualToString:@"bind"]) { if ([[NSScanner scannerWithString:w[2]] scanHexInt:&v]) for (int i = 0; i < ICO_NACT; i++) if (strcmp(kAct[i].id, w[1].lowercaseString.UTF8String) == 0) gIcoBind[i] = (int)v; }
               }
           }
           static UIImage *icoForDik(int dik) {
-              icoInit(); NSNumber *k = @(dik); id c = gIcoCache[k]; if (c) return c == NSNull.null ? nil : c;
-              UIImage *im = icoLoad([NSString stringWithFormat:@"key_%02X", dik]);
+              icoInit(); { NSString *cc = icoCtx(); if (![cc isEqualToString:gIcoCacheCtx ?: @""]) { [gIcoCache removeAllObjects]; gIcoCacheCtx = cc; } }   /* v97: a layout switch drops the cache, the same key can have another picture there */
+              NSNumber *k = @(dik); id c = gIcoCache[k]; if (c) return c == NSNull.null ? nil : c;
+              UIImage *im = icoLoad([NSString stringWithFormat:@"key_%02X_%@", dik, icoCtx().lowercaseString]);   /* v97: key_32_video.png wins over key_32.png in the video layout */
+              if (!im) im = icoLoad([NSString stringWithFormat:@"key_%02X", dik]);
               if (!im) {
-                  NSString *name = gIcoMap[k]; int a = icoActFor(dik);
+                  NSString *name = gIcoMapC[icoCK(dik)] ?: gIcoMap[k]; int a = icoActFor(dik);
                   if (!name && a >= 0) name = @(kAct[a].id);
                   if (name && ![name isEqualToString:@"none"]) im = icoLoad(name);
               }
@@ -112,7 +120,7 @@ jobs:
           }
           static NSString *icoCaption(int dik) {   /* the small text under a button, nil = none */
               icoInit(); if (!gIcoCaps) return nil;
-              NSString *o = gIcoCap[@(dik)]; if (o) return [o.lowercaseString isEqualToString:@"none"] ? nil : o;
+              NSString *o = gIcoCapC[icoCK(dik)] ?: gIcoCap[@(dik)]; if (o) return [o.lowercaseString isEqualToString:@"none"] ? nil : o;
               int a = icoActFor(dik); return a >= 0 && kAct[a].cap[0] ? @(kAct[a].cap) : nil;
           }
           static UIImage *icoThumb(int dik) {   /* a 28 pt picture for the + list rows */

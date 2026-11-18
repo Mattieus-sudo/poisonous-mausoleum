@@ -18,6 +18,7 @@ jobs:
              plain files in Documents (custom_buttons.txt, own_layout/own_layout.txt), which are also the "foot" layout. The switching code is in the second piece, after the custom buttons. ---- */
           extern int p2_ctx(void);
           static NSString *gLayCtx = @"foot";           /* the layout in use right now */
+          static NSString *icoCtx(void) { return gLayCtx; }   /* v97: the icons piece (earlier in main.m) asks which layout is showing */
           static __weak UIView *gLayGV;                  /* the game view, kept so the own_layout drawing can be rebuilt on a switch */
           static BOOL layNoStick(void) { return ![gLayCtx isEqualToString:@"foot"] && ![gLayCtx isEqualToString:@"vehicle"]; }   /* menu, video, layout3 ...: no movement stick, ever */
           static NSString *layDocs(void) { return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
