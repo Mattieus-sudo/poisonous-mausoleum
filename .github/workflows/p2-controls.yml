@@ -1148,15 +1148,14 @@ jobs:
               BOOL sel = gCbEdit && gSelCb == self;
               BOOL hasCustomBorder = self.borderView.image != nil && !self.noBorder;
               BOOL renderHidden = self.hiddenButton && !gCbEdit;
-              BOOL suppressLegacyText = self.dik == 0x39 || self.dik == 0x01 || self.dik == 0x1C;
               self.borderView.hidden = !hasCustomBorder || renderHidden;
               self.backgroundColor = (hasCustomBorder || self.noBorder || renderHidden) ? UIColor.clearColor : [UIColor colorWithWhite:self.pressed ? 1.0 : 0.0 alpha:self.pressed ? 0.45 : 0.25];
               self.layer.borderColor = (sel ? UIColor.whiteColor : [UIColor colorWithWhite:1 alpha:0.8]).CGColor;
               self.layer.borderWidth = renderHidden ? 0 : (self.noBorder ? (sel ? 3 : 0) : (hasCustomBorder ? (gCbEdit && sel ? 3 : 0) : (sel ? 3 : 2)));
               self.layer.shadowOpacity = 0; self.layer.shadowRadius = 0; self.layer.shadowPath = nil;
               UIImage *ic = icoForDik(self.dik);   /* icons: a picture for this action replaces the key name (and, flat, the circle) */
-              self.iv.image = (self.hiddenButton && gCbEdit) ? [UIImage systemImageNamed:@"eye.slash"] : ic; self.iv.hidden = renderHidden || (self.hiddenButton ? !gCbEdit : ic == nil); self.tl.hidden = renderHidden || self.hiddenButton || (ic != nil) || suppressLegacyText;
-              self.cap.text = icoCaption(self.dik); self.cap.hidden = renderHidden || self.hiddenButton || self.cap.text == nil;   /* keep the helpful caption under Enter/Pause/Jump; suppressLegacyText applies only to the duplicate key-name layer */
+              self.iv.image = (self.hiddenButton && gCbEdit) ? [UIImage systemImageNamed:@"eye.slash"] : ic; self.iv.hidden = renderHidden || (self.hiddenButton ? !gCbEdit : ic == nil); self.tl.hidden = renderHidden || self.hiddenButton || (ic != nil);
+              self.cap.text = icoCaption(self.dik); self.cap.hidden = renderHidden || self.hiddenButton || self.cap.text == nil;
               if (ic) {
                   if (self.noBorder) { self.backgroundColor = UIColor.clearColor; self.layer.borderWidth = sel ? 3 : 0; } else if (gIcoFlat) { self.backgroundColor = UIColor.clearColor; self.layer.borderWidth = hasCustomBorder ? (gCbEdit && sel ? 3 : 0) : (gCbEdit ? (sel ? 3 : 2) : 0); }
                   self.iv.layer.shadowOpacity = 0; self.iv.layer.shadowRadius = 0; self.iv.layer.shadowPath = nil;
