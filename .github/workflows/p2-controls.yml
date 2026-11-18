@@ -76,7 +76,9 @@ jobs:
               }
               gMvPend = 0; inq_push_locked(&e);
           }
+          static void btn_present_hook(void);
           static void inq_rearm(void) {   /* called once per presented frame: a finger still behind its newest sample gets another move next frame even if it did not move */
+              btn_present_hook();
               if (!gInAttached) return;
               pthread_mutex_lock(&gInMu); if ((gPanOn > 0 && gMvPend) || gRsStickOn || gRsTail || gMtId >= 0 || gMtWarp) pan_arm_locked(); pthread_mutex_unlock(&gInMu);
           }
@@ -188,6 +190,7 @@ jobs:
               *x = a; *y = b; *left = bt & 1; return 1;
           }
           extern double p2_hold_ms(void);
+          void p2_btn_edge(int ch, int down);
           static void p2_mouse_now(int button, int down) {   /* UI thread: the Left Click / Right Click buttons. 0 = left, 1 = right */
               int x = 0, y = 0, l = 0; static int nbad, nl, nr;
               if (!gBase || !p2_layout_ok() || !cur_rd(&x, &y, &l)) { if (nbad++ < 20) L("OWNMOUSE: %s %s NOT sent (layout not confirmed or the cursor cannot be read)", button ? "right" : "left", down ? "down" : "up"); return; }
@@ -209,6 +212,297 @@ jobs:
                   if (nr++ < 40) { uint8_t rb = 0xff; safe_rd(gBase + EO_BTNST + 1, &rb, 1); L("OWNMOUSE: right %s at the cursor %d,%d: button byte (elf 0x5e41ca5) now %d, ring entry {0xD, 0x%x} at index %u (was %u), WM_RBUTTON%s posted", down ? "down" : "up", x, y, (int)rb, down ? 0x80u : 0u, (unsigned)i1, (unsigned)i0, down ? "DOWN" : "UP"); }
               }
           }
+          static void cli_refresh(void) {   /* the game's client size, from the game thread (where its own cursor code asks) at most once a second */
+              long long now = fx_now_ns(CLOCK_UPTIME_RAW); if (now - gCliAt < 100000000LL) return; gCliAt = now;   /* v91: was 1 s; the game's cursor arrow is drawn from the CURRENT client size every frame, so a stale size shifts it */
+              unsigned long hw = ((unsigned long (*)(void))(gBase + EO_GUESTWIN))();
+              int w = 1616, h = 728;
+              if ((int)hw) ((void (*)(unsigned, int *, int *))(gBase + EO_GUESTWINSIZE))((unsigned)hw, &w, &h);
+              if (w > 16 && h > 16 && w < 20000 && h < 20000) { gCliW = w; gCliH = h; }
+          }
+          static void btn_push(int button, int down, int x, int y) {   /* the dev's mouse-button function (elf 0x5a69c30) done by hand: ring entry type 0xC+button, button byte Input()+0x964+button, WM message. No cursor movement, unlike SetTouchMouse. */
+              uint8_t *mu = (uint8_t *)(gBase + EO_MOUSEMU); volatile uint32_t *ip = (volatile uint32_t *)(gBase + EO_MOUSERINGIDX);
+              sh_mx_lock(mu);
+              *(volatile uint8_t *)(gBase + EO_BTNST + (uint64_t)button) = down ? 1 : 0;
+              uint32_t i1 = *ip; volatile uint32_t *e = (volatile uint32_t *)(gBase + EO_MOUSERING + (uint64_t)(i1 & 0xffu) * 12u);
+              e[0] = 0xCu + (uint32_t)button; e[1] = down ? 0x80u : 0u; e[2] = (uint32_t)(((unsigned long long (*)(void))(gBase + EO_NOWNS))() / 1000000ULL);
+              __atomic_store_n(ip, i1 + 1u, __ATOMIC_RELEASE);
+              sh_mx_unlock(mu);
+              ((void (*)(unsigned, unsigned, int, int))(gBase + EO_POSTMOUSEMSG))(button ? (down ? 0x204u : 0x205u) : (down ? 0x201u : 0x202u), down ? (button ? 2u : 1u) : 0u, x, y);
+          }
+          /* v92: PIN THEN PLACE, what the dev's own menu-tap code does. The game's cursor is not set absolutely: GetDeviceState integrates the relative accumulators Input()+0x94c / +0x950
+             (elf 0x5e41c8c / 0x5e41c90) into it, clamped to the client area. A warp therefore (1) writes -30000,-30000 so the cursor clamps to the corner, (2) waits until the game has read
+             and zeroed them, (3) writes the target position as the delta from that corner (arrow scale 1.0, menus run the game's mouse gain at 1.0). Drags add the step from the last placed
+             target. The press waits until the placement is done. SetTouchMouse is only used for the button, at the cursor where it is. */
+          #define EO_ACCX 0x5e41c8cUL
+          #define EO_ACCY 0x5e41c90UL
+          static int gPlPh, gPlX, gPlY, gPlLastX, gPlLastY; static long long gPlAt, gPlStart;
+          static void acc_write(int ax, int ay, int add) {
+              uint8_t *mu = (uint8_t *)(gBase + EO_MOUSEMU); volatile int *px = (volatile int *)(gBase + EO_ACCX), *py = (volatile int *)(gBase + EO_ACCY);
+              sh_mx_lock(mu); if (add) { *px += ax; *py += ay; } else { *px = ax; *py = ay; } sh_mx_unlock(mu);
+          }
+          static int acc_pending(void) { int a = 0, b = 0; if (!safe_rd(gBase + EO_ACCX, &a, 4) || !safe_rd(gBase + EO_ACCY, &b, 4)) return 0; return a || b; }
+          static void menu_place_step(void) {
+              long long now = fx_now_ns(CLOCK_UPTIME_RAW);
+              if (now - gPlStart > 500000000LL) { gPlPh = 0; { static int n; if (n++ < 20) L("MENUPLACE: timed out in phase, the game never read the accumulators"); } return; }
+              if (gPlPh == 1) { if (!acc_pending()) { gPlPh = 2; gPlAt = now; } }
+              else if (gPlPh == 2) { if (now - gPlAt > 12000000LL) { acc_write(gPlX, gPlY, 0); gPlPh = 3; } }
+              else if (gPlPh == 3) { if (!acc_pending()) { gPlPh = 0; gPlLastX = gPlX; gPlLastY = gPlY; static int n; if (n++ < 60) L("MENUPLACE: placed %d,%d (client %dx%d) in %.0f ms (the game read the counters; its c84/c88 variable is only written by SetTouchMouse, so it is not checked)", gPlX, gPlY, gCliW, gCliH, (now - gPlStart) / 1e6); } }
+          }
+          static void menu_touch_tick(void) {   /* v90, game thread, gInMu NOT held: the menu finger -> the game's cursor (warp, press 50 ms later, drag, release 80 ms after the lift) */
+              if (gBase && gPlPh) menu_place_step();
+              if (!gBase || (gMtId < 0 && !gMtWarp)) return;
+              long long now = fx_now_ns(CLOCK_UPTIME_RAW); int doWarp = 0, doPress = 0, doRel = 0, held = 0; float fx, fy;
+              pthread_mutex_lock(&gInMu);
+              fx = gMtX; fy = gMtY;
+              if (gMtId >= 0) {
+                  if (gMtWarp) { gMtWarp = 0; gMtMoved = 0; doWarp = 1; gMtPressAt = now + 50000000LL; }
+                  else if (!gMtPressed && gMtPressAt && now >= gMtPressAt && !gPlPh) {
+                      gMtPressed = 1; gMtPressAt = 0; gMtMoved = 0; doPress = 1;
+                      gMtRelAt = gMtUp ? (gMtUpAt + 80000000LL > now + 50000000LL ? gMtUpAt + 80000000LL : now + 50000000LL) : 0;
+                  } else if (gMtPressed) {
+                      if (gMtUp && !gMtRelAt) gMtRelAt = gMtUpAt + 80000000LL;
+                      if (gMtUp && now >= gMtRelAt) { doRel = 1; gMtPressed = 0; gMtId = -1; gMtUp = 0; gMtRelAt = 0; }
+                      else if (gMtMoved) { doWarp = 1; gMtMoved = 0; }
+                  }
+                  held = gMtPressed;
+              }
+              pthread_mutex_unlock(&gInMu);
+              if (!doWarp && !doPress && !doRel) return;
+              if (!p2_layout_ok()) { pthread_mutex_lock(&gInMu); gMtId = -1; gMtWarp = gMtPressed = gMtUp = gMtMoved = 0; pthread_mutex_unlock(&gInMu); return; }
+              cli_refresh();
+              float tvw = gTvW > 16.0f ? gTvW : (float)(p2_win_w > 0 ? p2_win_w : 1), tvh = gTvH > 16.0f ? gTvH : (float)(p2_win_h > 0 ? p2_win_h : 1);   /* v91 */
+              int cx = (int)(fx * (float)gCliW / tvw), cy = (int)(fy * (float)gCliH / tvh);
+              if (cx < 0) cx = 0; if (cy < 0) cy = 0; if (cx > gCliW - 1) cx = gCliW - 1; if (cy > gCliH - 1) cy = gCliH - 1;
+              /* v92d: the counters integrate in the game's RENDER space (the dev's "arrow 1442,144 of 1568x720"), not client space: client coordinates land client/render = 1.22 times too far right and down. */
+              static int bbDone, bbW, bbH;
+              if (!bbDone) { bbDone = 1; unsigned long r = ((unsigned long (*)(int, int))(gBase + 0x5a693f0UL))(gCliW, gCliH); int a = (int)(r & 0xffffffffu), b = (int)(r >> 32);
+                  L("MENUPLACE: GameBackBufferSize(%d,%d) returned 0x%lx -> %d x %d", gCliW, gCliH, r, a, b);
+                  if (a > 16 && b > 16 && a <= gCliW + 8 && b <= gCliH + 8) { bbW = a; bbH = b; } else { bbW = (int)(gCliW * 0.81667f); bbH = (int)(gCliH * 0.81448f); L("MENUPLACE: not usable, assuming render %dx%d (the 1568x720 of the dev's log, scaled)", bbW, bbH); } }
+              cx = (int)(fx * (float)bbW / tvw); cy = (int)(fy * (float)bbH / tvh);
+              if (cx < 0) cx = 0; if (cy < 0) cy = 0; if (cx > bbW - 1) cx = bbW - 1; if (cy > bbH - 1) cy = bbH - 1;
+              if (doWarp && !held) { gPlX = cx; gPlY = cy; gPlStart = fx_now_ns(CLOCK_UPTIME_RAW); acc_write(-30000, -30000, 0); gPlPh = 1; }
+              else if (doWarp) {
+                  int ddy = cy - gPlLastY; acc_write(cx - gPlLastX, ddy, 1);
+                  /* v92e: a drag also turns the mouse wheel (Input()+0x954, 120 per notch, positive = up), about one notch per 40 render pixels, so lists scroll from anywhere on the screen and not only when the press starts on the game's own scroll bar. Folders: menu_wheel_off, menu_wheel_inv. */
+                  { static int wInit, wOff, wInv; static float wRem; if (!wInit) { wInit = 1; wOff = mk_has("menu_wheel_off"); wInv = mk_has("menu_wheel_inv"); L("MENUWHEEL: drag scrolls the wheel %s, direction %s (folders menu_wheel_off, menu_wheel_inv)", wOff ? "OFF" : "ON", wInv ? "flipped" : "finger down = scroll up"); }
+                    if (!wOff && ddy) { wRem += (float)(wInv ? -ddy : ddy) * 3.0f; int w = (int)wRem; if (w) { wRem -= (float)w; uint8_t *mu = (uint8_t *)(gBase + EO_MOUSEMU); sh_mx_lock(mu); *(volatile int *)(gBase + 0x5e41c94UL) += w; sh_mx_unlock(mu); } } }
+                  gPlLastX = cx; gPlLastY = cy;
+              }
+              if (doPress || doRel) btn_push(0, doPress ? 1 : 0, gPlLastX, gPlLastY);
+              { static int n; if (n++ < 120) { int rx = -1, ry = -1, rl = -1; cur_rd(&rx, &ry, &rl); L("MENUTOUCH: %s finger %.0f,%.0f of view %.0fx%.0f (hardcoded win %dx%d) -> cursor %d,%d of client %dx%d; game cursor reads back %d,%d left %d", doPress ? "press" : doRel ? "release" : held ? "drag" : "warp", fx, fy, tvw, tvh, p2_win_w, p2_win_h, cx, cy, gCliW, gCliH, rx, ry, rl); } }
+          }
+          static void menu_cursor_apply(void) {   /* game thread, gInMu NOT held: the menu finger, then move the game's cursor by what the stick owes, keeping the button as it is (hold Left Click and push = drag) */
+              if (!gBase) return;
+              menu_touch_tick();
+              pthread_mutex_lock(&gInMu); int ix = (int)gMcDx, iy = (int)gMcDy; gMcDx -= ix; gMcDy -= iy; pthread_mutex_unlock(&gInMu);
+              if (!ix && !iy) return;
+              int x = 0, y = 0, l = 0; if (!p2_layout_ok() || !cur_rd(&x, &y, &l)) return;
+              cli_refresh();
+              x += ix; y += iy; if (x < 0) x = 0; if (y < 0) y = 0; if (x > gCliW - 1) x = gCliW - 1; if (y > gCliH - 1) y = gCliH - 1;
+              ((void (*)(int, int, unsigned char))(gBase + EO_SETTOUCHMOUSE))(x, y, (unsigned char)l);
+              { static int n; if (n++ < 40) L("MENUCUR: stick moved the cursor by %d,%d to %d,%d of %dx%d (left button %d)", ix, iy, x, y, gCliW, gCliH, l); }
+          }
+          /* v87: RIGHT CAMERA STICK, Madeira's model: the stick sets a camera RATE and the loader integrates it once per game frame, so the finger is never the camera.
+             p2_rstick(x, y) takes the on-screen deflection (-1..1): 5 percent dead zone (v96, was 15), the rest rescaled to 0..1, linear rate. Full deflection = rstick_speed_N percent (default 100)
+             of the screen width per second; up/down is rstick_vert_N percent (default 100) of that; folder rstick_invy flips it. Each frame the game gets ONE move of rate x real time in
+             whole screen ticks (the v82 clock), in floats. The dev's handler sees one finger: DOWN in the right half, a MOVE per frame, CANCEL on release. At the edge of the
+             right half the finger goes back to the far side inside the same drain (CANCEL, DOWN, MOVE) so a long turn never runs out of screen. A real finger always wins: the stick waits. */
+          static void rs_ev_locked(int act, float x, float y) { InEv e; memset(&e, 0, sizeof e); e.type = 2; e.action = act; e.n = 1; e.x[0] = x; e.y[0] = y; inq_push_locked(&e); }
+          static void rs_cancel_locked(void) { rs_ev_locked(3, gRsPx, gRsPy); gRsDown = 0; }
+          static int menu_stick_locked(double gap) {   /* menu mode: the right stick moves the game's cursor at a steady rate (the game's own response curve, power 1.6) and never makes a synthetic finger: in a menu every DOWN is a click */
+              if (!p2_menu_on()) return 0;
+              if (gRsDown) rs_cancel_locked();
+              float m = hypotf(gRsX, gRsY);
+              if (m > 0.0f) { float u = m > 1.0f ? 1.0f : m; double v = pow((double)u, 1.6) * (double)gMcSpeed * 0.01 * (double)gCliW * gap; gMcDx += (double)(gRsX / m) * v; gMcDy += (double)(gRsY / m) * v; }
+              return 1;
+          }
+          static void rs_integrate(double a, double b, double *ix, double *iy) {   /* v97: deflection x seconds over [a, b], from the timestamped history (piecewise constant) */
+              *ix = *iy = 0.0; if (b <= a) return;
+              unsigned n = gRsHn, cnt = n < RS_H ? n : RS_H; double t = a; float cx = 0.0f, cy = 0.0f;
+              for (unsigned k = 0; k < cnt; k++) { const RsS *q = &gRsH[(n - cnt + k) % RS_H]; if (q->t <= a) { cx = q->x; cy = q->y; } }
+              for (unsigned k = 0; k < cnt; k++) { const RsS *q = &gRsH[(n - cnt + k) % RS_H]; if (q->t <= a) continue; if (q->t >= b) break; *ix += (double)cx * (q->t - t); *iy += (double)cy * (q->t - t); t = q->t; cx = q->x; cy = q->y; }
+              *ix += (double)cx * (b - t); *iy += (double)cy * (b - t);
+          }
+          static int rs_emit_locked(void) {   /* the one camera move for this drain; 1 = events were queued */
+              double now = pan_now(), tk = gPanTick, gap = gRsLast > 0.0 ? now - gRsLast : tk;
+              gRsLast = now; if (gTn > 0) { gRsTail = 0; if (gRsDown) rs_cancel_locked(); return 0; }   /* a real finger always wins */
+              if (gap > 0.1) gap = 0.1;
+              if (menu_stick_locked(gap)) { if (!gRsStickOn) gRsTail = 0; return 0; }   /* v89: menu mode, the stick owns the cursor, nothing synthetic is queued */
+              /* v97: the step is the stick's deflection integrated over the last whole-tick window, read from the TIMESTAMPED history: a push that began or ended inside the window counts only for the part
+                 of the window it was really held (the first frame of a flick is not a full step, and a short flick that is over before the game thread looks still moves the camera by exactly its own length). */
+              double nt = floor(gap / tk + 0.5), dt = gap < 0.5 * tk ? gap : (nt < 1.0 ? tk : nt * tk);
+              double wa = now - dt;
+              if (gRsT0 > 0.0) { wa = gRsT0 > now - 0.1 ? gRsT0 : now - 0.1; gRsT0 = 0.0; }   /* v97c: the first frame of a push counts from the moment of the touch, however late the frame is (a dropped frame no longer eats the start) */
+              double ix, iy; rs_integrate(wa, now, &ix, &iy);
+              float W = (float)p2_win_w, H = (float)p2_win_h;
+              float dx = (float)ix * (float)gRsSpeed * 0.01f * W, dy = (float)iy * (float)gRsVert * 0.01f * W * (gRsInv ? -1.0f : 1.0f);   /* v88: up/down has its own percent, not a share of left/right */
+              float x0 = 0.55f * W, x1 = 0.95f * W, y0 = 0.12f * H, y1 = 0.88f * H;
+              float cx = dx > 0 ? 0.58f * W : dx < 0 ? 0.92f * W : 0.75f * W, cy = dy > 0 ? 0.2f * H : dy < 0 ? 0.8f * H : 0.5f * H;   /* start on the far side of the way it is going: the box lasts longest */
+              if (!gRsDown) { gRsPx = cx; gRsPy = cy; rs_ev_locked(0, cx, cy); gRsDown = 1; }
+              float nx = gRsPx + dx, ny = gRsPy + dy;
+              if (nx < x0 || nx > x1 || ny < y0 || ny > y1) {
+                  rs_cancel_locked(); gRsPx = cx; gRsPy = cy; rs_ev_locked(0, cx, cy); gRsDown = 1; nx = cx + dx; ny = cy + dy;
+                  nx = nx < x0 ? x0 : nx > x1 ? x1 : nx; ny = ny < y0 ? y0 : ny > y1 ? y1 : ny;
+              }
+              gRsPx = nx; gRsPy = ny; rs_ev_locked(2, nx, ny);
+              if (gItOn) { gItFedDx += dx; gItFedDy += dy; }
+              { static int n; if (n++ < 40) L("RSTICK: stick %.2f,%.2f, step time %.2f ms (gap %.2f) -> move %.2f,%.2f px, finger at %.0f,%.0f%s", gRsX, gRsY, dt * 1000.0, gap * 1000.0, dx, dy, nx, ny, gRsTail ? " (released: last stretch)" : ""); }
+              if (gRsTail && !gRsStickOn) { gRsTail = 0; rs_cancel_locked(); }   /* the stick is let go: its last move, then the synthetic finger lifts in the same drain */
+              return 1;
+          }
+          void p2_cam_cfg(int h, int v) { gRsSpeed = h < 5 ? 5 : h > 1000 ? 1000 : h; gRsVert = v < 5 ? 5 : v > 1000 ? 1000 : v; }   /* v88: the camera percents from the stick's menu */
+          void p2_rstick_ts(float x, float y, double ts) {   /* UI thread: the stick's deflection, 0,0 = let go; ts = UITouch.timestamp (0 = now) */
+              if (!gInAttached) return;
+              if (!gRsInit && gDocs[0]) { gRsInit = 1; gRsInv = mk_has("rstick_invy");
+                  L("RSTICK: full push = %d percent (left/right) and %d percent (up/down) of the screen width per second, flipped %s (the stick's menu sets the percents, folder rstick_invy flips)", gRsSpeed, gRsVert, gRsInv ? "yes" : "no"); }
+              float m = hypotf(x, y); if (m > 1.0f) { x /= m; y /= m; m = 1.0f; }
+              if (m <= 0.05f) x = y = 0.0f; else { float k = (m - 0.05f) / 0.95f / m; x *= k; y *= k; }   /* v96: 5 percent dead zone (was 15) */
+              double now = pan_now(), t = (ts > 0.0 && ts <= now + 0.001) ? ts : now;
+              pthread_mutex_lock(&gInMu);
+              if (gRsHn) { double lt = gRsH[(gRsHn - 1) % RS_H].t; if (t < lt) t = lt; }   /* the history never runs backwards */
+              gRsH[gRsHn % RS_H].t = t; gRsH[gRsHn % RS_H].x = x; gRsH[gRsHn % RS_H].y = y; gRsHn++;
+              gRsX = x; gRsY = y;
+              if (x != 0.0f || y != 0.0f) { if (!gRsStickOn) { gRsStickOn = 1; if (!gRsTail) { gRsLast = 0.0; gRsT0 = t; } } pan_arm_locked(); }
+              else if (gRsStickOn) {   /* v97c: let go. A stick that is already moving the camera stops AT ONCE: the synthetic finger lifts now and nothing more is emitted, however late the next frame is. Only a push that was over before the game thread saw it (a very short flick) keeps its one last move, so it is not lost. */
+                  gRsStickOn = 0; gMcDx = gMcDy = 0.0;
+                  if (gRsDown) { gRsTail = 0; rs_cancel_locked(); } else { gRsTail = 1; pan_arm_locked(); }
+              }
+              pthread_mutex_unlock(&gInMu);
+          }
+          void p2_rstick(float x, float y) { p2_rstick_ts(x, y, 0.0); }
+          static void sh_inq_attach(void *q, void *lp, int ident, LCb cb, void *data) {
+              (void)q; pthread_mutex_lock(&gInMu);
+              if (gInPipe[0] < 0) {
+                  if (pipe(gInPipe) == 0) { for (int i = 0; i < 2; i++) fcntl(gInPipe[i], F_SETFL, fcntl(gInPipe[i], F_GETFL, 0) | O_NONBLOCK); }
+              }
+              pthread_mutex_unlock(&gInMu);
+              if (gInPipe[0] < 0) { L("PLAT AInputQueue_attachLooper: pipe() failed"); return; }
+              sh_looper_addfd(lp, gInPipe[0], ident, 1, cb, data); gInAttached = 1;
+              L("PLAT AInputQueue_attachLooper ident=%d cb=%p data=%p (touch input is live)", ident, (void *)cb, data);
+          }
+          static void sh_inq_detach(void *q, void *lp) {
+              (void)q; Lp *l = lp ? (Lp *)lp : looper_get(); gInAttached = 0;
+              for (int i = 0; i < LSRC_MAX; i++) if (gInPipe[0] >= 0 && l->s[i].fd == gInPipe[0]) l->s[i].fd = -1;
+              L("PLAT AInputQueue_detachLooper");
+          }
+          int p2_pan_smooth(void) {
+              if (!gDocs[0]) return 1;   /* folders not readable yet (launcher screen): smoothing assumed, decided at the first real touch */
+              if (gPanOn < 0) {
+                  gPanOn = mk_has("pan_smooth_off") ? 0 : 1; gPanLagMs = mk_val("pan_lag_"); gPanClockOn = mk_has("pan_clock_off") ? 0 : 1;
+                  L("PAN: touch smoothing %s (folder pan_smooth_off turns it off), lag %s (folder pan_lag_N = N ms overrides the measured touch interval), steady clock %s (folder pan_clock_off = the v81 way), screen tick %.2f ms", gPanOn ? "ON" : "off", gPanLagMs >= 0 ? "fixed by folder" : "measured", gPanClockOn ? "ON" : "off", gPanTick * 1000.0);
+              }
+              return gPanOn;
+          }
+          static int menu_touch_locked(int phase, int tid, float x, float y) {   /* v90, gInMu held. 1 = this event belongs to the menu cursor, the dev's handler never sees it */
+              if (gMtId >= 0 && tid == gMtId) {
+                  gMtX = x; gMtY = y;
+                  if (phase == 1) gMtMoved = 1;
+                  else if (phase >= 2) { gMtUp = 1; gMtUpAt = fx_now_ns(CLOCK_UPTIME_RAW); }   /* 2 = up, 3 = cancel */
+                  pan_arm_locked(); return 1;
+              }
+              if (phase != 0) return 0;   /* a finger that started as a game touch stays a game touch until it lifts */
+              if (gTn > 0 || !p2_menu_on()) {
+                  static int nn; if (nn++ < 40) L("MENUTOUCH: finger %d down at %.0f,%.0f NOT taken by the loader (it goes to the dev's handler): game fingers down %d, menu mode %d, layout confirmed %d, folders menu_auto_off %d menu_force %d, game cursor shown %d", tid, x, y, gTn, p2_menu_on(), p2_layout_ok(), gMenuAutoOff, gMenuForce, gBase ? (int)(((unsigned long (*)(void))(gBase + EO_CURSORSHOWN))() & 1UL) : -1);
+                  return 0;
+              }
+              if (gMtId >= 0) return 1;   /* another finger, or a tap while the last release is still pending: ignored */
+              gMtId = tid; gMtX = x; gMtY = y; gMtWarp = 1; gMtUp = 0; gMtMoved = 0; gMtPressAt = 0;
+              if (gRsDown) rs_cancel_locked();
+              pan_arm_locked();
+              { static int n; if (n++ < 40) L("MENUTOUCH: finger %d down at %.0f,%.0f: the loader drives the game's cursor", tid, x, y); }
+              return 1;
+          }
+          void p2_touch_ts(int phase, int tid, float x, float y, double ts) {   /* ts = UITouch.timestamp (seconds, same clock as CLOCK_UPTIME_RAW), 0 = now */
+              if (!gInAttached) return;
+              int pan = p2_pan_smooth(); double t = ts > 0.0 ? ts : pan_now();
+              pthread_mutex_lock(&gInMu);
+              if (menu_touch_locked(phase, tid, x, y)) goto out;   /* v90: menu mode, the finger drives the game's cursor */
+              if (pan && gMvPend && phase != 1) pan_flush_locked();
+              if (phase == 0 && gRsDown) rs_cancel_locked();
+              InEv e; memset(&e, 0, sizeof e); e.type = 2;
+              int idx = -1; for (int i = 0; i < gTn; i++) if (gTp[i].id == tid) idx = i;
+              if (phase == 0) {
+                  if (idx < 0 && gTn < IQ_PTRS) { idx = gTn++; gTp[idx].id = tid; }
+                  if (idx < 0) goto out;
+                  if (gTn == 1) { gPanT = 0.0; gPanLastNow = 0.0; gPanPeak = 0.0; gPanDrainLast = 0.0; gPanGapEma = 0.0; gPsN = gPsSumGap = gPsSumGap2 = gPsSumAdv = gPsSumAdv2 = gPsSnaps = gPsSteerMax = 0.0; gPanLag = gPanEma < 0.004 ? 0.004 : gPanEma > 0.016 ? 0.016 : gPanEma; if (gPanClockOn > 0 && gPanLag < 0.0125) gPanLag = 0.0125; }   /* a new gesture: start the lag from the touch interval */
+                  gTp[idx].x = x; gTp[idx].y = y; gPHn[idx] = 0; ph_push(idx, t, x, y); gOut[idx].x = x; gOut[idx].y = y; e.action = (gTn == 1) ? 0 : (5 | (idx << 8));
+              } else {
+                  if (idx < 0) goto out;
+                  if (phase == 1 && gItOn && gTp[idx].x > (float)p2_win_w * 0.5f) { gItDx += x - gTp[idx].x; gItDy += y - gTp[idx].y; gItMoves++; }
+                  gTp[idx].x = x; gTp[idx].y = y;
+                  if (phase == 1) {
+                      if (pan) { ph_push(idx, t, x, y); gMvPend = 1; pan_arm_locked(); goto out; }   /* held back: the game thread picks it up once per frame */
+                      e.action = 2;
+                  }
+                  else if (phase == 3) e.action = 3;
+                  else e.action = (gTn == 1) ? 1 : (6 | (idx << 8));
+              }
+              e.n = gTn; for (int i = 0; i < gTn; i++) { e.id[i] = gTp[i].id; e.x[i] = gTp[i].x; e.y[i] = gTp[i].y; }
+              if (phase == 3) gTn = 0;
+              else if (phase == 2) { for (int i = idx; i < gTn - 1; i++) { gTp[i] = gTp[i + 1]; memcpy(gPH[i], gPH[i + 1], sizeof gPH[i]); gPHn[i] = gPHn[i + 1]; gOut[i] = gOut[i + 1]; } gTn--; }
+              inq_push_locked(&e);
+              if (pan && gTn == 0 && phase >= 2) { static int ng; if (ng++ < 40) L("PAN: gesture ended, lag %.1f ms, newest-sample age peak %.1f ms, touch interval %.2f ms", gPanLag * 1000.0, gPanPeak * 1000.0, gPanEma * 1000.0);
+                  if (gPsN > 2.0 && ng <= 40) { double mg = gPsSumGap / gPsN, sg = sqrt(fmax(0.0, gPsSumGap2 / gPsN - mg * mg)), ma = gPsSumAdv / gPsN, sa = sqrt(fmax(0.0, gPsSumAdv2 / gPsN - ma * ma));
+                      L("PAN: %.0f frames, game-thread gap avg %.2f ms wobble %.2f ms | step the camera got avg %.2f ms wobble %.2f ms | clock snaps %.0f, biggest nudge %.2f ms", gPsN, mg * 1000.0, sg * 1000.0, ma * 1000.0, sa * 1000.0, gPsSnaps, gPsSteerMax * 1000.0); } }
+          out:
+              pthread_mutex_unlock(&gInMu);
+          }
+          void p2_touch(int phase, int tid, float x, float y) { p2_touch_ts(phase, tid, x, y, 0.0); }
+          /* v98: BUTTONS THAT THE GAME CANNOT MISS. The game reads a key or click once per frame. The old minimum hold was "two SMOOTHED frame times" (p2_hold_ms), which is far too short the moment frames
+             drop (a hot phone): the press went down and up again between two of the game's reads and was never seen. Now a press stays down until the game has really drawn TWO more frames after it
+             (gFrame counts presented frames), and never shorter than the old hold; a press that is not released by then is forced up after 0.4 s so nothing can stick. A second tap while the first is
+             still being held is NOT swallowed: the key comes up, stays up for two frames so the game sees the gap, and goes down again as its own press. Everything runs on the main thread.
+             Folder hold_off = no minimum hold (the old instant release), hold_ms_N = a fixed minimum of N ms, as before. */
+          #define BQ_N 258                                   /* 0..255 = DirectInput keys, 256 = Left Click, 257 = Right Click */
+          typedef struct { unsigned char want, held, repress, regap;   /* repress = separate presses still owed */ unsigned downFr, upFr; double downAt; } BtnS;
+          static BtnS gB[BQ_N]; static int gBAct, gBPosted, gBTimer;
+          static void btn_send(int ch, int down) { if (ch >= 256) p2_mouse_now(ch - 256, down); else p2_key_now(ch, down); }
+          static int btn_hold_done(const BtnS *b, double now) {
+              double hm = p2_hold_ms() / 1000.0, held = now - b->downAt;
+              if (hm <= 0.0) return 1;                        /* hold_off */
+              if (held > 0.4) return 1;                       /* never stuck */
+              return (unsigned)(gFrame - b->downFr) >= 2u && held >= hm;
+          }
+          static void btn_timer_f(void *ctx);
+          static void btn_tick_main(void) {                   /* main thread */
+              double now = pan_now(); int act = 0;
+              for (int c = 0; c < BQ_N; c++) {
+                  BtnS *b = &gB[c];
+                  if (b->held) {
+                      if ((!b->want || b->repress) && btn_hold_done(b, now)) { btn_send(c, 0); b->held = 0; if (b->repress) { b->regap = 1; b->upFr = gFrame; b->downAt = now; } }
+                  } else if (b->regap) {
+                      if ((unsigned)(gFrame - b->upFr) >= 2u || now - b->downAt > 0.1) { b->regap = 0; if (b->repress) { b->repress--; btn_send(c, 1); b->held = 1; b->downFr = gFrame; b->downAt = now; } }
+                  }
+                  if ((b->held && (!b->want || b->repress)) || b->regap) act = 1;
+              }
+              gBAct = act;
+              if (act && !gBTimer) { gBTimer = 1; dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_MSEC), dispatch_get_main_queue(), NULL, btn_timer_f); }   /* fallback if no frame is presented */
+          }
+          static void btn_timer_f(void *ctx) { (void)ctx; gBTimer = 0; btn_tick_main(); }   /* one timer chain at most */
+          static void btn_post_f(void *ctx) { (void)ctx; gBPosted = 0; btn_tick_main(); }
+          static void btn_edge_main(int ch, int down) {       /* main thread */
+              BtnS *b = &gB[ch]; double now = pan_now();
+              if (down) {
+                  if (b->want) return;                        /* already down: not a new press */
+                  b->want = 1;
+                  if (!b->held && !b->regap) { btn_send(ch, 1); b->held = 1; b->downFr = gFrame; b->downAt = now; }   /* the press goes out at once */
+                  else if (b->repress < 2) b->repress++;      /* its release or gap is still running: a new, separate press is owed (up to two are kept) */
+              } else {
+                  if (!b->want) return;
+                  b->want = 0;
+                  if (b->held && !b->repress && btn_hold_done(b, now)) { btn_send(ch, 0); b->held = 0; }   /* held long enough already: up at once */
+              }
+              btn_tick_main();
+          }
+          static void btn_edge_f(void *ctx) { int v = (int)(intptr_t)ctx; btn_edge_main(v >> 1, v & 1); }
+          void p2_btn_edge(int ch, int down) {                /* any thread */
+              if (ch < 0 || ch >= BQ_N) return;
+              if (ON_MAIN()) btn_edge_main(ch, down ? 1 : 0); else dispatch_async_f(dispatch_get_main_queue(), (void *)(intptr_t)(ch * 2 + (down ? 1 : 0)), btn_edge_f);
+          }
+          static void btn_present_hook(void) {                /* once per presented frame (from inq_rearm): releases are timed to the game's real frames */
+              if (gBAct && !gBPosted) { gBPosted = 1; dispatch_async_f(dispatch_get_main_queue(), NULL, btn_post_f); }
+          }
+          void p2_mouse(int button, int down) { p2_btn_edge(256 + (button ? 1 : 0), down); }   /* v95 was a timer hold, see v98 above */
           static void cli_refresh(void) {   /* the game's client size, from the game thread (where its own cursor code asks) at most once a second */
               long long now = fx_now_ns(CLOCK_UPTIME_RAW); if (now - gCliAt < 100000000LL) return; gCliAt = now;   /* v91: was 1 s; the game's cursor arrow is drawn from the CURRENT client size every frame, so a stale size shifts it */
               unsigned long hw = ((unsigned long (*)(void))(gBase + EO_GUESTWIN))();
@@ -480,7 +774,7 @@ jobs:
                btn KEY x y w h LABEL  a button; KEY is a DirectInput scancode in hex (39 space, 2A shift, 12 E, 1D ctrl ...)
                block x y w h          a region where touches are swallowed (use it to kill the dev's invisible joystick zone)
              A touch that starts on one of these never reaches the dev. Every other touch is forwarded unchanged (camera, menus). Pair it with ovl_off (or ovl_hide) to hide the dev's own drawing. ---- */
-          extern void p2_key(int dik, int down);
+          extern void p2_btn_edge(int dik, int down);
           extern void p2_mouse(int button, int down);   /* v84: 0 left, 1 right */
           extern int p2_menu_on(void);   /* v90: menu mode (automatic) */
           extern void p2_touch_view(float w, float h);   /* v91: real touch view size in pixels */
@@ -677,13 +971,13 @@ jobs:
           }
           static void ownStick(OwnEl *e, int mask) {   /* e->down holds the key mask: 1 W, 2 A, 4 S, 8 D, 16 Shift (the outer ring) */
               static const int dik[5] = {0x11, 0x1E, 0x1F, 0x20, 0x2A};
-              for (int b = 0; b < 5; b++) { int was = (e->down >> b) & 1, now = (mask >> b) & 1; if (was != now) p2_key(dik[b], now); }
+              for (int b = 0; b < 5; b++) { int was = (e->down >> b) & 1, now = (mask >> b) & 1; if (was != now) p2_btn_edge(dik[b], now); }
               e->down = mask;
           }
           static void ownReleaseAll(void) {
               for (int i = 0; i < gOwnN; i++) {
                   OwnEl *e = &gOwn[i];
-                  if (e->kind == 0 && e->down) { e->down = 0; p2_key(e->dik, 0); }
+                  if (e->kind == 0 && e->down) { e->down = 0; p2_btn_edge(e->dik, 0); }
                   else if (e->kind == 1 && e->down) ownStick(e, 0);
               }
               gKnobX = gKnobY = gKnob2X = gKnob2Y = 0; p2_rstick(0, 0); gRsFixedHeld = NO; for (int s = 0; s < 10; s++) gOwnBy[s] = 0;
@@ -739,8 +1033,8 @@ jobs:
               OwnEl *e = &gOwn[k - 1];
               { static int n; if (n++ < 30) { char b[160]; snprintf(b, sizeof b, "OWNLAYOUT: touch phase %d slot %d consumed by element %d (%s%s)", ph, s, k - 1, e->kind == 0 ? "btn " : e->kind == 1 ? "stick" : e->kind == 3 ? "rstick" : "block", e->kind == 0 ? e->label : ""); p2_note(b); } }
               if (e->kind == 0) {
-                  if (ph == 0 && !e->down) { e->down = 1; p2_key(e->dik, 1); }
-                  else if (ph >= 2 && e->down) { e->down = 0; p2_key(e->dik, 0); }
+                  if (ph == 0 && !e->down) { e->down = 1; p2_btn_edge(e->dik, 1); }
+                  else if (ph >= 2 && e->down) { e->down = 0; p2_btn_edge(e->dik, 0); }
               } else if (e->kind == 3) {   /* v87: right camera stick, a fixed stick: the push from its centre is the camera rate */
                   if (ph >= 2) { p2_rstick_ts(0, 0, gFeedTs); gKnob2X = gKnob2Y = 0; gRsFixedHeld = NO; }
                   else {
@@ -1164,7 +1458,7 @@ jobs:
           }
           - (void)press:(BOOL)down {
               if (down == self.pressed) return;
-              self.pressed = down; if (self.dik >= CB_LMB) p2_mouse(self.dik == CB_LMB ? 0 : 1, down ? 1 : 0); else p2_key(self.dik, down ? 1 : 0); [self look];
+              self.pressed = down; if (self.dik >= CB_LMB) p2_mouse(self.dik == CB_LMB ? 0 : 1, down ? 1 : 0); else p2_btn_edge(self.dik, down ? 1 : 0); [self look];
           }
           - (void)touchesBegan:(NSSet<UITouch *> *)ts withEvent:(UIEvent *)e { if (gCbEdit) { self.dragging = YES; cbSelCb(self); } else [self press:YES]; }
           - (void)touchesMoved:(NSSet<UITouch *> *)ts withEvent:(UIEvent *)e {
