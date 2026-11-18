@@ -457,10 +457,15 @@ jobs:
           typedef struct { unsigned char want, held, repress, regap;   /* repress = separate presses still owed */ unsigned downFr, upFr; double downAt; } BtnS;
           static BtnS gB[BQ_N]; static int gBAct, gBPosted, gBTimer;
           static void btn_send(int ch, int down) { if (ch >= 256) p2_mouse_now(ch - 256, down); else p2_key_now(ch, down); }
-          static int btn_hold_done(const BtnS *b, double now) {
+          static int btn_short(int ch) {                     /* v98b: keys the game reads as TAP or HOLD by how long they are down: the weapon wheel key (3 = DIK 0x04). Folder hold_short_all = every key. */
+              static int all = -1; if (all < 0 && gDocs[0]) all = mk_has("hold_short_all") ? 1 : 0;
+              return ch == 0x04 || all > 0;
+          }
+          static int btn_hold_done(const BtnS *b, double now, int ch) {
               double hm = p2_hold_ms() / 1000.0, held = now - b->downAt;
               if (hm <= 0.0) return 1;                        /* hold_off */
               if (held > 0.4) return 1;                       /* never stuck */
+              if (btn_short(ch)) { double fm = gFrameMs < 35.0 ? gFrameMs : 35.0; return (unsigned)(gFrame - b->downFr) >= 1u && held >= fm / 1000.0; }   /* one drawn frame and about one frame time: short enough to stay a tap, long enough for the game to read it */
               return (unsigned)(gFrame - b->downFr) >= 2u && held >= hm;
           }
           static void btn_timer_f(void *ctx);
@@ -469,7 +474,7 @@ jobs:
               for (int c = 0; c < BQ_N; c++) {
                   BtnS *b = &gB[c];
                   if (b->held) {
-                      if ((!b->want || b->repress) && btn_hold_done(b, now)) { btn_send(c, 0); b->held = 0; if (b->repress) { b->regap = 1; b->upFr = gFrame; b->downAt = now; } }
+                      if ((!b->want || b->repress) && btn_hold_done(b, now, c)) { btn_send(c, 0); b->held = 0; if (b->repress) { b->regap = 1; b->upFr = gFrame; b->downAt = now; } }
                   } else if (b->regap) {
                       if ((unsigned)(gFrame - b->upFr) >= 2u || now - b->downAt > 0.1) { b->regap = 0; if (b->repress) { b->repress--; btn_send(c, 1); b->held = 1; b->downFr = gFrame; b->downAt = now; } }
                   }
@@ -490,7 +495,7 @@ jobs:
               } else {
                   if (!b->want) return;
                   b->want = 0;
-                  if (b->held && !b->repress && btn_hold_done(b, now)) { btn_send(ch, 0); b->held = 0; }   /* held long enough already: up at once */
+                  if (b->held && !b->repress && btn_hold_done(b, now, ch)) { btn_send(ch, 0); b->held = 0; }   /* held long enough already: up at once */
               }
               btn_tick_main();
           }
