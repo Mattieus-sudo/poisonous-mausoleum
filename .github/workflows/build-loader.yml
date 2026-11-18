@@ -4090,6 +4090,7 @@ jobs:
           <key>UIFileSharingEnabled</key><true/>
           <key>CADisableMinimumFrameDurationOnPhone</key><true/>
           <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+          <key>LSSupportsGameMode</key><true/>
           </dict></plist>
           EOF_APPPLIST
           # ---- v66: app icon. Order: icon_url input, then p2-icon.png in the repo root, then the best launcher PNG inside the APK ----
