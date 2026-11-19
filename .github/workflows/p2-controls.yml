@@ -1,4 +1,4 @@
-name: "P2 controls source"
+name: "P2 controls source (v100 touch timing diagnostics)"
 # (icons and layouts hook in here: the picture code is in p2-icons.yml, the per-layout code in p2-layouts.yml; both are joined into main.m around this piece)
 # CONTROLS: the touch input path in p2core.c (pan smoothing, right stick, swipe feed) and, in main.m, the own controls, the right stick and its menu, custom buttons and the add list.
 # Called by build-loader.yml (uses: ./.github/workflows/p2-controls.yml). It only writes source text and uploads it; the loader joins the pieces and compiles.
@@ -16,8 +16,12 @@ jobs:
           #define IQ_MAX 256
           #define IQ_EDGE_RESERVE 16       /* leave room for DOWN/UP/CANCEL during a move burst */
           #define IQ_PTRS 10
-          typedef struct { int type, action, n; int id[IQ_PTRS]; float x[IQ_PTRS], y[IQ_PTRS]; } InEv;
+          /* v100 TOUCH TIMING DIAGNOSTICS: preserve the physical UIKit timestamp and
+             measure queue age + callback lifetime without changing event ordering. */
+          typedef struct { int type, action, n, touch_id; int id[IQ_PTRS]; float x[IQ_PTRS], y[IQ_PTRS];
+                           uint64_t trace_seq, enq_ns, deq_ns; double ui_ts; } InEv;
           static InEv gIq[IQ_MAX]; static unsigned gIqH, gIqT;
+          static uint64_t gTouchTraceSeq; static unsigned gTouchTraceLines;
           static pthread_mutex_t gInMu = PTHREAD_MUTEX_INITIALIZER;
           static int gInPipe[2] = {-1, -1};
           static volatile int gInAttached;
@@ -65,6 +69,10 @@ jobs:
               return 0;
           }
           static void inq_push_locked(const InEv *e) {
+              InEv traced = *e;
+              traced.trace_seq = ++gTouchTraceSeq;
+              traced.enq_ns = (uint64_t)(pan_now() * 1000000000.0);
+              /* v100: log lifecycle edges at enqueue, then again at dequeue/finish. */
               /* v99: never let a burst of MOVE samples consume the queue slot needed by UP/CANCEL.
                  Motion moves are replaceable; lifecycle edges are not. On a full queue, discard the
                  oldest queued MOVE while preserving the order of every DOWN/UP/CANCEL. If the incoming
@@ -85,11 +93,15 @@ jobs:
                       /* All queued items are lifecycle edges. Keep the queue bounded, but make
                          the overflow explicit rather than silently pretending the event was sent. */
                       static unsigned lostEdges;
-                      if (lostEdges++ < 8) L("TOUCHQ: lifecycle edge queue overflow (%u pending); incoming action 0x%x could not be queued", used, e->action);
+                      if (lostEdges++ < 8) L("TOUCHQ: lifecycle edge queue overflow (%u pending); incoming action 0x%x seq=%llu could not be queued", used, traced.action, (unsigned long long)traced.trace_seq);
                       return;
                   }
               }
-              gIq[gIqT % IQ_MAX] = *e; gIqT++;
+              gIq[gIqT % IQ_MAX] = traced; gIqT++;
+              if ((traced.action & 0xff) != 2 && gTouchTraceLines < 600) {
+                  gTouchTraceLines++;
+                  L("TOUCHTRACE: ENQ seq=%llu action=0x%x touch=%d n=%d ui_age_at_enq=%.2fms q=%u", (unsigned long long)traced.trace_seq, traced.action, traced.touch_id, traced.n, traced.ui_ts > 0.0 ? (pan_now() - traced.ui_ts) * 1000.0 : -1.0, gIqT - gIqH);
+              }
               if (gInPipe[1] >= 0) { char c = 1; if (write(gInPipe[1], &c, 1) < 0) {} }
           }
           static void pan_arm_locked(void) { if (!gMvArmed && gInPipe[1] >= 0) { char c = 1; if (write(gInPipe[1], &c, 1) < 0) {} gMvArmed = 1; } }   /* one wake-up byte; the queue-empty path of sh_inq_get drains it */
@@ -333,7 +345,10 @@ jobs:
              whole screen ticks (the v82 clock), in floats. The dev's handler sees one finger: DOWN in the right half, a MOVE per frame, CANCEL on release. At the edge of the
              right half the finger goes back to the far side inside the same drain (CANCEL, DOWN, MOVE) so a long turn never runs out of screen. A real finger always wins: the stick waits. */
           static void rs_ev_locked(int act, float x, float y) { InEv e; memset(&e, 0, sizeof e); e.type = 2; e.action = act; e.n = 1; e.x[0] = x; e.y[0] = y; inq_push_locked(&e); }
-          static void rs_cancel_locked(void) { rs_ev_locked(3, gRsPx, gRsPy); gRsDown = 0; }
+          static void rs_cancel_locked(void) {
+              if (gRsDown) { static unsigned n; if (n++ < 300) L("RSTICKTRACE: SYNTH_CANCEL game_drain=%d tail=%d xy=%.1f,%.1f", gRsDown, gRsTail, gRsPx, gRsPy); }
+              rs_ev_locked(3, gRsPx, gRsPy); gRsDown = 0;
+          }
           static int menu_stick_locked(double gap) {   /* menu mode: the right stick moves the game's cursor at a steady rate (the game's own response curve, power 1.6) and never makes a synthetic finger: in a menu every DOWN is a click */
               if (!p2_menu_on()) return 0;
               if (gRsDown) rs_cancel_locked();
@@ -384,6 +399,7 @@ jobs:
               if (m <= 0.05f) x = y = 0.0f; else { float k = (m - 0.05f) / 0.95f / m; x *= k; y *= k; }   /* v96: 5 percent dead zone (was 15) */
               double now = pan_now(), t = (ts > 0.0 && ts <= now + 0.001) ? ts : now;
               pthread_mutex_lock(&gInMu);
+              if (m <= 0.05f) { static unsigned rel; if (rel++ < 300) L("RSTICKTRACE: UI_RELEASE ui_ts=%.9f arrival_age=%.2fms prior_stick=%d synthetic_down=%d tail=%d", t, (now - t) * 1000.0, gRsStickOn, gRsDown, gRsTail); }
               if (gRsHn) { double lt = gRsH[(gRsHn - 1) % RS_H].t; if (t < lt) t = lt; }   /* the history never runs backwards */
               gRsH[gRsHn % RS_H].t = t; gRsH[gRsHn % RS_H].x = x; gRsH[gRsHn % RS_H].y = y; gRsHn++;
               gRsX = x; gRsY = y;
@@ -440,11 +456,12 @@ jobs:
           void p2_touch_ts(int phase, int tid, float x, float y, double ts) {   /* ts = UITouch.timestamp (seconds, same clock as CLOCK_UPTIME_RAW), 0 = now */
               if (!gInAttached) return;
               int pan = p2_pan_smooth(); double t = ts > 0.0 ? ts : pan_now();
+              if (phase != 1) { static unsigned traceIn; if (traceIn++ < 600) L("TOUCHTRACE: UI phase=%d touch=%d ui_ts=%.9f arrival_age=%.2fms xy=%.0f,%.0f", phase, tid, t, (pan_now() - t) * 1000.0, x, y); }
               pthread_mutex_lock(&gInMu);
               if (menu_touch_locked(phase, tid, x, y)) goto out;   /* v90: menu mode, the finger drives the game's cursor */
               if (pan && gMvPend && phase != 1) pan_flush_locked();
               if (phase == 0 && gRsDown) rs_cancel_locked();
-              InEv e; memset(&e, 0, sizeof e); e.type = 2;
+              InEv e; memset(&e, 0, sizeof e); e.type = 2; e.touch_id = tid; e.ui_ts = t;
               int idx = -1; for (int i = 0; i < gTn; i++) if (gTp[i].id == tid) idx = i;
               if (phase == 0) {
                   if (idx < 0 && gTn < IQ_PTRS) { idx = gTn++; gTp[idx].id = tid; }
@@ -494,10 +511,22 @@ jobs:
                   if (b->held) { btn_send(ch, 0); b->held = 0; }
               }
           }
-          static void btn_edge_f(void *ctx) { int v = (int)(intptr_t)ctx; btn_edge_main(v >> 1, v & 1); }
+          typedef struct { int ch, down; uint64_t seq; double requested_at; } BtnTraceDispatch;
+          static uint64_t gBtnTraceSeq; static unsigned gBtnTraceLines;
+          static void btn_edge_f(void *ctx) {
+              BtnTraceDispatch *d = (BtnTraceDispatch *)ctx; double began = pan_now();
+              if (gBtnTraceLines < 600) { __atomic_fetch_add(&gBtnTraceLines, 1, __ATOMIC_RELAXED); L("BTNTRACE: MAIN seq=%llu ch=%d down=%d dispatch_wait=%.2fms", (unsigned long long)d->seq, d->ch, d->down, (began - d->requested_at) * 1000.0); }
+              btn_edge_main(d->ch, d->down); double done = pan_now();
+              if (gBtnTraceLines < 600) { __atomic_fetch_add(&gBtnTraceLines, 1, __ATOMIC_RELAXED); L("BTNTRACE: DONE seq=%llu ch=%d down=%d main_work=%.2fms", (unsigned long long)d->seq, d->ch, d->down, (done - began) * 1000.0); }
+              free(d);
+          }
           void p2_btn_edge(int ch, int down) {                /* any thread */
               if (ch < 0 || ch >= BQ_N) return;
-              if (ON_MAIN()) btn_edge_main(ch, down ? 1 : 0); else dispatch_async_f(dispatch_get_main_queue(), (void *)(intptr_t)(ch * 2 + (down ? 1 : 0)), btn_edge_f);
+              uint64_t seq = __atomic_add_fetch(&gBtnTraceSeq, 1, __ATOMIC_RELAXED); double requested = pan_now();
+              int main = ON_MAIN();
+              if (gBtnTraceLines < 600) { __atomic_fetch_add(&gBtnTraceLines, 1, __ATOMIC_RELAXED); L("BTNTRACE: REQUEST seq=%llu ch=%d down=%d on_main=%d", (unsigned long long)seq, ch, down ? 1 : 0, main); }
+              if (main) { btn_edge_main(ch, down ? 1 : 0); double done = pan_now(); if (gBtnTraceLines < 600) { __atomic_fetch_add(&gBtnTraceLines, 1, __ATOMIC_RELAXED); L("BTNTRACE: DONE seq=%llu ch=%d down=%d main_work=%.2fms", (unsigned long long)seq, ch, down ? 1 : 0, (done - requested) * 1000.0); } }
+              else { BtnTraceDispatch *d = malloc(sizeof *d); if (!d) return; d->ch = ch; d->down = down ? 1 : 0; d->seq = seq; d->requested_at = requested; dispatch_async_f(dispatch_get_main_queue(), d, btn_edge_f); }
           }
           static void btn_present_hook(void) { }              /* v99: no frame-delayed release work remains */
           void p2_mouse(int button, int down) { p2_btn_edge(256 + (button ? 1 : 0), down); }   /* v99: immediate touch edges */
@@ -508,13 +537,26 @@ jobs:
               if (gIqH != gIqT) { ev = gIq[gIqH % IQ_MAX]; gIqH++; have = 1; if (gInPipe[0] >= 0) { if (read(gInPipe[0], buf, 1) < 0) {} } }
               else if (gPanOn > 0 && gMvPend && !gMvServed) { gMvServed = 1; have = pan_resample_locked(&ev); }   /* v81: queue empty, a held-back move exists: one resampled move per drain */
               if (!have) { while (gInPipe[0] >= 0 && read(gInPipe[0], buf, sizeof buf) > 0) {} gMvArmed = 0; gMvServed = 0; pthread_mutex_unlock(&gInMu); rs_tick(); menu_cursor_apply(); return -1; }
+              ev.deq_ns = (uint64_t)(pan_now() * 1000000000.0);
               __atomic_fetch_add(&gItEv, 1, __ATOMIC_RELAXED);
               pthread_mutex_unlock(&gInMu);
               InEv *e = malloc(sizeof *e); *e = ev;
+              if ((e->action & 0xff) != 2 && gTouchTraceLines < 600) {
+                  __atomic_fetch_add(&gTouchTraceLines, 1, __ATOMIC_RELAXED);
+                  L("TOUCHTRACE: DEQ seq=%llu action=0x%x touch=%d ui_to_deq=%.2fms queue=%.2fms", (unsigned long long)e->trace_seq, e->action, e->touch_id, e->ui_ts > 0.0 ? ((double)e->deq_ns / 1e6 - e->ui_ts * 1000.0) : -1.0, e->enq_ns ? (double)(e->deq_ns - e->enq_ns) / 1e6 : -1.0);
+              }
               if (logged++ < 12) L("PLAT AInputQueue_getEvent -> motion action=0x%x pointers=%d first=(%.0f,%.0f)", e->action, e->n, e->n ? e->x[0] : 0.0f, e->n ? e->y[0] : 0.0f);
               *out = e; return 0;
           }
-          static void sh_inq_finish(void *q, void *ev, int handled) { (void)q; (void)handled; free(ev); }
+          static void sh_inq_finish(void *q, void *ev, int handled) {
+              (void)q; (void)handled; InEv *e = (InEv *)ev;
+              if (e && (e->action & 0xff) != 2 && gTouchTraceLines < 600) {
+                  __atomic_fetch_add(&gTouchTraceLines, 1, __ATOMIC_RELAXED);
+                  uint64_t now = (uint64_t)(pan_now() * 1000000000.0);
+                  L("TOUCHTRACE: FIN seq=%llu action=0x%x touch=%d callback=%.2fms total_ui_to_fin=%.2fms", (unsigned long long)e->trace_seq, e->action, e->touch_id, e->deq_ns ? (double)(now - e->deq_ns) / 1e6 : -1.0, e->ui_ts > 0.0 ? ((double)now / 1e6 - e->ui_ts * 1000.0) : -1.0);
+              }
+              free(ev);
+          }
           EOF_CTL_CORE_C
           cat > parts/ctl_main_1.m <<'EOF_CTL_MAIN_1_M'
           /* ---- v76: OWN CONTROLS. The loader is the only thing that feeds touches to the dev's input handler (p2_touch), so it can keep any touch away from it. Folder own_layout turns this on.
@@ -842,6 +884,7 @@ jobs:
               if (ph >= 2) gSlot[s] = NULL; continue;
           }
                   gFeedTs = t.timestamp;
+                  if (ownAny()) { static unsigned ownTrace; if (ph != 1 && ownTrace++ < 600) L("BTNTRACE: UI phase=%d slot=%d ui_ts=%.9f arrival_age=%.2fms xy=%.0f,%.0f", ph, s, gFeedTs, (CACurrentMediaTime() - gFeedTs) * 1000.0, p.x, p.y); }
                   if (ownAny() && ownFeed(ph, s, p, self.bounds.size)) { if (ph >= 2) gSlot[s] = NULL; continue; }   /* v76: our own element, the dev never sees this touch */
                   if (ph == 1) {
                       gTcUiMoves++;
