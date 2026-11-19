@@ -13,7 +13,8 @@ jobs:
           set -e
           mkdir -p parts
           cat > parts/ctl_core.c <<'EOF_CTL_CORE_C'
-          #define IQ_MAX 64
+          #define IQ_MAX 256
+          #define IQ_EDGE_RESERVE 16       /* leave room for DOWN/UP/CANCEL during a move burst */
           #define IQ_PTRS 10
           typedef struct { int type, action, n; int id[IQ_PTRS]; float x[IQ_PTRS], y[IQ_PTRS]; } InEv;
           static InEv gIq[IQ_MAX]; static unsigned gIqH, gIqT;
@@ -64,7 +65,32 @@ jobs:
               return 0;
           }
           static void inq_push_locked(const InEv *e) {
-              if (gIqT - gIqH < IQ_MAX) { gIq[gIqT % IQ_MAX] = *e; gIqT++; if (gInPipe[1] >= 0) { char c = 1; if (write(gInPipe[1], &c, 1) < 0) {} } }
+              /* v99: never let a burst of MOVE samples consume the queue slot needed by UP/CANCEL.
+                 Motion moves are replaceable; lifecycle edges are not. On a full queue, discard the
+                 oldest queued MOVE while preserving the order of every DOWN/UP/CANCEL. If the incoming
+                 event is itself a MOVE and the queue is full, drop that sample rather than an edge. */
+              unsigned used = gIqT - gIqH;
+              int edge = ((e->action & 0xff) != 2);
+              if (!edge && used >= IQ_MAX - IQ_EDGE_RESERVE) return;
+              if (used >= IQ_MAX) {
+                  if (!edge) return;
+                  unsigned k;
+                  for (k = gIqH; k < gIqT; k++) {
+                      if ((gIq[k % IQ_MAX].action & 0xff) == 2) break;
+                  }
+                  if (k < gIqT) {
+                      for (; k + 1 < gIqT; k++) gIq[k % IQ_MAX] = gIq[(k + 1) % IQ_MAX];
+                      gIqT--;
+                  } else {
+                      /* All queued items are lifecycle edges. Keep the queue bounded, but make
+                         the overflow explicit rather than silently pretending the event was sent. */
+                      static unsigned lostEdges;
+                      if (lostEdges++ < 8) L("TOUCHQ: lifecycle edge queue overflow (%u pending); incoming action 0x%x could not be queued", used, e->action);
+                      return;
+                  }
+              }
+              gIq[gIqT % IQ_MAX] = *e; gIqT++;
+              if (gInPipe[1] >= 0) { char c = 1; if (write(gInPipe[1], &c, 1) < 0) {} }
           }
           static void pan_arm_locked(void) { if (!gMvArmed && gInPipe[1] >= 0) { char c = 1; if (write(gInPipe[1], &c, 1) < 0) {} gMvArmed = 1; } }   /* one wake-up byte; the queue-empty path of sh_inq_get drains it */
           static void pan_flush_locked(void) {   /* a held-back move goes out at the newest raw position, ahead of whatever event is about to be queued */
@@ -189,7 +215,6 @@ jobs:
               if (!safe_rd(gBase + EO_CURSX, &a, 4) || !safe_rd(gBase + EO_CURSY, &b, 4) || !safe_rd(gBase + EO_BTNST, &bt, 1)) return 0;
               *x = a; *y = b; *left = bt & 1; return 1;
           }
-          extern double p2_hold_ms(void);
           void p2_btn_edge(int ch, int down);
           static void p2_mouse_now(int button, int down) {   /* UI thread: the Left Click / Right Click buttons. 0 = left, 1 = right */
               int x = 0, y = 0, l = 0; static int nbad, nl, nr;
@@ -448,66 +473,34 @@ jobs:
               pthread_mutex_unlock(&gInMu);
           }
           void p2_touch(int phase, int tid, float x, float y) { p2_touch_ts(phase, tid, x, y, 0.0); }
-          /* v98: BUTTONS THAT THE GAME CANNOT MISS. The game reads a key or click once per frame. The old minimum hold was "two SMOOTHED frame times" (p2_hold_ms), which is far too short the moment frames
-             drop (a hot phone): the press went down and up again between two of the game's reads and was never seen. Now a press stays down until the game has really drawn TWO more frames after it
-             (gFrame counts presented frames), and never shorter than the old hold; a press that is not released by then is forced up after 0.4 s so nothing can stick. A second tap while the first is
-             still being held is NOT swallowed: the key comes up, stays up for two frames so the game sees the gap, and goes down again as its own press. Everything runs on the main thread.
-             Folder hold_off = no minimum hold (the old instant release), hold_ms_N = a fixed minimum of N ms, as before. */
+          /* v99: BUTTON EDGES FOLLOW THE FINGER. Android's touch controls emit the press on
+             DOWN and the release on UP; do not hold a key for extra rendered frames or use a
+             timer to guess when the finger was lifted. The game receives both edges immediately.
+             Duplicate state transitions are ignored, and the main-queue hop is retained for callers
+             that are not already on UIKit's main thread. */
           #define BQ_N 258                                   /* 0..255 = DirectInput keys, 256 = Left Click, 257 = Right Click */
-          typedef struct { unsigned char want, held, repress, regap;   /* repress = separate presses still owed */ unsigned downFr, upFr; double downAt; } BtnS;
-          static BtnS gB[BQ_N]; static int gBAct, gBPosted, gBTimer;
+          typedef struct { unsigned char want, held; } BtnS;
+          static BtnS gB[BQ_N];
           static void btn_send(int ch, int down) { if (ch >= 256) p2_mouse_now(ch - 256, down); else p2_key_now(ch, down); }
-          static int btn_short(int ch) {                     /* v98b: keys the game reads as TAP or HOLD by how long they are down: the weapon wheel key (3 = DIK 0x04). Folder hold_short_all = every key. */
-              static int all = -1; if (all < 0 && gDocs[0]) all = mk_has("hold_short_all") ? 1 : 0;
-              return ch == 0x04 || all > 0;
-          }
-          static int btn_hold_done(const BtnS *b, double now, int ch) {
-              double hm = p2_hold_ms() / 1000.0, held = now - b->downAt;
-              if (hm <= 0.0) return 1;                        /* hold_off */
-              if (held > 0.4) return 1;                       /* never stuck */
-              if (btn_short(ch)) { double fm = gFrameMs < 35.0 ? gFrameMs : 35.0; return (unsigned)(gFrame - b->downFr) >= 1u && held >= fm / 1000.0; }   /* one drawn frame and about one frame time: short enough to stay a tap, long enough for the game to read it */
-              return (unsigned)(gFrame - b->downFr) >= 2u && held >= hm;
-          }
-          static void btn_timer_f(void *ctx);
-          static void btn_tick_main(void) {                   /* main thread */
-              double now = pan_now(); int act = 0;
-              for (int c = 0; c < BQ_N; c++) {
-                  BtnS *b = &gB[c];
-                  if (b->held) {
-                      if ((!b->want || b->repress) && btn_hold_done(b, now, c)) { btn_send(c, 0); b->held = 0; if (b->repress) { b->regap = 1; b->upFr = gFrame; b->downAt = now; } }
-                  } else if (b->regap) {
-                      if ((unsigned)(gFrame - b->upFr) >= 2u || now - b->downAt > 0.1) { b->regap = 0; if (b->repress) { b->repress--; btn_send(c, 1); b->held = 1; b->downFr = gFrame; b->downAt = now; } }
-                  }
-                  if ((b->held && (!b->want || b->repress)) || b->regap) act = 1;
-              }
-              gBAct = act;
-              if (act && !gBTimer) { gBTimer = 1; dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_MSEC), dispatch_get_main_queue(), NULL, btn_timer_f); }   /* fallback if no frame is presented */
-          }
-          static void btn_timer_f(void *ctx) { (void)ctx; gBTimer = 0; btn_tick_main(); }   /* one timer chain at most */
-          static void btn_post_f(void *ctx) { (void)ctx; gBPosted = 0; btn_tick_main(); }
-          static void btn_edge_main(int ch, int down) {       /* main thread */
-              BtnS *b = &gB[ch]; double now = pan_now();
+          static void btn_edge_main(int ch, int down) {       /* main thread: mirror the physical touch edge, with no minimum-hold delay */
+              BtnS *b = &gB[ch];
               if (down) {
-                  if (b->want) return;                        /* already down: not a new press */
+                  if (b->want) return;
                   b->want = 1;
-                  if (!b->held && !b->regap) { btn_send(ch, 1); b->held = 1; b->downFr = gFrame; b->downAt = now; }   /* the press goes out at once */
-                  else if (b->repress < 2) b->repress++;      /* its release or gap is still running: a new, separate press is owed (up to two are kept) */
+                  if (!b->held) { btn_send(ch, 1); b->held = 1; }
               } else {
                   if (!b->want) return;
                   b->want = 0;
-                  if (b->held && !b->repress && btn_hold_done(b, now, ch)) { btn_send(ch, 0); b->held = 0; }   /* held long enough already: up at once */
+                  if (b->held) { btn_send(ch, 0); b->held = 0; }
               }
-              btn_tick_main();
           }
           static void btn_edge_f(void *ctx) { int v = (int)(intptr_t)ctx; btn_edge_main(v >> 1, v & 1); }
           void p2_btn_edge(int ch, int down) {                /* any thread */
               if (ch < 0 || ch >= BQ_N) return;
               if (ON_MAIN()) btn_edge_main(ch, down ? 1 : 0); else dispatch_async_f(dispatch_get_main_queue(), (void *)(intptr_t)(ch * 2 + (down ? 1 : 0)), btn_edge_f);
           }
-          static void btn_present_hook(void) {                /* once per presented frame (from inq_rearm): releases are timed to the game's real frames */
-              if (gBAct && !gBPosted) { gBPosted = 1; dispatch_async_f(dispatch_get_main_queue(), NULL, btn_post_f); }
-          }
-          void p2_mouse(int button, int down) { p2_btn_edge(256 + (button ? 1 : 0), down); }   /* v95 was a timer hold, see v98 above */
+          static void btn_present_hook(void) { }              /* v99: no frame-delayed release work remains */
+          void p2_mouse(int button, int down) { p2_btn_edge(256 + (button ? 1 : 0), down); }   /* v99: immediate touch edges */
           static int sh_inq_get(void *q, void **out) {
               (void)q; static int logged; char buf[64]; InEv ev; int have = 0;
               pthread_mutex_lock(&gInMu);
