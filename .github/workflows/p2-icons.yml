@@ -70,7 +70,15 @@ jobs:
                   if ([f.pathExtension caseInsensitiveCompare:@"png"] == NSOrderedSame && [f.stringByDeletingPathExtension caseInsensitiveCompare:name] == NSOrderedSame) return [dir stringByAppendingPathComponent:f];
               return nil;
           }
+          static NSMutableDictionary<NSString *, id> *gIcoLoadCache;   /* name -> UIImage, or NSNull for "no such picture". icoLoad used to hit the disk (up to 4 file lookups and 2 directory listings, plus a PNG decode) on every call, and ownRefresh calls it several times for every touch event on the main thread: that stalled UIKit and delayed touchesEnded (a released stick kept turning the camera). Pictures are read once per launch ("Relaunch after a change"). */
+          static UIImage *icoLoadDisk(NSString *name);
           static UIImage *icoLoad(NSString *name) {
+              if (!name) return nil;
+              if (!gIcoLoadCache) gIcoLoadCache = [NSMutableDictionary new];
+              id c = gIcoLoadCache[name]; if (c) return c == NSNull.null ? nil : c;
+              UIImage *im = icoLoadDisk(name); gIcoLoadCache[name] = im ? (id)im : (id)NSNull.null; return im;
+          }
+          static UIImage *icoLoadDisk(NSString *name) {
               UIImage *im = [UIImage imageWithContentsOfFile:[icoDir() stringByAppendingPathComponent:[name stringByAppendingString:@".png"]]];
               if (!im) { NSString *p = [NSBundle.mainBundle pathForResource:name ofType:@"png" inDirectory:@"icons"]; if (p) im = [UIImage imageWithContentsOfFile:p]; }
               if (!im) { NSString *p = icoFindCI(icoDir(), name); if (p) im = [UIImage imageWithContentsOfFile:p]; }
