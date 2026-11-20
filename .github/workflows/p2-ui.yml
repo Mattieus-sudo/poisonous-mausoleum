@@ -916,8 +916,9 @@ jobs:
               self.credit.frame = CGRectMake(cx - w / 2, y, w, cs.height); 
 
           UIEdgeInsets gi = self.view.safeAreaInsets;
-          self.gear.frame = CGRectMake(gi.left + 10, gi.top + 10, 40, 40);
-          self.plus.frame = self.gear.frame;
+          CGRect vb = self.view.bounds;
+          self.gear.frame = CGRectMake(floor((vb.size.width - 40) / 2), gi.top + 10, 40, 40);   /* settings cog: top middle of the screen */
+          self.plus.frame = CGRectMake(gi.left + 10, gi.top + 10, 40, 40);   /* + / Done stay top-left; the gear is hidden while editing */
           self.doneMove.frame = CGRectMake(CGRectGetMaxX(self.plus.frame) + 10, gi.top + 12, 84, 36);
           if (self.addPanel) {   /* v84: left centred, clear of the + and Done buttons above it */
               CGFloat aw = MIN(320, floor(b.size.width * 0.42)), ah = floor(b.size.height * 0.74);
