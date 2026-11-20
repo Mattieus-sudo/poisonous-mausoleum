@@ -799,6 +799,7 @@ jobs:
           int p2_pan_smooth(void);
           void p2_set_tick(double seconds);
           void p2_note(const char *s);
+          void p2_set_emit_live(int on);   /* 1 = L() also forwards log lines to the main thread (live log screen / launcher), 0 = file only */
           #endif
           EOF_P2CORE_H
           cat > p2core_head.c <<'EOF_P2CORE_HEAD'
@@ -841,6 +842,7 @@ jobs:
           static int gFd = -1, gFd2 = -1;
           static uintptr_t gBase;
           static void (*gEmit)(const char *);
+          static volatile int gEmitLive = 1;   /* v101: while 0, L() never touches the main thread (no strdup, no dispatch, no UITextView rewrite) */
           static const char *gRes;
           static const char *fixp(const char *in, char *out, size_t n);
           static const char *gpuhud_path(char *out, size_t n);
@@ -860,11 +862,15 @@ jobs:
           static void emit_tramp(void *p) { if (gEmit) gEmit((const char *)p); free(p); }
           #endif
           static void L(const char *fmt, ...) {
-              char b[1200]; va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap);
-              if (gFd >= 0) { write(gFd, b, strlen(b)); write(gFd, "\n", 1); fsync(gFd); }
-              if (gFd2 >= 0) { write(gFd2, b, strlen(b)); write(gFd2, "\n", 1); fsync(gFd2); }
+              /* v101: no fsync per line (it stalled whichever thread logged, the main thread included, behind every other thread's fsync; crash handlers still fsync),
+                 one write() per line so lines from different threads cannot interleave, and nothing is sent to the main thread unless the live log is showing. */
+              char b[1202]; va_list ap; va_start(ap, fmt); int n = vsnprintf(b, 1200, fmt, ap); va_end(ap);
+              if (n < 0) return; if (n > 1199) n = 1199;
+              b[n++] = '\n'; b[n] = 0;
+              if (gFd >= 0) write(gFd, b, n);
+              if (gFd2 >= 0) write(gFd2, b, n);
               #ifdef __APPLE__
-          if (gEmit) { char *c = strdup(b); if (c) dispatch_async_f(dispatch_get_main_queue(), c, emit_tramp); }
+          if (gEmit && gEmitLive) { char *c = strndup(b, n - 1); if (c) dispatch_async_f(dispatch_get_main_queue(), c, emit_tramp); }
           #else
           if (gEmit) gEmit(b);
           #endif
@@ -3930,6 +3936,7 @@ jobs:
           }
           static void on_exit_log(void) { L("PROCESS: exit() was called (stage %s)", (const char *)gStage); }
           void p2_note(const char *s) { L("%s", s); }
+          void p2_set_emit_live(int on) { gEmitLive = on ? 1 : 0; }
           static void *wd_thread(void *p) {
               (void)p; int last = -1, waited = 0;
               while (!gWdStop) {

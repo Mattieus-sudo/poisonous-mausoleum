@@ -18,8 +18,11 @@ jobs:
           static NSMutableString *gText;
           static BOOL gDirty, gRan;
           static NSString *sFw, *sRes, *sRep;
+          static BOOL gLogVisible;   /* v101: YES only while the Live logs screen is open */
           static void emit(const char *s) {   /* always called on the main thread */
               [gText appendFormat:@"%s\n", s];
+              if (gText.length > 40000) [gText deleteCharactersInRange:NSMakeRange(0, gText.length - 30000)];   /* v101: never let the text grow without bound */
+              if (!gLogVisible) return;   /* v101: nobody is looking, so no UITextView rewrite and no layout */
               if (!gDirty) { gDirty = YES; dispatch_async(dispatch_get_main_queue(), ^{ gDirty = NO; gView.text = gText; [gView scrollRangeToVisible:NSMakeRange(gText.length, 0)]; }); }
           }
 
@@ -142,9 +145,18 @@ jobs:
               [super viewDidLoad];
               self.title = @"Live logs"; self.view.backgroundColor = UIColor.blackColor;
               gView.frame = self.view.bounds; gView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+              if (gRan) {   /* v101: the game is running, L() was not feeding the screen: show the last 30 KB of the log file */
+                  NSFileHandle *fh = [NSFileHandle fileHandleForReadingAtPath:sRep];
+                  if (fh) { unsigned long long sz = [fh seekToEndOfFile]; unsigned long long from = sz > 30000 ? sz - 30000 : 0; [fh seekToFileOffset:from]; NSData *d = [fh readDataToEndOfFile]; [fh closeFile];
+                      NSString *t = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding]; if (!t) t = [[NSString alloc] initWithData:d encoding:NSISOLatin1StringEncoding];
+                      if (from > 0) { NSRange nl = [t rangeOfString:@"\n"]; if (nl.location != NSNotFound) t = [t substringFromIndex:nl.location + 1]; }
+                      if (t) gText = [t mutableCopy]; }
+              }
               gView.hidden = NO; gView.text = gText; [self.view addSubview:gView];
               [gView scrollRangeToVisible:NSMakeRange(gText.length, 0)];
+              gLogVisible = YES; p2_set_emit_live(1);   /* v101: from now on new lines are forwarded until this screen closes */
           }
+          - (void)viewDidDisappear:(BOOL)animated { [super viewDidDisappear:animated]; gLogVisible = NO; if (gRan) p2_set_emit_live(0); }
           - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self.navigationController setNavigationBarHidden:NO animated:animated]; }
           @end
 
@@ -997,6 +1009,7 @@ jobs:
           emit("loader started on a background thread; this screen updates while it runs");
               NSThread *t = [[NSThread alloc] initWithBlock:^{ p2_run(emit, sFw.UTF8String, sRes.UTF8String, sRep.UTF8String); }];
               t.stackSize = 16 << 20; t.name = @"p2-loader"; [t start];
+              p2_set_emit_live(0);   /* v101: the game is starting, the launcher screen is hidden: L() writes the log file only and leaves the main thread alone */
           }
           @end
 
