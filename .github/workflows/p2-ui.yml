@@ -114,6 +114,12 @@ jobs:
               NSString *out = lines.count ? [[lines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] : @"";
               return [out writeToFile:hostCfgPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
           }
+          /* Render scale: the host's RenderScalePercent never reads the controls.cfg "screen" line, it reads Documents/render_scale (30..100) at launch. Write both. */
+          static BOOL hostScreenSet(NSString *v) {
+              NSString *f = [uiDocs() stringByAppendingPathComponent:@"render_scale"];
+              [[v stringByAppendingString:@"\n"] writeToFile:f atomically:NO encoding:NSUTF8StringEncoding error:nil];
+              return hostCfgSet(@"screen", v);
+          }
           static NSArray<NSString *> *hostModNames(void) {
               NSString *dir = [uiDocs() stringByAppendingPathComponent:@"Mods"];
               NSArray *all = [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil];
@@ -476,7 +482,7 @@ jobs:
           }
           - (void)choose:(NSIndexPath *)ip title:(NSString *)title choices:(NSArray<NSString *> *)choices values:(NSArray<NSString *> *)values key:(NSString *)key {
               UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:@"Saved to the Android host configuration. Takes effect next launch." preferredStyle:UIAlertControllerStyleActionSheet];
-              for (NSUInteger i = 0; i < choices.count; i++) { NSString *v = values[i]; [a addAction:[UIAlertAction actionWithTitle:choices[i] style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) { if ([v isEqualToString:@"<remove>"]) hostCfgRemove(key); else hostCfgSet(key, v); [self.tableView reloadRowsAtIndexPaths:@[ip] withRowAnimation:UITableViewRowAnimationNone]; }]]; }
+              for (NSUInteger i = 0; i < choices.count; i++) { NSString *v = values[i]; [a addAction:[UIAlertAction actionWithTitle:choices[i] style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) { if ([key isEqualToString:@"screen"]) hostScreenSet(v); else if ([v isEqualToString:@"<remove>"]) hostCfgRemove(key); else hostCfgSet(key, v); [self.tableView reloadRowsAtIndexPaths:@[ip] withRowAnimation:UITableViewRowAnimationNone]; }]]; }
               [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
               if (a.popoverPresentationController) { UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:ip]; a.popoverPresentationController.sourceView = cell; a.popoverPresentationController.sourceRect = cell.bounds; }
               [self presentViewController:a animated:YES completion:nil];
