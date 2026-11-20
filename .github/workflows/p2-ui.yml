@@ -515,6 +515,35 @@ jobs:
           @property (nonatomic, copy) void (^onHz)(void);
           @property (nonatomic) BOOL started;
           @end
+          static CGFloat p2Rnd(CGFloat a, CGFloat b) { return a + (b - a) * (arc4random_uniform(10001) / 10000.0); }
+          /* Opening-bolt generator: many short, slightly-bent segments (no big right-angle zigzags), with forks that fork again. angle 0 = straight down. */
+          static void p2AddBoltBranch(UIBezierPath *p, CGPoint start, CGFloat baseAngle, CGFloat length, CGFloat segLen, int depth, CGFloat w, CGFloat h) {
+              CGPoint pt = start; CGFloat angle = baseAngle, traveled = 0;
+              [p moveToPoint:pt];
+              while (depth > 1 ? (pt.y < h) : (traveled < length)) {
+                  angle = baseAngle + (angle - baseAngle) * 0.45 + p2Rnd(-0.42, 0.42);
+                  CGFloat step = segLen * p2Rnd(0.6, 1.3);
+                  pt = CGPointMake(pt.x + sin(angle) * step, pt.y + cos(angle) * step);
+                  pt.x = MAX(-0.04 * w, MIN(1.04 * w, pt.x));
+                  [p addLineToPoint:pt];
+                  traveled += step;
+                  if (depth > 0 && traveled > segLen * 2 && arc4random_uniform(100) < (depth > 1 ? 24 : 20)) {
+                      CGFloat side = arc4random_uniform(2) ? 1 : -1;
+                      CGFloat bAngle = baseAngle + side * p2Rnd(0.45, 1.05);
+                      CGFloat bLen = (depth > 1 ? h * p2Rnd(0.10, 0.26) : length * p2Rnd(0.35, 0.6));
+                      p2AddBoltBranch(p, pt, bAngle, bLen, segLen * 0.8, depth - 1, w, h);
+                      [p moveToPoint:pt];
+                  }
+              }
+          }
+          static UIBezierPath *p2BuildOpeningBolt(CGFloat w, CGFloat h) {
+              UIBezierPath *p = [UIBezierPath bezierPath];
+              CGPoint s = CGPointMake(w * 0.16, 0);
+              CGFloat base = atan2(w * 0.26, h);
+              p2AddBoltBranch(p, s, base, h, h * 0.032, 2, w, h);
+              return p;
+          }
+
           static void p2ScheduleLightning(CAShapeLayer *arc, UIView *bgv, NSArray<UIBezierPath *> *paths) {
               if (!arc || !bgv || paths.count < 3) return;
 
@@ -529,6 +558,7 @@ jobs:
               /* Keep every recurring strike visible; one in four gets a brightness/glow surge. */
               CGFloat power = 0.78 + arc4random_uniform(21) / 100.0;
               BOOL superStrike = (arc4random_uniform(4) == 0);
+              const CGFloat kBoost = 1.15; /* +15% brightness on recurring strikes */
               CGFloat flashPower = superStrike ? MIN(1.0, power * 1.35) : power;
               arc.lineWidth = 3.2 + arc4random_uniform(11) / 10.0;
 
@@ -545,15 +575,15 @@ jobs:
               arc.opacity = 0;
               arc.strokeEnd = 0;
               arc.shadowRadius = superStrike ? 30.0 : 18.0;
-              arc.shadowOpacity = superStrike ? 1.0 : power;
+              arc.shadowOpacity = superStrike ? 1.0 : MIN(1.0, power * kBoost);
 
               CAKeyframeAnimation *draw = [CAKeyframeAnimation animationWithKeyPath:@"strokeEnd"];
               draw.values = @[@0, @0, @1, @0, @0, @1, @0, @0, @1, @0, @0];
               draw.keyTimes = @[@0, @0.10, @0.14, @0.20, @0.44, @0.48, @0.54, @0.78, @0.82, @0.88, @1];
 
               CAKeyframeAnimation *flash = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
-              flash.values = @[@0, @0, @(0.72 * flashPower), @(0.12 * flashPower), @0,
-                               @0, @(0.94 * flashPower), @(0.20 * flashPower), @0, @0, @(0.60 * flashPower)];
+              flash.values = @[@0, @0, @(MIN(1.0, 0.72 * flashPower * kBoost)), @(MIN(1.0, 0.12 * flashPower * kBoost)), @0,
+                               @0, @(MIN(1.0, 0.94 * flashPower * kBoost)), @(MIN(1.0, 0.20 * flashPower * kBoost)), @0, @0, @(MIN(1.0, 0.60 * flashPower * kBoost))];
               flash.keyTimes = draw.keyTimes;
 
               CAKeyframeAnimation *shape = [CAKeyframeAnimation animationWithKeyPath:@"path"];
@@ -573,7 +603,7 @@ jobs:
               CAKeyframeAnimation *glow = [CAKeyframeAnimation animationWithKeyPath:@"shadowOpacity"];
               glow.values = superStrike
                   ? @[@0.95, @1.0, @0.98, @1.0]
-                  : @[@(0.65 * power), @(1.0 * power), @(0.72 * power), @(0.9 * power)];
+                  : @[@(MIN(1.0, 0.65 * power * kBoost)), @(MIN(1.0, 1.0 * power * kBoost)), @(MIN(1.0, 0.72 * power * kBoost)), @(MIN(1.0, 0.9 * power * kBoost))];
               glow.keyTimes = shape.keyTimes;
 
               CAAnimationGroup *pulse = [CAAnimationGroup animation];
@@ -665,10 +695,11 @@ jobs:
 
               CAShapeLayer *launchGlow = [CAShapeLayer layer];
               launchGlow.frame = bgv.bounds;
-              launchGlow.path = bolt.CGPath;
+              UIBezierPath *openingBolt = p2BuildOpeningBolt(bgv.bounds.size.width, bgv.bounds.size.height);
+              launchGlow.path = openingBolt.CGPath;
               launchGlow.fillColor = UIColor.clearColor.CGColor;
               launchGlow.strokeColor = [UIColor colorWithRed:0.18 green:0.58 blue:1 alpha:1].CGColor;
-              launchGlow.lineWidth = 13;
+              launchGlow.lineWidth = 9;
               launchGlow.lineCap = kCALineCapRound;
               launchGlow.lineJoin = kCALineJoinRound;
               launchGlow.shadowColor = [UIColor colorWithRed:0.18 green:0.58 blue:1 alpha:1].CGColor;
@@ -679,10 +710,10 @@ jobs:
 
               CAShapeLayer *launchCore = [CAShapeLayer layer];
               launchCore.frame = bgv.bounds;
-              launchCore.path = bolt.CGPath;
+              launchCore.path = openingBolt.CGPath;
               launchCore.fillColor = UIColor.clearColor.CGColor;
               launchCore.strokeColor = [UIColor colorWithRed:0.88 green:0.96 blue:1 alpha:1].CGColor;
-              launchCore.lineWidth = 8;
+              launchCore.lineWidth = 4.5;
               launchCore.lineCap = kCALineCapRound;
               launchCore.lineJoin = kCALineJoinRound;
               launchCore.shadowColor = UIColor.whiteColor.CGColor;
