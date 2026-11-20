@@ -976,8 +976,13 @@ jobs:
               [self note:[NSString stringWithFormat:@"HZ: locked display to %.0f Hz (screen max %ld Hz, CADisableMinimumFrameDurationOnPhone set). Folders: hz_off, hz_90, hz_60", want, (long)maxHz].UTF8String]; [self publishFlags];
           }
           - (void)applicationDidReceiveMemoryWarning:(UIApplication *)a { p2_note("iOS: MEMORY WARNING received"); }
-          - (void)applicationWillResignActive:(UIApplication *)a { p2_note("iOS: app will resign active (home gesture, control centre or a system overlay)"); }
-          - (void)applicationDidEnterBackground:(UIApplication *)a { p2_note("iOS: app entered the background"); }
+          - (void)applicationWillResignActive:(UIApplication *)a { p2_note("iOS: app will resign active (home gesture, control centre or a system overlay)"); p2_set_paused(1); }   /* v102: stop submitting GPU work before iOS takes it away */
+          - (void)applicationDidBecomeActive:(UIApplication *)a { p2_set_paused(0); }
+          - (void)applicationDidEnterBackground:(UIApplication *)a {
+              p2_note("iOS: app entered the background");
+              p2_set_paused(1);
+              if (gRan) for (int i = 0; i < 30 && p2_parked_threads() < 1; i++) usleep(10000);   /* v102: give the render thread up to 300 ms to reach the gate */
+          }
           - (void)applicationWillTerminate:(UIApplication *)a { p2_note("iOS: applicationWillTerminate"); }
           - (void)applyHz { gTcLink = NO; tcFlush(); [gHzLink invalidate]; gHzLink = nil; [self startHz]; }
           - (BOOL)application:(UIApplication *)a didFinishLaunchingWithOptions:(NSDictionary *)o {

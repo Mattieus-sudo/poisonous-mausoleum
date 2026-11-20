@@ -799,6 +799,8 @@ jobs:
           int p2_pan_smooth(void);
           void p2_set_tick(double seconds);
           void p2_note(const char *s);
+          void p2_set_paused(int on);   /* v102: 1 = park every vkQueueSubmit / vkQueuePresent caller and the audio thread (use when the app goes inactive / background), 0 = resume */
+          int p2_parked_threads(void);
           void p2_set_emit_live(int on);   /* 1 = L() also forwards log lines to the main thread (live log screen / launcher), 0 = file only */
           #endif
           EOF_P2CORE_H
@@ -2481,8 +2483,20 @@ jobs:
               if (dt >= 4000000ULL) { int k = __atomic_add_fetch(&gRbLogS, 1, __ATOMIC_RELAXED); if (k <= 12) { char cb[420]; p2_chain(cb, sizeof cb); L("RBTRACE slow submit #%d tid=%d %.2f ms:%s", k, p2_tid(), dt / 1e6, cb); } }
               return r;
           }
-          static int w_sub(void *q, unsigned n, const void *s, uint64_t f) { return rb_sub(gR_sub, q, n, s, f, 0); }
-          static int w_sub2(void *q, unsigned n, const void *s, uint64_t f) { return rb_sub(gR_sub2, q, n, s, f, 1); }
+          /* v102: pause gate. iOS does not allow GPU work from a backgrounded app and kills one that keeps going. While paused, every submit / present blocks here, so nothing is committed and the game threads go idle. */
+          static volatile int gPaused, gParked;
+          static pthread_mutex_t gPauseMu = PTHREAD_MUTEX_INITIALIZER;
+          static pthread_cond_t gPauseCv = PTHREAD_COND_INITIALIZER;
+          static void pause_gate(void) {
+              if (!__atomic_load_n(&gPaused, __ATOMIC_ACQUIRE)) return;
+              pthread_mutex_lock(&gPauseMu);
+              __atomic_add_fetch(&gParked, 1, __ATOMIC_RELAXED);
+              while (__atomic_load_n(&gPaused, __ATOMIC_ACQUIRE)) pthread_cond_wait(&gPauseCv, &gPauseMu);
+              __atomic_sub_fetch(&gParked, 1, __ATOMIC_RELAXED);
+              pthread_mutex_unlock(&gPauseMu);
+          }
+          static int w_sub(void *q, unsigned n, const void *s, uint64_t f) { pause_gate(); return rb_sub(gR_sub, q, n, s, f, 0); }
+          static int w_sub2(void *q, unsigned n, const void *s, uint64_t f) { pause_gate(); return rb_sub(gR_sub2, q, n, s, f, 1); }
           static int w_wf(void *d, unsigned n, const void *f, unsigned all, uint64_t to) {
               if (gRbOff) return gR_wf(d, n, f, all, to);
               if (to == 0) { int r = gR_wf(d, n, f, all, to); RBADD(gRbPoll, 1); if (r == 2) RBADD(gRbPollNR, 1); return r; }
@@ -2892,6 +2906,7 @@ jobs:
               return r;
           }
           static int w_present(void *q, const void *pi) {
+              pause_gate();   /* v102 */
               static int n, bad; int (*f)(void *, const void *) = (int (*)(void *, const void *))gRealGdpa(gVkDev, "vkQueuePresentKHR");
               { static int pd = -2, pt = -2; if (pd == -2) { pd = mk_val("pdelay_"); pt = mk_val("pthrottle_"); L("present switches: pdelay %d ms (first present), pthrottle %d us (first 300 presents), -1 = off", pd, pt); }
                 if (n == 0 && pd > 0 && pd <= 8000) { L("PDELAY: pausing the presenting thread %d ms before its first present", pd); usleep(pd * 1000); }
@@ -3121,6 +3136,7 @@ jobs:
               struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
               long long next = (long long)t0.tv_sec * 1000000000LL + t0.tv_nsec;
               while (!gExitReq) {
+                  if (__atomic_load_n(&gPaused, __ATOMIC_ACQUIRE)) { usleep(50000); continue; }   /* v102: do not run game audio code while paused */
                   if (gAuOn) {
                       size_t fill = (size_t)(__atomic_load_n(&gAuHead, __ATOMIC_RELAXED) - __atomic_load_n(&gAuTail, __ATOMIC_RELAXED));
                       if (fill >= target) { usleep(2000); continue; }
@@ -3937,6 +3953,19 @@ jobs:
           static void on_exit_log(void) { L("PROCESS: exit() was called (stage %s)", (const char *)gStage); }
           void p2_note(const char *s) { L("%s", s); }
           void p2_set_emit_live(int on) { gEmitLive = on ? 1 : 0; }
+          int p2_parked_threads(void) { return __atomic_load_n(&gParked, __ATOMIC_RELAXED); }
+          void p2_set_paused(int on) {
+              on = on ? 1 : 0;
+              if (on == __atomic_load_n(&gPaused, __ATOMIC_ACQUIRE)) return;
+              pthread_mutex_lock(&gPauseMu);
+              __atomic_store_n(&gPaused, on, __ATOMIC_RELEASE);
+              if (!on) pthread_cond_broadcast(&gPauseCv);
+              pthread_mutex_unlock(&gPauseMu);
+              L("PAUSE: game %s (threads parked at the GPU gate: %d)", on ? "paused" : "resumed", __atomic_load_n(&gParked, __ATOMIC_RELAXED));
+          #if defined(__APPLE__) && defined(__arm64__)
+              if (!on && gAu && gAuOn) AudioOutputUnitStart(gAu);   /* iOS may have stopped the output while we were away; starting a running unit is harmless */
+          #endif
+          }
           static void *wd_thread(void *p) {
               (void)p; int last = -1, waited = 0;
               while (!gWdStop) {
