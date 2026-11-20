@@ -222,6 +222,12 @@ jobs:
               return gMenuAuto;
           }
           int p2_ctx(void) { int m = p2_menu_on(); return m ? 2 : (gCtxId < 0 ? 0 : gCtxId); }   /* layouts: any thread, same 40 ms freshness as p2_menu_on */
+          int p2_ctx_known(void) {   /* 1 once the game's layout has really been read (or menu detection is forced / off); layouts: do not show a guessed "on foot" before that */
+              if (gMenuForce || gMenuAutoOff) return 1;
+              if (!gBase || !p2_layout_ok()) return 0;
+              p2_menu_on();
+              return gCtxId >= 0;
+          }
           static int cur_rd(int *x, int *y, int *left) {   /* the game's cursor and left-button state, 0 = unreadable */
               int a = 0, b = 0; uint8_t bt = 0;
               if (!safe_rd(gBase + EO_CURSX, &a, 4) || !safe_rd(gBase + EO_CURSY, &b, 4) || !safe_rd(gBase + EO_BTNST, &bt, 1)) return 0;
@@ -719,7 +725,7 @@ jobs:
           static void ownShow(UIView *gv) {
               if (!ownAny() || !gv.superview) return;
               if (!gOwnView) {
-                  gOwnView = [[UIView alloc] init]; gOwnView.userInteractionEnabled = NO; gOwnView.backgroundColor = UIColor.clearColor;
+                  gOwnView = [[UIView alloc] init]; gOwnView.userInteractionEnabled = NO; gOwnView.backgroundColor = UIColor.clearColor; if (gLayWait) gOwnView.alpha = 0;
                   [gv.superview addSubview:gOwnView];
                   for (int i = 0; i < gOwnN; i++) {
                       if (gOwn[i].kind == 2) continue;

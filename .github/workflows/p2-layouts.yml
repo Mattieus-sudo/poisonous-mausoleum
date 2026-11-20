@@ -17,6 +17,8 @@ jobs:
              3 and up = the dev's other layouts) and loads that layout's buttons. Files: Documents/layouts/<name>/custom_buttons.txt and own_layout.txt. A part of the game with no file of its own uses the
              plain files in Documents (custom_buttons.txt, own_layout/own_layout.txt), which are also the "foot" layout. The switching code is in the second piece, after the custom buttons. ---- */
           extern int p2_ctx(void);
+          extern int p2_ctx_known(void);
+          static BOOL gLayWait = YES;                    /* until the game has told us its layout, the custom buttons stay invisible instead of flashing "on foot" */
           static NSString *gLayCtx = @"foot";           /* the layout in use right now */
           static NSString *icoCtx(void) { return gLayCtx; }   /* v97: the icons piece (earlier in main.m) asks which layout is showing */
           static __weak UIView *gLayGV;                  /* the game view, kept so the own_layout drawing can be rebuilt on a switch */
@@ -162,7 +164,13 @@ jobs:
               gLayChip.frame = CGRectMake(CGRectGetMaxX(d) + 10, d.origin.y, w, d.size.height);
           }
           static void layTick(void) {
-              static int raw = -9, same;
+              static int raw = -9, same, waited;
+              if (gLayWait) {
+                  if (!gCbEdit && !p2_ctx_known() && ++waited < 40) { for (CbButton *b in gCbList) b.alpha = 0; if (gOwnView) gOwnView.alpha = 0; return; }   /* about 4 s at most, then show whatever p2_ctx says */
+                  gLayWait = NO;
+                  if (!gCbEdit) { int c0 = p2_ctx(); gLayRaw = c0; layApply(layName(c0), NO); }
+                  for (CbButton *b in gCbList) b.alpha = 1; if (gOwnView) gOwnView.alpha = 1;
+              }
               int c = p2_ctx(); gLayRaw = c;
               if (c != raw) { raw = c; same = 0; p2_note([NSString stringWithFormat:@"LAYOUT: the game is now in touch layout %d = \"%@\"%s", c, layName(c), gCbEdit ? " (not switched, the editor is open)" : ""].UTF8String); }
               else if (same < 100) same++;

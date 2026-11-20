@@ -403,13 +403,14 @@ jobs:
               self.navigationItem.title = @"Settings";
               self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"xmark"] style:UIBarButtonItemStylePlain target:self action:@selector(closePanel)];
               self.mods = hostModNames();
+              hostCfgSet(@"heatguard", @"0");   /* the Heat guard row is gone (iOS throttles on its own): make sure an old "on" does not linger */
               self.tableView.rowHeight = 58; self.tableView.estimatedRowHeight = 58;
           }
           - (void)closePanel { if (self.onClose) self.onClose(); }
           - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 5; }
           - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section {
               section = hsL(section);
-              if (section == 0) return 4; if (section == 1) return 4; if (section == 2) return MAX(2, (NSInteger)self.mods.count + 1); if (section == 3) return 2; return 1;
+              if (section == 0) return 3; if (section == 1) return 4; if (section == 2) return MAX(2, (NSInteger)self.mods.count + 1); if (section == 3) return 2; return 1;
           }
           - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)section {
               return @[@"PERFORMANCE", @"GRAPHICS", @"MODS", @"CONTROLS", @"SYSTEM"][hsL(section)];
@@ -422,19 +423,19 @@ jobs:
               return nil;
           }
           - (NSString *)titleForRow:(NSIndexPath *)ip {
-              if (ip.section == 0) return @[@"FSR upscaling", @"FPS limit", @"Render scale", @"Heat guard"][ip.row];
+              if (ip.section == 0) return @[@"FSR upscaling", @"FPS limit", @"Render scale"][ip.row];
               if (ip.section == 1) return @[@"Graphics preset", @"Manual graphics", @"Potato graphics", @"Quality level"][ip.row];
               if (ip.section == 2) return ip.row == 0 ? @"Mod loader" : (self.mods.count ? self.mods[(NSUInteger)ip.row - 1] : @"No installed mods");
               if (ip.section == 3) return @[@"Edit touch layout & buttons", @"Camera sensitivity"][ip.row];
               return @"Open live log";
           }
           - (NSString *)keyForRow:(NSIndexPath *)ip {
-              if (ip.section == 0) return @[@"upscale", @"", @"screen", @"heatguard"][ip.row];
+              if (ip.section == 0) return @[@"upscale", @"", @"screen"][ip.row];
               if (ip.section == 1) return @[@"gfx", @"gfxmanual", @"potato", @"quality"][ip.row];
               if (ip.section == 2 && ip.row == 0) return @"modloader";
               return nil;
           }
-          - (BOOL)isSwitchRow:(NSIndexPath *)ip { return (ip.section == 0 && (ip.row == 0 || ip.row == 3)) || (ip.section == 1 && (ip.row == 1 || ip.row == 2)) || (ip.section == 2 && ip.row == 0); }
+          - (BOOL)isSwitchRow:(NSIndexPath *)ip { return (ip.section == 0 && ip.row == 0) || (ip.section == 1 && (ip.row == 1 || ip.row == 2)) || (ip.section == 2 && ip.row == 0); }
           - (NSString *)valueForRow:(NSIndexPath *)ip {
               NSString *key = [self keyForRow:ip]; if (key.length) return hostCfgValue(key, @"0");
               if (ip.section == 0 && ip.row == 1) return hostCfgValue(@"fpscap", @"60");
@@ -449,7 +450,7 @@ jobs:
               UITableViewCell *c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
               c.backgroundColor = [UIColor colorWithWhite:1 alpha:0.035]; c.textLabel.textColor = UIColor.labelColor; c.detailTextLabel.textColor = UIColor.secondaryLabelColor;
               c.textLabel.text = [self titleForRow:ip]; c.detailTextLabel.numberOfLines = 2;
-              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right", @"thermometer.medium"], @[@"slider.horizontal.3", @"wrench.and.screwdriver", @"leaf", @"dial.low"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
+              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right"], @[@"slider.horizontal.3", @"wrench.and.screwdriver", @"leaf", @"dial.low"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
               c.imageView.image = [UIImage systemImageNamed:icons[ip.section][MIN((NSUInteger)ip.row, [icons[ip.section] count] - 1)]]; c.imageView.tintColor = [UIColor colorWithRed:0.35 green:0.68 blue:1 alpha:1];
               if ([self isSwitchRow:ip] || (ip.section == 2 && ip.row > 0 && self.mods.count)) {
                   UISwitch *sw = [UISwitch new];
