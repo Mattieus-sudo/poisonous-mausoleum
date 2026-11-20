@@ -108,7 +108,7 @@ jobs:
           /* Render scale: the host's RenderScalePercent reads a render_scale file (30..100) at launch. v103: the settings screen only writes the "screen N" line, the loader turns it into that file in Documents/.p2
              at launch. A hand-written "renderscale N" line would win over it, so this removes one. */
           static BOOL hostScreenSet(NSString *v) {
-              p2CfgSet(@"renderscale_1", NO);
+              for (NSString *rs in p2CfgWithPrefix(@"renderscale_")) p2CfgSet(rs, NO);
               return hostCfgSet(@"screen", v);
           }
           static NSArray<NSString *> *hostModNames(void) {
@@ -952,16 +952,19 @@ jobs:
 
           /* ---- v103: one-time (and idempotent) clean-up of everything the older builds left in Documents. Runs at every launch before any screen reads a setting:
              flag folders -> lines of p2.cfg; the loader-made render_scale / waitspin / fake_aspect files and their .p2auto markers -> removed (the loader remakes them hidden in .p2);
-             the Android host's controls.cfg -> lines of p2.cfg; camera.txt / custom_buttons.txt / own_layout / layouts -> touch.cfg; Documents/Mods -> Prototype2/Mods. ---- */
+             the Android host's controls.cfg -> lines of p2.cfg; Documents/Mods -> Prototype2/Mods. Left alone on purpose: own_layout (a folder that holds your layout file), layouts/, camera.txt,
+             custom_buttons.txt, button_icons/, the game folder and the caches. ---- */
           static NSMutableString *gMigNote;
           static void migNote(NSString *t) { if (!gMigNote) gMigNote = [NSMutableString new]; [gMigNote appendFormat:@"%@\n", t]; }
           static BOOL p2IsFlagName(NSString *n) {
               static NSSet<NSString *> *bools;
-              if (!bools) bools = [NSSet setWithArray:@[@"hz_off", @"hz_60", @"hz_90", @"rt_render", @"waittrace_off", @"rbtrace_off", @"gpuhud_off", @"threaddump_on", @"gpuhud_est", @"textrace_off", @"pcprof_on", @"futex_off", @"audio_off", @"auto_exit",
-                  @"qos_off", @"qos_initiated", @"vk_loadop_fix_off", @"vkshot", @"vktrace_now", @"settle_s6", @"swapchain_alpha_keep", @"imgdelay_all", @"mvk_argbuf_off", @"mvk_dumpshaders", @"mvk_fastmath_auto", @"mvk_fastmath_on", @"mvk_fastmath_off",
-                  @"mvk_log_info", @"mvk_perf_log", @"mvk_prefill_on", @"mvk_syncsubmit_off", @"shadowmin_off", @"passtime_on", @"inputtap_on", @"own_layout", @"rstick_on", @"rstick_invy", @"ovl_trace", @"ovl_hide", @"ovl_off", @"passtrace_now", @"drawtrace_now",
-                  @"env", @"nosplash", @"touch_coalesce", @"touch_trace", @"pan_smooth_off", @"pan_clock_off", @"swipe_classic", @"snapshot_off", @"metalfx_on", @"hold_off", @"dontcare_auto", @"menu_auto_off", @"menu_cursor_off", @"menu_force", @"menu_wheel_inv",
-                  @"menu_wheel_off", @"portoff", @"cmdline"]];
+              if (!bools) bools = [NSSet setWithArray:@[
+                  @"audio_off", @"auto_exit", @"drawtrace_now", @"env", @"futex_off", @"gpuhud_est", @"gpuhud_off", @"hz_60", @"hz_90", @"hz_off", @"imgdelay_all", @"inputtap_on", @"mvk_argbuf_off", @"mvk_dumpshaders",
+                  @"mvk_fastmath_auto", @"mvk_fastmath_off", @"mvk_fastmath_on", @"mvk_log_info", @"nosplash", @"ovl_hide", @"ovl_off", @"ovl_trace", @"pan_clock_off", @"pan_smooth_off", @"passtime_on", @"passtrace_now",
+                  @"pcprof_on", @"qos_initiated", @"qos_off", @"rbtrace_off", @"rstick_invy", @"rstick_on", @"rt_render", @"settle_s6", @"shadowmin_off", @"swapchain_alpha_keep", @"textrace_off", @"threaddump_on",
+                  @"touch_coalesce", @"touch_trace", @"vk_loadop_fix_off", @"vkshot", @"vktrace_now", @"waittrace_off",
+                  @"dontcare_auto", @"hold_off", @"menu_auto_off", @"menu_cursor_off", @"menu_force", @"menu_wheel_inv", @"menu_wheel_off", @"metalfx_on", @"mvk_perf_log", @"mvk_prefill_on", @"mvk_syncsubmit_off",
+                  @"snapshot_off", @"swipe_classic", @"cmdline", @"portoff"]];
               if ([bools containsObject:n]) return YES;
               if (([n hasPrefix:@"setenv_"] || [n hasPrefix:@"dbgoff_"]) && n.length > 7) return YES;
               if ([n hasPrefix:@"rtdump_ps="] && n.length > 10) return YES;
@@ -972,12 +975,9 @@ jobs:
           static void p2MigrateFlags(void) {
               NSFileManager *fm = NSFileManager.defaultManager; NSString *d = p2Docs(); int n = 0;
               for (NSString *nm in [fm contentsOfDirectoryAtPath:d error:nil]) {
-                  if ([nm hasPrefix:@"."] || !p2IsFlagName(nm)) continue;
-                  NSString *path = [d stringByAppendingPathComponent:nm];
-                  p2CfgSet(nm, YES);
-                  if (![fm fileExistsAtPath:p2CfgPath()]) continue;   /* could not write p2.cfg: leave the folder alone */
-                  if ([nm isEqualToString:@"own_layout"] && [fm fileExistsAtPath:[path stringByAppendingPathComponent:@"own_layout.txt"]] && ![fm fileExistsAtPath:tcfPath()]) continue;   /* tcfMigrate imports its layout file first, then removes the folder */
-                  [fm removeItemAtPath:path error:nil]; n++;
+                  if ([nm hasPrefix:@"."] || !p2IsFlagName(nm) || [nm rangeOfCharacterFromSet:NSCharacterSet.whitespaceCharacterSet].location != NSNotFound) continue;
+                  if (!p2CfgSet(nm, YES)) continue;   /* could not write p2.cfg: leave the folder alone */
+                  if ([fm removeItemAtPath:[d stringByAppendingPathComponent:nm] error:nil]) n++;
               }
               if (n) migNote([NSString stringWithFormat:@"MIGRATE: %d flag folder(s) turned into lines of p2.cfg and removed", n]);
           }
@@ -991,12 +991,12 @@ jobs:
                   if (![fm fileExistsAtPath:mk]) {   /* made by hand, not by the loader: keep its value as a p2.cfg line unless one is there already */
                       NSString *t = [[NSString stringWithContentsOfFile:f encoding:NSUTF8StringEncoding error:nil] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
                       int v = [pr[0] isEqualToString:@"fake_aspect"] ? (int)lround(t.doubleValue * 10000.0) : t.intValue;
-                      if ([pr[0] isEqualToString:@"render_scale"]) { if (!p2CfgHas(@"screen_1") && v >= 30 && v <= 100) hostCfgSet(@"screen", [NSString stringWithFormat:@"%d", v]); }
+                      if ([pr[0] isEqualToString:@"render_scale"]) { if (!hostCfgValue(@"screen", nil) && ![p2CfgWithPrefix(@"renderscale_") count] && v >= 30 && v <= 100) hostCfgSet(@"screen", [NSString stringWithFormat:@"%d", v]); }
                       else if (t.length && ![p2CfgWithPrefix(pr[1]) count]) p2CfgSet([NSString stringWithFormat:@"%@%d", pr[1], v], YES);
                   }
                   [fm removeItemAtPath:f error:nil]; [fm removeItemAtPath:mk error:nil];
               }
-              [fm removeItemAtPath:[d stringByAppendingPathComponent:@"P2_SWITCHES.txt"] error:nil];
+              [fm removeItemAtPath:[d stringByAppendingPathComponent:@"P2_SWITCHES.txt"] error:nil];   /* the loader now writes it into logs/ */
               /* the Android host's controls.cfg: its known settings become plain lines, anything else a "host ..." line */
               NSString *cc = [d stringByAppendingPathComponent:@"controls.cfg"];
               NSString *txt = [NSString stringWithContentsOfFile:cc encoding:NSUTF8StringEncoding error:nil];
@@ -1013,17 +1013,22 @@ jobs:
                   }
                   if (p2CfgWrite(all)) { [fm removeItemAtPath:cc error:nil]; migNote([NSString stringWithFormat:@"MIGRATE: controls.cfg folded into p2.cfg (%d line(s) added)", added]); }
               }
-              /* mods: Documents/Mods -> Documents/Prototype2/Mods */
+              /* mods: Documents/Mods -> Documents/Prototype2/Mods (merged, a mod that is already in the new folder is left alone) */
               NSString *om = [d stringByAppendingPathComponent:@"Mods"], *nm = [d stringByAppendingPathComponent:@"Prototype2/Mods"]; BOOL dir = NO;
-              if ([fm fileExistsAtPath:om isDirectory:&dir] && dir && ![fm fileExistsAtPath:nm]) {
-                  [fm createDirectoryAtPath:[d stringByAppendingPathComponent:@"Prototype2"] withIntermediateDirectories:YES attributes:nil error:nil];
-                  if ([fm moveItemAtPath:om toPath:nm error:nil]) migNote(@"MIGRATE: Documents/Mods moved to Documents/Prototype2/Mods");
+              if ([fm fileExistsAtPath:om isDirectory:&dir] && dir) {
+                  [fm createDirectoryAtPath:nm withIntermediateDirectories:YES attributes:nil error:nil];
+                  int moved = 0;
+                  for (NSString *c in [fm contentsOfDirectoryAtPath:om error:nil]) {
+                      NSString *src = [om stringByAppendingPathComponent:c], *dst = [nm stringByAppendingPathComponent:c];
+                      if (![fm fileExistsAtPath:dst] && [fm moveItemAtPath:src toPath:dst error:nil]) moved++;
+                  }
+                  if (![[fm contentsOfDirectoryAtPath:om error:nil] count]) [fm removeItemAtPath:om error:nil];
+                  if (moved) migNote([NSString stringWithFormat:@"MIGRATE: %d item(s) of Documents/Mods moved to Documents/Prototype2/Mods", moved]);
               }
           }
           static void p2MigrateAll(void) {
               p2MigrateFlags();
               p2MigrateRootFiles();
-              if (![NSFileManager.defaultManager fileExistsAtPath:tcfPath()]) { tcfMigrate(); migNote(@"MIGRATE: camera.txt, custom_buttons.txt, own_layout and layouts folded into touch.cfg"); }
           }
           @interface AD : UIResponder <UIApplicationDelegate>
           @property(strong, nonatomic) UIWindow *window;
@@ -1056,7 +1061,7 @@ jobs:
               const char *c = k.UTF8String, *meaning = NULL;
               for (size_t i = 0; i < sizeof K / sizeof K[0]; i++) {
                   size_t nl = strlen(K[i].n);
-                  if (K[i].pre ? (nl > 1 && strlen(c) == nl - 1 && strncmp(c, K[i].n, nl - 1) == 0) : strcmp(c, K[i].n) == 0) { meaning = K[i].m; break; }
+                  if (K[i].pre ? strncmp(c, K[i].n, nl) == 0 : strcmp(c, K[i].n) == 0) { meaning = K[i].m; break; }
               }
               if (!meaning && [host containsObject:k]) meaning = "host setting (handed to the Android host through the hidden controls.cfg) or a number the loader turns into a file";
               [self note:[NSString stringWithFormat:@"  %@  ->  %s", v.length ? [NSString stringWithFormat:@"%@ %@", k, v] : k, meaning ? meaning : "not a known switch (ignored)"].UTF8String]; n++;
