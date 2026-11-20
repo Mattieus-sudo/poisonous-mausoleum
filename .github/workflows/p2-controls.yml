@@ -884,7 +884,7 @@ jobs:
               if (ph >= 2) gSlot[s] = NULL; continue;
           }
                   gFeedTs = t.timestamp;
-                  if (ownAny()) { static unsigned ownTrace; if (ph != 1 && ownTrace++ < 600) L("BTNTRACE: UI phase=%d slot=%d ui_ts=%.9f arrival_age=%.2fms xy=%.0f,%.0f", ph, s, gFeedTs, (CACurrentMediaTime() - gFeedTs) * 1000.0, p.x, p.y); }
+                  if (ownAny()) { static unsigned ownTrace; if (ph != 1 && ownTrace++ < 600) NSLog(@"BTNTRACE: UI phase=%d slot=%d ui_ts=%.9f arrival_age=%.2fms xy=%.0f,%.0f", ph, s, gFeedTs, (CACurrentMediaTime() - gFeedTs) * 1000.0, p.x, p.y); }
                   if (ownAny() && ownFeed(ph, s, p, self.bounds.size)) { if (ph >= 2) gSlot[s] = NULL; continue; }   /* v76: our own element, the dev never sees this touch */
                   if (ph == 1) {
                       gTcUiMoves++;
