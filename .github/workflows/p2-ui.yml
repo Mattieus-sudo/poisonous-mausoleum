@@ -918,7 +918,7 @@ jobs:
 
           UIEdgeInsets gi = self.view.safeAreaInsets;
           CGRect vb = self.view.bounds;
-          self.gear.frame = CGRectMake(gi.left + 3, vb.size.height - gi.bottom - 40 - 0, 40, 40);   /* settings cog: bottom left, nudged in from the corner */
+          self.gear.frame = CGRectMake(gi.left + 0, vb.size.height - gi.bottom - 40 - 0, 40, 40);   /* settings cog: bottom left, nudged in from the corner */
           self.plus.frame = CGRectMake(gi.left + 10 + 108, gi.top + 10, 40, 40);   /* + / Done stay top-left, shifted right about 2/3 inch (~108 pt); the gear is hidden while editing */
           self.doneMove.frame = CGRectMake(CGRectGetMaxX(self.plus.frame) + 10, gi.top + 12, 84, 36);
           if (self.addPanel) {   /* v84: left centred, clear of the + and Done buttons above it */
