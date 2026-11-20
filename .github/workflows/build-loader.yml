@@ -1807,6 +1807,7 @@ jobs:
                   "rt_render            (v58) give the render thread (entry e+59e0da0 on APK 1.0.7) a real-time time-constraint policy (period 16.67 ms, 6000 us budget). rt_render_US sets the budget (500..12000). Off by default; experiment.\n"
                   "waitspin_US          (v51) the loader writes Documents/waitspin = US so the game spins US microseconds before a blocked wait sleeps (game default 250). DEFAULT 1000 with no folder (v56, was the waitspin_1000 folder); waitspin_250 restores the game default, 0 = never spin. Costs CPU and heat.\n"
                   "fakeaspect_N         (v67) the loader writes Documents/fake_aspect = N/10000 (17778 = 16:9, 16000 = 16:10, 15000 = 3:2, 13333 = 4:3). The game then sees a screen of that shape, so its resolution list and window follow it. Applies at the next start. Only a file the loader wrote itself is removed when the folder is gone.\n"
+                  "metalfx_on           (EXPERIMENT) scale the game picture up to the panel with MetalFX (spatial) instead of letting the display stretch it. Needs iOS 16+ and a render scale below 100 (menu > Render scale) with FSR off. The loader enables VK_EXT_metal_objects, lets the swapchain be read, and on every present scales the low-res image onto its own full-size layer. The HUD is scaled with the picture. Create the folder with the app CLOSED. Log lines start with METALFX. If anything fails it switches itself off and the normal path takes over.\n\n"
                   "pan_smooth_off       (v81) smooth camera panning is ON by default: touch moves are kept with their real timestamps and the game gets one move per frame, interpolated on the finger path a measured few ms back (touch_coalesce is ignored while it is on). This folder gives the old raw behaviour.\n"
                   "pan_lag_N            (v81) smooth panning: use a fixed lag of N ms instead of the measured one (try 8 to 30). Less = more responsive, more = smoother on a bumpy touch feed. The PAN lines in p2.log show the measured lag.\n"
                   "hold_ms_N            (v97) minimum time a key or click stays down after a quick tap, in ms (0 to 200). Default: two measured game frames (33 ms at 60 fps, 20 ms floor, 110 ms ceiling). hold_off = no minimum at all.\n"
@@ -2967,6 +2968,8 @@ jobs:
               int r = f(inst, &m, alloc, pSurf); L("PLAT vkCreateAndroidSurfaceKHR -> vkCreateMetalSurfaceEXT(layer %p) -> %d", p2_metal_layer, r); return r;
           }
           typedef struct { int sType; const void *pNext; unsigned flags, nQ; const void *pQ; unsigned nLayers; const char *const *ppLayers; unsigned nExt; const char *const *ppExt; const void *pFeat; } VkDCI;
+          static int gMfxExt;   /* METALFX: VK_EXT_metal_objects was enabled */
+          extern void p2_mfx_frame(void *dev, void *queue, const void *presentInfo, void *(*gdpa)(void *, const char *));
           static int w_create_device(void *phys, const VkDCI *ci, const void *alloc, void **pDev) {
               VkDCI c = *ci; const char *ex[80]; unsigned n = 0, ns = 0;
               int (*en)(void *, const char *, unsigned *, VkExtP *) = (int (*)(void *, const char *, unsigned *, VkExtP *))gRealGipa(gVkInst, "vkEnumerateDeviceExtensionProperties");
@@ -2976,6 +2979,7 @@ jobs:
                   const char *e = ci->ppExt[i]; int ok = 0; for (unsigned k = 0; k < ns; k++) if (!strcmp(sup[k].name, e)) ok = 1;
                   if (ok) ex[n++] = e; else L("    device extension dropped (MoltenVK lacks it): %s", e);
               }
+              if (mk_has("metalfx_on") && n < 79) for (unsigned k = 0; k < ns; k++) if (!strcmp(sup[k].name, "VK_EXT_metal_objects")) { ex[n++] = "VK_EXT_metal_objects"; gMfxExt = 1; L("METALFX: VK_EXT_metal_objects enabled on the device"); break; }
               free(sup); c.nLayers = 0; c.ppLayers = NULL; c.nExt = n; c.ppExt = ex;
               int (*f)(void *, const VkDCI *, const void *, void **) = (int (*)(void *, const VkDCI *, const void *, void **))gRealGipa(gVkInst, "vkCreateDevice");
               gVkPhys = phys; int r = f(phys, &c, alloc, pDev); L("PLAT vkCreateDevice -> %d (%u extensions passed)", r, n); if (r == 0) gVkDev = *pDev; return r;
@@ -2987,6 +2991,7 @@ jobs:
               unsigned pre = *(unsigned *)(b + 80), ca = *(unsigned *)(b + 84), pm = *(unsigned *)(b + 88);
               int keep = mk_has("swapchain_alpha_keep");
               if (!keep && ca != 1) *(unsigned *)(b + 84) = 1;
+              if (mk_has("metalfx_on")) { *(unsigned *)(b + 56) |= 0x5u; L("METALFX: swapchain usage |= TRANSFER_SRC | SAMPLED so the picture can be read (now 0x%x)", *(unsigned *)(b + 56)); }
               int r = f(dev, (const VkSCCI *)b, alloc, pSw);
               L("PLAT vkCreateSwapchainKHR %ux%u format=%d images=%u usage=0x%x preTransform=0x%x compositeAlpha=%u presentMode=%u -> compositeAlpha now %u (%s) -> %d",
                 ci->w, ci->h, ci->fmt, ci->minImg, ci->usage, pre, ca, pm, *(unsigned *)(b + 84), keep ? "swapchain_alpha_keep folder: unchanged" : "forced OPAQUE", r);
@@ -2998,6 +3003,7 @@ jobs:
               { static int pd = -2, pt = -2; if (pd == -2) { pd = mk_val("pdelay_"); pt = mk_val("pthrottle_"); L("present switches: pdelay %d ms (first present), pthrottle %d us (first 300 presents), -1 = off", pd, pt); }
                 if (n == 0 && pd > 0 && pd <= 8000) { L("PDELAY: pausing the presenting thread %d ms before its first present", pd); usleep(pd * 1000); }
                 if (pt > 0 && n < 300) usleep((useconds_t)(pt > 100000 ? 100000 : pt)); }
+              { static int mfxOn = -2; if (mfxOn == -2) mfxOn = mk_has("metalfx_on") && gMfxExt; if (mfxOn > 0) p2_mfx_frame(gVkDev, q, pi, (void *(*)(void *, const char *))gRealGdpa); }   /* METALFX: runs before the real present, on the same Metal queue */
               int r = f(q, pi); n++; __atomic_add_fetch(&gPresN, 1, __ATOMIC_RELAXED); if (n <= 3 || (r != 0 && bad++ < 8)) L("PLAT vkQueuePresentKHR #%d tid=%d -> %d", n, p2_tid(), r); trace_present(); return r;
           }
           static void *w_gipa(void *inst, const char *name);
@@ -4270,7 +4276,87 @@ jobs:
           if [ -d mvk/fw/MoltenVK.framework ]; then cp -R mvk/fw/MoltenVK.framework $APP/Frameworks/ && echo "MoltenVK: dynamic framework embedded";
           elif [ -f mvk/static/libMoltenVK.a ]; then MVK_LINK="-Wl,-force_load,mvk/static/libMoltenVK.a -lc++ -framework CoreGraphics -framework IOSurface"; echo "MoltenVK: static library linked";
           else echo "MoltenVK missing"; exit 1; fi
-          clang -target arm64-apple-ios15.0 -isysroot "$SDK" -fobjc-arc -O1 -framework UIKit -framework Foundation -framework Metal -framework QuartzCore -framework AudioToolbox -framework AVFoundation -framework CoreGraphics $MVK_LINK main.m p2core.c p2imports.c p2stubs.s p2asm.s -o $APP/P2Loader
+          cat > mfx.m <<'EOF_MFX_M'
+          #import <Foundation/Foundation.h>
+          #import <UIKit/UIKit.h>
+          #import <Metal/Metal.h>
+          #import <QuartzCore/QuartzCore.h>
+          #import <MetalFX/MetalFX.h>
+
+          /* METALFX (EXPERIMENT, folder metalfx_on). Called from the present hook in the loader, before MoltenVK's own present.
+             It takes the game's low-res swapchain image as an MTLTexture (VK_EXT_metal_objects), runs a MetalFX spatial scaler on the SAME MTLCommandQueue (so it is ordered after the
+             game's rendering) into a full-size CAMetalLayer of its own that sits on top of the game layer, and presents that. Any failure switches it off for the run. */
+          extern void *p2_metal_layer;
+          extern void p2_note(const char *s);
+
+          typedef struct { int sType; const void *pNext; void *queue; void *mtlQueue; } MfxExpQ;                                                        /* VkExportMetalCommandQueueInfoEXT */
+          typedef struct { int sType; const void *pNext; void *image; void *imageView; void *bufferView; unsigned plane; void *mtlTexture; } MfxExpT;   /* VkExportMetalTextureInfoEXT */
+          typedef struct { int sType; const void *pNext; } MfxExpO;                                                                                      /* VkExportMetalObjectsInfoEXT */
+          typedef void (*MfxExportFn)(void *, void *);
+          typedef int (*MfxImgsFn)(void *, void *, unsigned *, void **);
+
+          static void mfxlog(NSString *s) { p2_note(s.UTF8String); }
+          static void mfxHide(CAMetalLayer *ml, BOOL hide) {
+              static int cur = -1; if (cur == (hide ? 1 : 0)) return; cur = hide ? 1 : 0;
+              dispatch_async(dispatch_get_main_queue(), ^{ [CATransaction begin]; [CATransaction setDisableActions:YES]; ml.hidden = hide; [CATransaction commit]; });
+          }
+
+          void p2_mfx_frame(void *dev, void *queue, const void *pi, void *(*gdpa)(void *, const char *)) {
+              static int dead, frames;
+              static MfxExportFn expf; static MfxImgsFn getf;
+              static CAMetalLayer *ml; static id sc; static NSUInteger iw, ih; static MTLPixelFormat ifmt;
+              static void *cachedSw; static void *imgs[16]; static unsigned nImg;
+              if (dead) return;
+              if (@available(iOS 16.0, *)) {
+                  @autoreleasepool {
+                      if (!expf) {
+                          expf = (MfxExportFn)gdpa(dev, "vkExportMetalObjectsEXT"); getf = (MfxImgsFn)gdpa(dev, "vkGetSwapchainImagesKHR");
+                          if (!expf || !getf) { mfxlog(@"METALFX: vkExportMetalObjectsEXT not available, switched off"); dead = 1; return; }
+                      }
+                      const unsigned char *p = (const unsigned char *)pi;
+                      unsigned nSw = *(const unsigned *)(p + 32); void *const *sws = *(void *const *const *)(p + 40); const unsigned *idx = *(const unsigned *const *)(p + 48);
+                      if (!nSw || !sws || !idx) return;
+                      if (sws[0] != cachedSw) { nImg = 16; getf(dev, sws[0], &nImg, imgs); cachedSw = sws[0]; sc = nil; mfxlog([NSString stringWithFormat:@"METALFX: swapchain has %u images", nImg]); }
+                      if (idx[0] >= nImg) return;
+                      MfxExpT t = {1000311006, NULL, imgs[idx[0]], NULL, NULL, 1, NULL};   /* plane 1 = VK_IMAGE_ASPECT_COLOR_BIT */
+                      MfxExpQ qi = {1000311003, &t, queue, NULL};
+                      MfxExpO o = {1000311001, &qi};
+                      expf(dev, &o);
+                      id<MTLTexture> src = (__bridge id<MTLTexture>)t.mtlTexture; id<MTLCommandQueue> cq = (__bridge id<MTLCommandQueue>)qi.mtlQueue;
+                      if (!src || !cq) { static int bad; if (++bad >= 5) { mfxlog(@"METALFX: could not get the swapchain texture or the queue from MoltenVK, switched off"); dead = 1; } return; }
+                      if (!ml) {
+                          CALayer *host = (__bridge CALayer *)p2_metal_layer; if (!host) { mfxlog(@"METALFX: no game layer, switched off"); dead = 1; return; }
+                          if (![MTLFXSpatialScalerDescriptor supportsDevice:cq.device]) { mfxlog(@"METALFX: this device does not support the spatial scaler, switched off"); dead = 1; return; }
+                          CGFloat scale = host.contentsScale > 0 ? host.contentsScale : 3.0; CGSize bs = host.bounds.size;
+                          ml = [CAMetalLayer layer]; ml.device = cq.device; ml.pixelFormat = MTLPixelFormatBGRA8Unorm; ml.framebufferOnly = NO; ml.opaque = YES;
+                          ml.contentsScale = scale; ml.frame = host.bounds; ml.drawableSize = CGSizeMake(round(bs.width * scale), round(bs.height * scale)); ml.hidden = YES;
+                          CAMetalLayer *m2 = ml;
+                          dispatch_async(dispatch_get_main_queue(), ^{ [CATransaction begin]; [CATransaction setDisableActions:YES]; [host addSublayer:m2]; [CATransaction commit]; });
+                          mfxlog([NSString stringWithFormat:@"METALFX: output layer %.0fx%.0f px added on top of the game layer", ml.drawableSize.width, ml.drawableSize.height]);
+                      }
+                      NSUInteger W = (NSUInteger)ml.drawableSize.width, H = (NSUInteger)ml.drawableSize.height;
+                      if (src.width >= W && src.height >= H) { mfxHide(ml, YES); return; }   /* render scale 100: nothing to scale, the normal path shows the game */
+                      if (!sc || iw != src.width || ih != src.height || ifmt != src.pixelFormat) {
+                          MTLFXSpatialScalerDescriptor *d = [MTLFXSpatialScalerDescriptor new];
+                          d.inputWidth = src.width; d.inputHeight = src.height; d.outputWidth = W; d.outputHeight = H;
+                          d.colorTextureFormat = src.pixelFormat; d.outputTextureFormat = ml.pixelFormat; d.colorProcessingMode = MTLFXSpatialScalerColorProcessingModePerceptual;
+                          sc = [d newSpatialScalerWithDevice:cq.device];
+                          if (!sc) { mfxlog([NSString stringWithFormat:@"METALFX: scaler %lux%lu (format %lu) -> %lux%lu could not be created, switched off", (unsigned long)src.width, (unsigned long)src.height, (unsigned long)src.pixelFormat, (unsigned long)W, (unsigned long)H]); dead = 1; mfxHide(ml, YES); return; }
+                          iw = src.width; ih = src.height; ifmt = src.pixelFormat;
+                          mfxlog([NSString stringWithFormat:@"METALFX: scaler %lux%lu (format %lu, usage 0x%lx) -> %lux%lu", (unsigned long)iw, (unsigned long)ih, (unsigned long)ifmt, (unsigned long)src.usage, (unsigned long)W, (unsigned long)H]);
+                      }
+                      id<CAMetalDrawable> dr = [ml nextDrawable]; if (!dr) return;
+                      id<MTLFXSpatialScaler> s = sc;
+                      s.colorTexture = src; s.outputTexture = dr.texture; s.inputContentWidth = src.width; s.inputContentHeight = src.height;
+                      id<MTLCommandBuffer> cb = [cq commandBuffer];
+                      [s encodeToCommandBuffer:cb]; [cb presentDrawable:dr]; [cb commit];
+                      mfxHide(ml, NO);
+                      if (++frames == 1) mfxlog(@"METALFX: first scaled frame presented");
+                  }
+              } else { mfxlog(@"METALFX: needs iOS 16, switched off"); dead = 1; }
+          }
+          EOF_MFX_M
+          clang -target arm64-apple-ios15.0 -isysroot "$SDK" -fobjc-arc -O1 -framework UIKit -framework Foundation -framework Metal -framework QuartzCore -framework AudioToolbox -framework AVFoundation -framework CoreGraphics -weak_framework MetalFX $MVK_LINK main.m mfx.m p2core.c p2imports.c p2stubs.s p2asm.s -o $APP/P2Loader
           cp P2Code $APP/Frameworks/P2Code.framework/P2Code
           cp p2data.bin p2relocs.bin p2names.bin p2tls.bin p2phdr.bin $APP/
           unzip -q -o ../game.apk 'assets/*' -d $APP/ && du -sh $APP/assets || echo 'no assets in apk'
