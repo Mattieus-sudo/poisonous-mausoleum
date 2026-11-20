@@ -2374,8 +2374,7 @@ jobs:
               *o = *p; return __atomic_load_n(&p->ready, __ATOMIC_ACQUIRE) && p->seq == o->seq;
           }
           static void tx_changed(const char *stage, const TxP *o, uint64_t h1, int z1, unsigned long long dt) {
-              int k = __atomic_add_fetch(&gTxLog, 1, __ATOMIC_RELAXED);
-              if (k <= 40) L("TEXTRACE CHANGED %s #%d: record tid=%d, fmt %d mip %u region %ux%u, %llu bytes at %llx, hash %016llx -> %016llx, source now %s, %.2f ms after record, s6=%d", stage, k, o->tid, o->fmt, o->mip, o->ew, o->eh, (unsigned long long)o->n, (unsigned long long)o->addr, (unsigned long long)o->h0, (unsigned long long)h1, z1 ? "ALL ZERO" : "other data", dt / 1e6, (int)gS6Seen);
+              static int gTxChLog; int k = __atomic_add_fetch(&gTxChLog, 1, __ATOMIC_RELAXED); if (k <= 400) L("TEXTRACE CHANGED %s #%d: record tid=%d, fmt %d mip %u region %ux%u, %llu bytes at %llx, hash %016llx -> %016llx, source now %s, %.2f ms after record, s6=%d", stage, k, o->tid, o->fmt, o->mip, o->ew, o->eh, (unsigned long long)o->n, (unsigned long long)o->addr, (unsigned long long)o->h0, (unsigned long long)h1, z1 ? "ALL ZERO" : "other data", dt / 1e6, (int)gS6Seen);
           }
           static void tx_submit(const void *s, unsigned n, int v2, unsigned long long sq) {
               if (gTxOff || !s || !n) return;
