@@ -1584,9 +1584,8 @@ jobs:
           static volatile int gAlogN;
           static volatile int gOvrSeen;
           static int mk_has(const char *name);
-          static char *cfg_dup(void);   /* v103: p2.cfg helpers, defined next to mk_val */
-          static const char *cfg_line(const char *s, char *key, size_t kn, char *val, size_t vn);
-          static void mk_eat(const char *name);
+          static FILE *p2_cfg_open(void);
+          static int p2_cfg_remove(const char *key);
           static void alog(long prio, uint64_t tag, const char *msg) {
               if (msg && strstr(msg, "game state: state 5 target 3")) { static int hd; if (!hd) { hd = 1; int h = mk_val("hold_s5_"); if (h > 0 && h <= 5000) { L("HOLD: pausing the state thread for %d ms at state 5 target 3", h); usleep(h * 1000); } } }
           if (msg && strstr(msg, "game state: state")) { static int gsn; if (gsn < 14) { gsn++; p2_snap(msg + 12 < msg + strlen(msg) ? msg + 12 : msg); } }
@@ -1628,35 +1627,33 @@ jobs:
               return d;
           }
           static char gDocs[1100];
-          static int gHostScreen = -1;   /* v103: the "screen N" line of p2.cfg (host render scale), -1 = none */
-          static const char *fixp_base(const char *in, char *out, size_t n) {
+          static const char *fixp(const char *in, char *out, size_t n) {
               static int logged; static const char *pre[] = {"/storage/emulated/0", "/storage/emulated/legacy", "/storage/self/primary", "/sdcard", "/mnt/sdcard"};
               if (!in || !gDocs[0] || !okptr((uint64_t)in)) return in;
               if (strstr(in, "kgsl-3d0/gpubusy")) { const char *r_ = gpuhud_path(out, n); return r_ ? r_ : in; }
+              /* DataRoot() may already be the iOS Documents path passed through NativeActivity. */
+              size_t dl = strlen(gDocs);
+              if (!strncmp(in, gDocs, dl) && (in[dl] == 0 || in[dl] == '/')) {
+                  const char *tail = in + dl;
+                  if (!strcmp(tail, "/p2.log") || !strcmp(tail, "/p2_loader_log.txt") || !strcmp(tail, "/mvk_stderr.log") || !strcmp(tail, "/waittrace_total.txt") || !strcmp(tail, "/pcprof_total.txt")) snprintf(out, n, "%s/logs%s", gDocs, tail);
+                  else if (!strcmp(tail, "/controls.cfg") || !strcmp(tail, "/render_scale") || !strcmp(tail, "/waitspin") || !strcmp(tail, "/fake_aspect") || !strcmp(tail, "/nosplash") || !strcmp(tail, "/env") || !strcmp(tail, "/vkshot")) snprintf(out, n, "%s/.p2%s", gDocs, tail);
+                  else return in;
+                  if (logged++ < 40) L("REDIRECT %s -> %s", in, out); return out;
+              }
               for (unsigned i = 0; i < sizeof pre / sizeof pre[0]; i++) {
                   size_t l = strlen(pre[i]);
-                  if (!strncmp(in, pre[i], l) && (in[l] == 0 || in[l] == '/')) { snprintf(out, n, "%s%s", gDocs, in + l); if (logged++ < 12) L("PLAT path %s -> %s", in, out); return out; }
+                  if (!strncmp(in, pre[i], l) && (in[l] == 0 || in[l] == '/')) {
+                      const char *tail = in + l;
+                      /* ModsFolder() is the app Documents/Mods directory exposed in Files as
+                         On My iPhone > Prototype 2 > Mods; do not move it under Prototype2/game. */
+                      if (!strcmp(tail, "/p2.log") || !strcmp(tail, "/p2_loader_log.txt") || !strcmp(tail, "/mvk_stderr.log") || !strcmp(tail, "/waittrace_total.txt") || !strcmp(tail, "/pcprof_total.txt")) { snprintf(out, n, "%s/logs%s", gDocs, tail); }
+                      else if (!strcmp(tail, "/controls.cfg") || !strcmp(tail, "/render_scale") || !strcmp(tail, "/waitspin") || !strcmp(tail, "/fake_aspect") || !strcmp(tail, "/nosplash") || !strcmp(tail, "/env") || !strcmp(tail, "/vkshot")) { snprintf(out, n, "%s/.p2%s", gDocs, tail); }
+                      else { snprintf(out, n, "%s%s", gDocs, tail); }
+                      if (logged++ < 40) L("REDIRECT %s -> %s", in, out);
+                      return out;
+                  }
               }
               return in;
-          }
-          /* v103: what the game opens in Documents is steered to where the clean layout keeps it. The host's own files (controls.cfg, render_scale, waitspin, fake_aspect) and the game's flag folders
-             (nosplash, env, vkshot) live in the hidden Documents/.p2, the game's p2.log goes to Documents/logs, and the mods the host looks for in Documents/Mods are the ones in Documents/Prototype2/Mods. */
-          static const char *fixp(const char *in, char *out, size_t n) {
-              const char *q = fixp_base(in, out, n);
-              if (!q || !gDocs[0] || !okptr((uint64_t)q)) return q;
-              size_t dl = strlen(gDocs); if (strncmp(q, gDocs, dl) || q[dl] != '/') return q;
-              char rest[1100], orig[1100]; snprintf(rest, sizeof rest, "%s", q + dl + 1); snprintf(orig, sizeof orig, "%s", q);   /* copies: q may be the buffer we are about to overwrite */
-              static int rl; int hit = 0;
-              static const char *const hid[] = {"controls.cfg", "render_scale", "waitspin", "fake_aspect", "nosplash", "env", "vkshot"};
-              for (unsigned i = 0; i < sizeof hid / sizeof hid[0] && !hit; i++) {
-                  size_t l = strlen(hid[i]);
-                  if (!strncmp(rest, hid[i], l) && (rest[l] == 0 || rest[l] == '/')) { snprintf(out, n, "%s/.p2/%s", gDocs, rest); hit = 1; }
-              }
-              if (!hit && !strcmp(rest, "p2.log")) { snprintf(out, n, "%s/logs/p2.log", gDocs); hit = 1; }
-              if (!hit && !strncmp(rest, "Mods", 4) && (rest[4] == 0 || rest[4] == '/')) { snprintf(out, n, "%s/Prototype2/Mods%s", gDocs, rest + 4); hit = 1; }
-              if (!hit) return q;
-              if (rl++ < 25) L("REDIRECT %s -> %s", orig, out);   /* v103: the first few, so the log shows the game really goes through the new places */
-              return out;
           }
           static int bio_oflags(int f);
           static void st_to_bionic(const struct stat *s, uint8_t *o) {
@@ -1682,12 +1679,10 @@ jobs:
           static int sh_access(const char *p, int m) { char b[1100]; return access(fixp(p, b, sizeof b), m); }
           static void *rt_serve(void) {
               if (!gDocs[0]) return NULL;
-          char hex[40] = "", nm[300] = "";
-          { char *cf = cfg_dup(); if (cf) { const char *cs = cf; char ck[300], cv[16];
-              while ((cs = cfg_line(cs, ck, sizeof ck, cv, sizeof cv))) if (!strncmp(ck, "rtdump_ps=", 10)) { snprintf(nm, sizeof nm, "%s", ck); snprintf(hex, sizeof hex, "%.30s", ck + 10); break; }
-              free(cf); } }
-          if (!hex[0]) return NULL;
-          mk_eat(nm);   /* v103: one-shot, the line is removed from p2.cfg */
+              char hex[40] = "", nm[300] = ""; FILE *cfg = p2_cfg_open(); char line[512], key[256];
+              if (cfg) { while (fgets(line, sizeof line, cfg)) { key[0] = 0; if (sscanf(line, " %255s", key) == 1 && !strncmp(key, "rtdump_ps=", 10)) { snprintf(nm, sizeof nm, "%s", key); snprintf(hex, sizeof hex, "%.30s", key + 10); break; } } fclose(cfg); }
+              if (!hex[0]) return NULL;
+              p2_cfg_remove(nm);
               for (const char *c = hex; *c; c++) if (!((*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f') || (*c >= 'A' && *c <= 'F'))) { L("RTDUMP trigger ignored (not a hex number): %s", nm); return NULL; }
               char fp[1200]; snprintf(fp, sizeof fp, "%s/rtdump_trigger.txt", gDocs);
               FILE *w = fopen(fp, "w"); if (!w) return NULL; fprintf(w, "%s\n", hex); fclose(w);
@@ -1740,60 +1735,36 @@ jobs:
           static PFN_pa gRealGipa, gRealGdpa;
           static void *gVkInst, *gVkDev, *gVkPhys;
           typedef struct { char name[256]; unsigned spec; } VkExtP;
-          /* v103: p2.cfg. Every switch is a LINE of Documents/p2.cfg (it used to be a folder in Documents). "name" or "name value"; blank lines and lines starting with # are ignored.
-             Numeric switches keep their old shape as one token (waitspin_1000, maxlod_0), so mk_val works as it always did. The file is re-read at most every 250 ms. */
-          static char gCfgC[65536]; static size_t gCfgCn; static long long gCfgCt; static volatile int gCfgCk;
-          static void cfg_lock(void) { while (__sync_lock_test_and_set(&gCfgCk, 1)) { } }
-          static void cfg_unlock(void) { __sync_lock_release(&gCfgCk); }
-          static size_t cfg_read(char *buf, size_t n) {
-              buf[0] = 0; if (!gDocs[0]) return 0;
-              char p[1200]; snprintf(p, sizeof p, "%s/p2.cfg", gDocs); FILE *f = fopen(p, "r"); if (!f) return 0;
-              size_t r = fread(buf, 1, n - 1, f); fclose(f); buf[r] = 0; return r;
-          }
-          static void cfg_refresh(void) {   /* the caller holds the lock */
-              if (!gDocs[0]) return;
-              struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000 + 1;
-              if (gCfgCt && now - gCfgCt < 250) return;
-              gCfgCn = cfg_read(gCfgC, sizeof gCfgC); gCfgCt = now;
-          }
-          static char *cfg_dup(void) {   /* a private copy of the current text; the caller frees it */
-              cfg_lock(); cfg_refresh(); char *b = malloc(gCfgCn + 1); if (b) { memcpy(b, gCfgC, gCfgCn); b[gCfgCn] = 0; } cfg_unlock(); return b;
-          }
-          static const char *cfg_line(const char *s, char *key, size_t kn, char *val, size_t vn) {   /* next switch line of a p2.cfg text; returns the position after it, NULL at the end */
-              while (*s) {
-                  const char *e = s; while (*e && *e != '\n' && *e != '\r') e++;
-                  const char *nx = e; while (*nx == '\n' || *nx == '\r') nx++;
-                  const char *a = s; while (a < e && (*a == ' ' || *a == '\t')) a++;
-                  if (a < e && *a != '#') {
-                      const char *k = a; while (a < e && *a != ' ' && *a != '\t') a++;
-                      size_t kl = (size_t)(a - k); if (kl >= kn) kl = kn - 1; memcpy(key, k, kl); key[kl] = 0;
-                      while (a < e && (*a == ' ' || *a == '\t')) a++;
-                      const char *ve = e; while (ve > a && (ve[-1] == ' ' || ve[-1] == '\t')) ve--;
-                      size_t vl = (size_t)(ve - a); if (vl >= vn) vl = vn - 1; memcpy(val, a, vl); val[vl] = 0;
-                      return nx;
-                  }
-                  s = nx;
-              }
-              return NULL;
-          }
-          static int mk_val(const char *prefix) {
-              if (!gDocs[0]) return -1; int r = -1; size_t pl = strlen(prefix); char k[300], v[300];
-              cfg_lock(); cfg_refresh();
-              const char *s = gCfgC; while ((s = cfg_line(s, k, sizeof k, v, sizeof v))) if (!strncmp(k, prefix, pl) && k[pl] >= '0' && k[pl] <= '9') { r = atoi(k + pl); break; }
-              cfg_unlock(); return r;
+          static FILE *p2_cfg_open(void) { char p[1200]; if (!gDocs[0]) return NULL; snprintf(p, sizeof p, "%s/p2.cfg", gDocs); return fopen(p, "r"); }
+          static int p2_cfg_remove(const char *wanted) {
+              if (!wanted || !*wanted || !gDocs[0]) return 0;
+              char src[1200], tmp[1200]; snprintf(src, sizeof src, "%s/p2.cfg", gDocs); snprintf(tmp, sizeof tmp, "%s/p2.cfg.tmp", gDocs);
+              FILE *in = fopen(src, "r"); if (!in) return 0; FILE *out = fopen(tmp, "w"); if (!out) { fclose(in); return 0; }
+              char line[512], key[256]; int removed = 0;
+              while (fgets(line, sizeof line, in)) { key[0] = 0; if (sscanf(line, " %255s", key) == 1 && !strcmp(key, wanted)) { removed++; continue; } fputs(line, out); }
+              fclose(in); fclose(out); if (rename(tmp, src) != 0) { unlink(tmp); return 0; } return removed;
           }
           static int mk_has(const char *name) {
-              if (!gDocs[0]) return 0; int r = 0; char k[300], v[300];
-              cfg_lock(); cfg_refresh();
-              const char *s = gCfgC; while ((s = cfg_line(s, k, sizeof k, v, sizeof v))) if (!strcmp(k, name)) { r = 1; break; }
-              cfg_unlock();
-              if (!r && !strcmp(name, "own_layout")) { char p[1200]; struct stat st; snprintf(p, sizeof p, "%s/own_layout", gDocs); r = stat(p, &st) == 0; }   /* own_layout stays a real folder: it holds your layout file */
-              return r;
+              if (!name || !*name) return 0; FILE *f = p2_cfg_open(); if (!f) return 0;
+              char line[512], key[256]; int found = 0;
+              while (fgets(line, sizeof line, f)) { key[0] = 0; if (sscanf(line, " %255s", key) == 1 && !strcmp(key, name)) { found = 1; break; } }
+              fclose(f); return found;
           }
-          static int p2_put(const char *rel, const char *txt) {   /* write a loader-owned file under Documents (rel = ".p2/waitspin") */
-              char p[1300]; snprintf(p, sizeof p, "%s/%s", gDocs, rel); FILE *f = fopen(p, "w"); if (!f) return 0; fputs(txt, f); fclose(f); return 1;
+          static int mk_val(const char *prefix) {
+              if (!prefix || !*prefix) return -1; FILE *f = p2_cfg_open(); if (!f) return -1;
+              char line[512], key[256]; int r = -1; size_t pl = strlen(prefix);
+              while (fgets(line, sizeof line, f)) {
+                  key[0] = 0; if (sscanf(line, " %255s", key) != 1) continue;
+                  if (!strncmp(key, prefix, pl) && key[pl] >= '0' && key[pl] <= '9') { r = atoi(key + pl); break; }
+              }
+              fclose(f); return r;
           }
-          static void p2_del(const char *rel) { char p[1300]; snprintf(p, sizeof p, "%s/%s", gDocs, rel); unlink(p); }
+          static int p2_cfg_value(const char *wanted, char *value, size_t cap) {
+              if (!wanted || !value || !cap) return 0; FILE *f = p2_cfg_open(); if (!f) return 0;
+              char line[512], key[256], val[256]; int found = 0;
+              while (fgets(line, sizeof line, f)) if (sscanf(line, " %255s %255s", key, val) == 2 && !strcmp(key, wanted)) { snprintf(value, cap, "%s", val); found = 1; break; }
+              fclose(f); return found;
+          }
           static int fx_mode(void) {
               static int m = -1;
               int v = __atomic_load_n(&m, __ATOMIC_RELAXED);
@@ -1841,27 +1812,13 @@ jobs:
               (void)k; (void)entry;
           #endif
           }
-          static void mk_eat(const char *name) {
-              char p[1300]; if (!gDocs[0]) return;
-              snprintf(p, sizeof p, "%s/%s", gDocs, name); rmdir(p); unlink(p);   /* an old-style flag folder, if one is still there */
-              char *in = malloc(65537), *out = malloc(65537); if (!in || !out) { free(in); free(out); return; }
-              cfg_read(in, 65537); size_t o = 0; int hit = 0; char k[300], v[300];
-              for (const char *q = in; *q; ) {
-                  const char *e = q; while (*e && *e != '\n') e++;
-                  char ln[1100]; size_t l = (size_t)(e - q); if (l >= sizeof ln) l = sizeof ln - 1; memcpy(ln, q, l); ln[l] = 0;
-                  if (cfg_line(ln, k, sizeof k, v, sizeof v) && !strcmp(k, name)) hit = 1;
-                  else if (o + (size_t)(e - q) + 1 < 65537) { memcpy(out + o, q, (size_t)(e - q)); o += (size_t)(e - q); out[o++] = '\n'; }
-                  q = *e ? e + 1 : e;
-              }
-              if (hit) { snprintf(p, sizeof p, "%s/p2.cfg", gDocs); FILE *f = fopen(p, "w"); if (f) { fwrite(out, 1, o, f); fclose(f); } cfg_lock(); gCfgCt = 0; cfg_unlock(); }
-              free(in); free(out);
-          }
+          static void mk_eat(const char *name) { char p[1200]; if (!gDocs[0]) return; p2_cfg_remove(name); snprintf(p, sizeof p, "%s/%s", gDocs, name); rmdir(p); unlink(p); }
           static void mvk_env_setup(void) {
               static int done; if (done) return; done = 1;
               char p[1200], dump[1200] = "";
-              { snprintf(p, sizeof p, "%s/logs/P2_SWITCHES.txt", gDocs); FILE *f = fopen(p, "w");
+              { snprintf(p, sizeof p, "%s/P2_SWITCHES.txt", gDocs); FILE *f = fopen(p, "w");
                 if (f) { fputs(
-                  "P2 loader switches (v103: they are LINES of Documents/p2.cfg now, one switch per line, the name exactly as written here; the settings screens edit that file for you). Close the app first. Logs are in Documents/logs (the previous run in logs/prev).\n\n"
+                  "P2 loader v31 switches. Add the exact flag as a line in Documents/p2.cfg (one flag per line).\n\n"
                   "mvk_fastmath_on     MoltenVK shader fast-math ON. Since v72 this is the DEFAULT (MoltenVK's own default); v29-v71 had it off for the black-world hunt, which was closed as a texture-timing problem. This folder is still accepted and does nothing new.\n"
                   "mvk_fastmath_off    (v72) turn shader fast-math OFF (the v29-v71 behaviour). Use it only to test a black or flickering shader.\n"
           "mvk_fastmath_auto   fast-math ON except for shaders that ask for strict NaN/Inf handling.\n"
@@ -1928,9 +1885,9 @@ jobs:
                             "sleepcap_US          (v54, experiment) shorten guest sleeps of 2000..20000 us to US microseconds (try 1000, 500). Counts in waittrace_total.txt header. Off by default.\n"
                             "waittrace_off        (v52) do not record WAITTRACE (per-thread time blocked in cond waits, futex waits, sleeps, yields and contended mutexes, by guest caller). On by default.\n"
                   "RACEPROBE / THREADSTART / CLOCKPROBE / IMGCHAIN lines are always logged.\n\n"
-                  "Log files: p2_loader_log.txt (run start time, VKTRACE / MVKENV / P2RE_ENV / GUEST getenv lines), p2.log (the game's own log), mvk_stderr.log (MoltenVK's own messages), waittrace_total.txt, pcprof_total.txt.\n"
-                  "Log rotation: only the last two runs are kept. The latest run uses the normal name; the run before it is renamed with _prev (p2_prev.log, p2_loader_log_prev.txt, mvk_stderr_prev.log, ...). Anything older is deleted when a run starts.\n", f); fclose(f); } }
-              snprintf(p, sizeof p, "%s/logs/mvk_stderr.log", gDocs);
+                  "Log files are in Documents/logs/: p2_loader_log.txt, p2.log, mvk_stderr.log, waittrace_total.txt, pcprof_total.txt.\n"
+                  "Log rotation: Documents/logs/ keeps the current run and one previous run under *_prev names.\n", f); fclose(f); } }
+              { char ld[1200]; snprintf(ld, sizeof ld, "%s/logs", gDocs); mkdir(ld, 0755); snprintf(p, sizeof p, "%s/mvk_stderr.log", ld); }
               int fd = open(p, O_WRONLY | O_CREAT | O_TRUNC, 0644); if (fd >= 0) { dup2(fd, 2); close(fd); }
               int fm = mk_has("mvk_fastmath_off") ? 0 : mk_has("mvk_fastmath_auto") ? 2 : 1;
               setenv("MVK_CONFIG_FAST_MATH_ENABLED", fm == 1 ? "1" : fm == 2 ? "2" : "0", 1);
@@ -1944,64 +1901,58 @@ jobs:
               int ds = mk_has("mvk_dumpshaders"); if (ds) { snprintf(dump, sizeof dump, "%s/mvk_shaders", gDocs); mkdir(dump, 0755); setenv("MVK_CONFIG_SHADER_DUMP_DIR", dump, 1); }
               L("MVKENV fast_math=%d log_level=%s argbuf_off=%d prefill=%d syncsubmit_off=%d perf_log=%d dumpshaders=%d stderr->mvk_stderr.log (%s)", fm, (pl || mk_has("mvk_log_info")) ? "3" : "2", ab, pf, ss, pl, ds, fd >= 0 ? "ok" : "FAILED"); if (pf == 3) L("MVKENV WARNING: prefill 3 assumes every recording thread has an autorelease pool; the guest render thread probably does not");
           }
+          static void p2_hostcfg_setup(void) {
+              if (!gDocs[0]) return;
+              char dir[1200], path[1200]; snprintf(dir, sizeof dir, "%s/.p2", gDocs); mkdir(dir, 0755);
+              snprintf(path, sizeof path, "%s/controls.cfg", dir);
+              FILE *in = p2_cfg_open(), *out = fopen(path, "w");
+              if (!out) { L("HOSTCFG: cannot write %s", path); if (in) fclose(in); return; }
+              int count = 0; char line[512], key[256];
+              if (in) { while (fgets(line, sizeof line, in)) { key[0] = 0; if (sscanf(line, " %255s", key) != 1) continue;
+                  if (!strcmp(key, "upscale") || !strcmp(key, "gfx") || !strcmp(key, "gfxmanual") || !strcmp(key, "potato") || !strcmp(key, "quality") || !strcmp(key, "screen") || !strcmp(key, "fpscap") || !strcmp(key, "camera") || !strcmp(key, "modloader") || !strcmp(key, "mod") || !strcmp(key, "heatguard")) { fputs(line, out); count++; }
+                  else if (!strcmp(key, "host")) { char *v = strchr(line, ' '); if (v) { while (*v == ' ') v++; fputs(v, out); count++; } }
+              } fclose(in); }
+              fclose(out); L("HOSTCFG: wrote %s (%d directive(s))", path, count);
+              /* Generated host settings are isolated in .p2; the UI's p2.cfg remains the sole source of truth. */
+              { char v[64], p[1200]; snprintf(p, sizeof p, "%s/render_scale", dir); if (p2_cfg_value("screen", v, sizeof v) && atoi(v) >= 30 && atoi(v) <= 100) { FILE *f = fopen(p, "w"); if (f) { fprintf(f, "%d\n", atoi(v)); fclose(f); } } else unlink(p); }
+              { int v = mk_val("waitspin_"); char p[1200]; snprintf(p, sizeof p, "%s/waitspin", dir); if (v < 0) v = 1000; FILE *f = fopen(p, "w"); if (f) { fprintf(f, "%d\n", v); fclose(f); } }
+              { int v = mk_val("fakeaspect_"); char p[1200]; snprintf(p, sizeof p, "%s/fake_aspect", dir); if (v > 5000 && v < 40000) { FILE *f = fopen(p, "w"); if (f) { fprintf(f, "%d.%04d\n", v / 10000, v % 10000); fclose(f); } } else unlink(p); }
+              { const char *flags[] = {"nosplash", "env", "vkshot"}; for (unsigned i = 0; i < sizeof flags / sizeof flags[0]; i++) { char p[1200]; snprintf(p, sizeof p, "%s/%s", dir, flags[i]); if (mk_has(flags[i])) mkdir(p, 0755); else rmdir(p); } }
+          }
           static void p2re_env_setup(void) {
               if (!gDocs[0]) return;
-          {   /* v103: the folders of the clean layout, then everything the Android host and the game read from p2.cfg's lines */
-              static const char *const sub[] = {".p2", "logs", "logs/prev", "Prototype2", "Prototype2/Mods"};
-              for (unsigned i = 0; i < sizeof sub / sizeof sub[0]; i++) { char dd[1300]; snprintf(dd, sizeof dd, "%s/%s", gDocs, sub[i]); mkdir(dd, 0755); }
-              static const char *const gn[] = {"nosplash", "env", "vkshot"};   /* the game's own flag folders: made (and removed) in .p2 to match p2.cfg, fixp points the game there */
-              for (unsigned i = 0; i < sizeof gn / sizeof gn[0]; i++) { char dd[1300]; snprintf(dd, sizeof dd, "%s/.p2/%s", gDocs, gn[i]); if (mk_has(gn[i])) mkdir(dd, 0755); else rmdir(dd); }
-              static const char *const hk[] = {"upscale", "gfx", "gfxmanual", "potato", "quality", "screen", "fpscap", "camera", "modloader", "mod", "heatguard"};
-              char *cf = cfg_dup(); char *hb = malloc(65536); size_t ho = 0; int hn = 0; int screen = -1;
-              if (cf && hb) { const char *cs = cf; char ck[300], cv[700];
-                  while ((cs = cfg_line(cs, ck, sizeof ck, cv, sizeof cv))) {
-                      int host = 0; for (unsigned i = 0; i < sizeof hk / sizeof hk[0]; i++) if (!strcmp(ck, hk[i])) host = 1;
-                      if (!strcmp(ck, "screen")) screen = atoi(cv);
-                      if (host && ho + 1100 < 65536) { ho += (size_t)snprintf(hb + ho, 65536 - ho, "%s %s\n", ck, cv); hn++; }
-                      else if (!strcmp(ck, "host") && cv[0] && ho + 1100 < 65536) { ho += (size_t)snprintf(hb + ho, 65536 - ho, "%s\n", cv); hn++; } } }
-              if (hb) { if (p2_put(".p2/controls.cfg", hb ? (ho ? hb : "") : "")) L("HOSTCFG: wrote Documents/.p2/controls.cfg for the Android host (%d line(s) taken from p2.cfg)", hn); else L("HOSTCFG: could not write Documents/.p2/controls.cfg"); }
-              free(hb); free(cf);
-              gHostScreen = screen;
-          }
               if (p2_boot_flags) L("BOOT FLAGS (as seen when the app started):\n%s", p2_boot_flags);
               gRbOff = mk_has("rbtrace_off") ? 1 : 0; gTxOff = mk_has("textrace_off") ? 1 : 0; L("TEXTRACE: %s (folder textrace_off disables; needs RBTRACE on for the submit / done checks%s)", gTxOff ? "OFF" : "on", gRbOff ? "; RBTRACE IS OFF so only record-time facts are logged" : ""); L("RBTRACE: %s (folder rbtrace_off disables)", gRbOff ? "OFF" : "on"); gMaxLod = mk_val("maxlod_"); L("MAXLOD: %s", gMaxLod >= 0 ? "ON, every sampler the game creates gets maxLod capped at that value (folder maxlod_<N>; maxlod_0 = sample only the full-size mip level, so no mip data is ever read)" : "off (folder maxlod_0 pins every sampler to the full-size level; maxlod_<N> caps at level N; read at launch only)"); L("UPLOADGAP: %s (texture-like images older than 5 s whose mip levels were never written; reported in the TEXTRACE window; folder textrace_off disables)", gTxOff ? "OFF" : "on"); gSleepCap = mk_val("sleepcap_"); L("SLEEPCAP: %s", gSleepCap >= 0 ? "ON, guest sleeps of 2000..20000 us are shortened (folder sleepcap_<us>)" : "off (folder sleepcap_<us> shortens frame-sized guest sleeps to <us>; experiment)"); gWtOff = mk_has("waittrace_off") ? 1 : 0; L("WAITTRACE: %s (folder waittrace_off disables)", gWtOff ? "OFF" : "on"); gpuhud_start();
-          { int ws = mk_val("waitspin_"); int wsDef = 0; if (ws < 0) { ws = 1000; wsDef = 1; } char wt[32]; snprintf(wt, sizeof wt, "%d\n", ws);
-            if (p2_put(".p2/waitspin", wt)) L("WAITSPIN: %s -> wrote Documents/.p2/waitspin = %d (game default 250 us; check the game's 'waits: spin N us' line)", wsDef ? "no waitspin_ line, built-in default (v56)" : "p2.cfg line", ws); else L("WAITSPIN: could not write Documents/.p2/waitspin"); }
-          { int fa = mk_val("fakeaspect_"); char ft[32]; snprintf(ft, sizeof ft, "%d.%04d\n", fa / 10000, fa % 10000);
-            if (fa > 5000 && fa < 40000) { if (p2_put(".p2/fake_aspect", ft)) L("FAKE_ASPECT: p2.cfg line fakeaspect_%d -> wrote Documents/.p2/fake_aspect = %d.%04d (the game's own 'test switch fake_aspect' log line shows whether it was read)", fa, fa / 10000, fa % 10000); else L("FAKE_ASPECT: could not write Documents/.p2/fake_aspect"); }
-            else { p2_del(".p2/fake_aspect"); if (fa >= 0) L("FAKE_ASPECT: line fakeaspect_%d ignored (the ratio x 10000 must be between 5001 and 39999)", fa); } }
-          { int rs = mk_val("renderscale_"); const char *src = "p2.cfg line renderscale_N"; if (rs < 0 && gHostScreen >= 0) { rs = gHostScreen; src = "p2.cfg line screen N"; }   /* the host reads Documents/render_scale at launch (30..100, % of the panel) */
-            char rt[32]; snprintf(rt, sizeof rt, "%d\n", rs);
-            if (rs >= 30 && rs <= 100) { if (p2_put(".p2/render_scale", rt)) L("RENDER_SCALE: %s -> wrote Documents/.p2/render_scale = %d", src, rs); else L("RENDER_SCALE: could not write Documents/.p2/render_scale"); }
-            else { p2_del(".p2/render_scale"); if (rs >= 0) L("RENDER_SCALE: %s = %d ignored (the host accepts 30 to 100)", src, rs); } }
+              /* waitspin, fake_aspect and render_scale are materialized once in Documents/.p2 by p2_hostcfg_setup. */
               { char dp[1300], dm[1300], txt[260] = {0}; int nn = 0; snprintf(dp, sizeof dp, "%s/../debugoff", gDocs); snprintf(dm, sizeof dm, "%s/../debugoff.p2auto", gDocs);
-                { char *cf = cfg_dup(); if (cf) { const char *cs = cf; char ck[300], cv[16];
-                    while ((cs = cfg_line(cs, ck, sizeof ck, cv, sizeof cv))) { const char *n = ck; if (strncmp(n, "dbgoff_", 7) || !n[7]) continue; int okc = 1; for (const char *q = n + 7; *q; q++) if (!((*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9'))) okc = 0;
-                        size_t l = strlen(txt); if (okc && l + strlen(n + 7) + 2 < sizeof txt - 1) { snprintf(txt + l, sizeof txt - l, "%s%s", l ? " " : "", n + 7); nn++; } }
-                    free(cf); } }
+                FILE *df = p2_cfg_open();
+                if (df) { char ln[512], key[256]; while (fgets(ln, sizeof ln, df)) { key[0] = 0; if (sscanf(ln, " %255s", key) != 1 || strncmp(key, "dbgoff_", 7) || !key[7]) continue;
+                    int okc = 1; for (const char *q = key + 7; *q; q++) if (!((*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9'))) okc = 0;
+                    size_t l = strlen(txt); if (okc && l + strlen(key + 7) + 2 < sizeof txt - 1) { snprintf(txt + l, sizeof txt - l, "%s%s", l ? " " : "", key + 7); nn++; } } fclose(df); }
                 if (nn) { FILE *f = fopen(dp, "w"); if (f) { fprintf(f, "%s", txt); fclose(f); FILE *m = fopen(dm, "w"); if (m) fclose(m); L("DEBUGOFF: wrote %s = \"%s\" (the dev's own log line \"debugoff: ...\" in p2.log confirms it was read)", dp, txt); } else L("DEBUGOFF: cannot write %s", dp); }
                 else if (access(dm, F_OK) == 0) { unlink(dp); unlink(dm); L("DEBUGOFF: no dbgoff_ folders, removed the debugoff file the loader wrote earlier"); } }
           if (!mk_has("shadowmin_off")) { setenv("P2RE_VKSHADOWMIN", "1024", 1); L("P2RE_ENV built-in P2RE_VKSHADOWMIN=1024 (folder shadowmin_off removes it; a setenv_P2RE_VKSHADOWMIN=N folder overrides it)"); }
           else L("P2RE_ENV folder shadowmin_off: no built-in P2RE_VKSHADOWMIN, every shadow caster is drawn");
           setenv("P2RE_VKSHADOWHALF", "1", 1); L("P2RE_ENV built-in P2RE_VKSHADOWHALF=1 (half-size shadow maps)");
-          int n = 0; char *envcf = cfg_dup(); const char *envs = envcf; char ek[300], ev[16];
-              while (envs && (envs = cfg_line(envs, ek, sizeof ek, ev, sizeof ev))) {
-                  if (strncmp(ek, "setenv_", 7)) continue;
-                  char nm[256]; snprintf(nm, sizeof nm, "%s", ek + 7);
+          FILE *cfg = p2_cfg_open(); if (!cfg) { L("P2RE_ENV: cannot open Documents/p2.cfg"); return; }
+              int n = 0; char line[512], key[256];
+              while (fgets(line, sizeof line, cfg)) {
+                  key[0] = 0; if (sscanf(line, " %255s", key) != 1 || strncmp(key, "setenv_", 7)) continue;
+                  char nm[256]; snprintf(nm, sizeof nm, "%s", key + 7);
                   const char *val = "1"; char *eq = strchr(nm, '=');
                   if (eq) { *eq = 0; val = eq + 1; if (!*val) val = "1"; }
                   int ok = !strncmp(nm, "P2RE_", 5) && nm[5];
                   for (const char *c = nm; ok && *c; c++) if (!((*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '_')) ok = 0;
-                  if (!ok) { L("P2RE_ENV ignored (only P2RE_ + capital letters/digits/_ are accepted): %s", ek); continue; }
-                  if (!strcmp(nm, "P2RE_VKSHADOWHALF")) { L("P2RE_ENV ignored: P2RE_VKSHADOWHALF is built in since v72 (%s)", ek); continue; }
-              setenv(nm, val, 1); n++; L("P2RE_ENV setenv %s=%s", nm, val);
+                  if (!ok) { L("P2RE_ENV ignored (only P2RE_ + capital letters/digits/_ are accepted): %s", key); continue; }
+                  if (!strcmp(nm, "P2RE_VKSHADOWHALF")) { L("P2RE_ENV ignored: P2RE_VKSHADOWHALF is built in since v72 (%s)", key); continue; }
+                  setenv(nm, val, 1); n++; L("P2RE_ENV setenv %s=%s", nm, val);
               }
-              free(envcf);
+              fclose(cfg);
               if (getenv("P2RE_VKSHOT") && !getenv("P2RE_VKSHOTDIR")) {
                   char sd[1200]; snprintf(sd, sizeof sd, "%s/vkshots", gDocs); mkdir(sd, 0755); setenv("P2RE_VKSHOTDIR", sd, 1);
                   L("P2RE_ENV P2RE_VKSHOTDIR not given: set to %s (files named vkshot_<number>.bmp are expected there)", sd);
               }
-              L("P2RE_ENV: %d switch(es) applied before the game starts; p2.cfg line env %s, line vkshot %s", n,
+              L("P2RE_ENV: %d switch(es) applied before the game starts; Documents/env %s, Documents/vkshot %s", n,
                 mk_has("env") ? "EXISTS" : "absent", mk_has("vkshot") ? "EXISTS" : "absent");
           }
           static char *sh_getenv(const char *name) {
@@ -2155,11 +2106,14 @@ jobs:
           }
           static void dc_scan(void) {
               unsigned long long f = 0, x = 0; int a = mk_has("dontcare_auto");
-          if (gDocs[0]) { char *cf = cfg_dup(); if (cf) { const char *cs = cf; char ck[300], cv[16];
-              while ((cs = cfg_line(cs, ck, sizeof ck, cv, sizeof cv))) { int n;
-                  if (!strncmp(ck, "dc_", 3) && ck[3] >= '0' && ck[3] <= '9') { n = atoi(ck + 3); if (n >= 0 && n < SIG_N) f |= 1ULL << n; }
-                  else if (!strncmp(ck, "dcx_", 4) && ck[4] >= '0' && ck[4] <= '9') { n = atoi(ck + 4); if (n >= 0 && n < SIG_N) x |= 1ULL << n; } }
-              free(cf); } }
+              if (gDocs[0]) { DIR *d = opendir(gDocs);
+                  if (d) { struct dirent *e;
+                      while ((e = readdir(d))) {
+                          int n;
+                          if (!strncmp(e->d_name, "dc_", 3) && e->d_name[3] >= '0' && e->d_name[3] <= '9') { n = atoi(e->d_name + 3); if (n >= 0 && n < SIG_N) f |= 1ULL << n; }
+                          else if (!strncmp(e->d_name, "dcx_", 4) && e->d_name[4] >= '0' && e->d_name[4] <= '9') { n = atoi(e->d_name + 4); if (n >= 0 && n < SIG_N) x |= 1ULL << n; }
+                      }
+                      closedir(d); } }
               if (a != gDcAuto || f != gDcForce || x != gDcExcl) L("DONTCARE: auto %s, forced kinds mask 0x%llx (folders dc_K), excluded kinds mask 0x%llx (folders dcx_K). Kind numbers are the PASSSIG numbers of THIS run.", a ? "ON" : "off", f, x);
               gDcAuto = a; gDcForce = f; gDcExcl = x; gDcOn = a || f != 0;
           }
@@ -2920,7 +2874,7 @@ jobs:
               }
               if ((cleared || !said) && logs++ < 20) { said = 1; L("OWNLAYOUT: emptied %u dev touch buttons (%u seen across the 6 layouts)", cleared, total); }
               if (!cfgd && cfgtry++ < 300) {
-                  char p[1300]; snprintf(p, sizeof p, "%s/.p2/controls.cfg", gDocs); FILE *f = fopen(p, "r");
+                  char p[1300]; snprintf(p, sizeof p, "%s/controls.cfg", gDocs); FILE *f = fopen(p, "r");
                   if (f) { cfgd = 1; char ln[200]; while (fgets(ln, sizeof ln, f)) if (!strncmp(ln, "joystick", 8) || !strncmp(ln, "joyscale", 8) || !strncmp(ln, "layout ", 7) || !strncmp(ln, "sprintdist", 10)) { ln[strcspn(ln, "\r\n")] = 0; L("OWNLAYOUT: dev controls.cfg: %s", ln); } fclose(f); }
               }
           }
@@ -4193,7 +4147,7 @@ jobs:
               if (!P2_OFF_NAOC) { L("ANativeActivity_onCreate is not exported, stopping"); return; }
               static NaCb cbs; static NaAct act; static char path[1100];
               snprintf(path, sizeof path, "%s", docs);
-              snprintf(gDocs, sizeof gDocs, "%s", docs); game_preflight(); p2re_env_setup();
+              snprintf(gDocs, sizeof gDocs, "%s", docs); game_preflight(); p2_hostcfg_setup(); p2re_env_setup();
           jni_setup();
               act.callbacks = &cbs; act.vm = &gVm; act.env = &gEnv; act.clazz = gClazz; act.internalDataPath = path; act.externalDataPath = path;
               act.sdkVersion = 35; act.assetManager = gAam; act.obbPath = path;
@@ -4220,26 +4174,21 @@ jobs:
           gWdStop = 1;
           }
           static char gRotNote[600]; static int gRotLegacy;
-          static void rotate_logs(const char *logs) {   /* v103: logs = Documents/logs. Current run: logs/<name>, the run before it: logs/prev/<name>. Anything older is deleted. Logs the older builds left in Documents are moved or deleted. */
+          static void rotate_logs(const char *docs) {
               static const char *const lg[][2] = { {"p2", ".log"}, {"p2_loader_log", ".txt"}, {"mvk_stderr", ".log"}, {"waittrace_total", ".txt"}, {"pcprof_total", ".txt"} };
-              char root[1100], prevd[1200]; gRotNote[0] = 0; gRotLegacy = 0;
-              snprintf(root, sizeof root, "%s", logs); { char *sl = strrchr(root, '/'); if (sl) *sl = 0; }   /* Documents */
-              mkdir(logs, 0755); snprintf(prevd, sizeof prevd, "%s/prev", logs); mkdir(prevd, 0755);
+              gRotNote[0] = 0; gRotLegacy = 0;
               for (unsigned i = 0; i < sizeof lg / sizeof lg[0]; i++) {
-                  char cur[1200], prv[1200], rc[1200], rp[1200]; struct stat st;
-                  snprintf(cur, sizeof cur, "%s/%s%s", logs, lg[i][0], lg[i][1]);
-                  snprintf(prv, sizeof prv, "%s/prev/%s%s", logs, lg[i][0], lg[i][1]);
-                  snprintf(rc, sizeof rc, "%s/%s%s", root, lg[i][0], lg[i][1]);
-                  snprintf(rp, sizeof rp, "%s/%s_prev%s", root, lg[i][0], lg[i][1]);
-                  if (stat(rp, &st) == 0 && unlink(rp) == 0) gRotLegacy++;
-                  if (stat(cur, &st) == 0) { unlink(prv); if (rename(cur, prv) == 0) { size_t n = strlen(gRotNote); snprintf(gRotNote + n, sizeof gRotNote - n, "%s%s%s -> prev/%s%s", n ? ", " : "", lg[i][0], lg[i][1], lg[i][0], lg[i][1]); } }
-                  if (stat(rc, &st) == 0) { if (stat(prv, &st) != 0 && rename(rc, prv) == 0) gRotLegacy++; else if (unlink(rc) == 0) gRotLegacy++; }
+                  char cur[1200], prv[1200]; struct stat st;
+                  snprintf(cur, sizeof cur, "%s/%s%s", docs, lg[i][0], lg[i][1]);
+                  snprintf(prv, sizeof prv, "%s/%s_prev%s", docs, lg[i][0], lg[i][1]);
+                  unlink(prv);
+                  if (stat(cur, &st) == 0 && rename(cur, prv) == 0) { size_t n = strlen(gRotNote); snprintf(gRotNote + n, sizeof gRotNote - n, "%s%s%s -> %s_prev%s", n ? ", " : "", lg[i][0], lg[i][1], lg[i][0], lg[i][1]); }
               }
-              DIR *d = opendir(root); if (!d) return; struct dirent *e;
+              DIR *d = opendir(docs); if (!d) return; struct dirent *e;
               while ((e = readdir(d))) {
                   const char *nm = e->d_name; size_t L0 = strlen("p2_loader_log_"), ln = strlen(nm);
                   if (ln > L0 + 4 && strncmp(nm, "p2_loader_log_", L0) == 0 && nm[L0] >= '0' && nm[L0] <= '9' && strcmp(nm + ln - 4, ".txt") == 0) {
-                      char dp[1200]; snprintf(dp, sizeof dp, "%s/%s", root, nm); if (unlink(dp) == 0) gRotLegacy++;
+                      char dp[1200]; snprintf(dp, sizeof dp, "%s/%s", docs, nm); if (unlink(dp) == 0) gRotLegacy++;
                   }
               }
               closedir(d);
@@ -4255,7 +4204,7 @@ jobs:
               L("== P2 loader v83 ==");
               { time_t tn = time(NULL); struct tm tmv; char tb[64], tz[16]; localtime_r(&tn, &tmv); strftime(tb, sizeof tb, "%Y-%m-%d %H:%M:%S", &tmv); strftime(tz, sizeof tz, "%z", &tmv);
                 char sb[32]; strftime(sb, sizeof sb, "%Y%m%d-%H%M%S", &tmv); L("RUN STARTED: %s %s (stamp %s)", tb, tz, sb); }
-              L("LOG ROTATION: %s | old log files from Documents moved or deleted: %d", gRotNote[0] ? gRotNote : "(no earlier logs found)", gRotLegacy);
+              L("LOG ROTATION: %s | old dated loader logs deleted: %d | older _prev files replaced", gRotNote[0] ? gRotNote : "(no earlier logs found)", gRotLegacy);
               void *h = dlopen(fw, RTLD_NOW | RTLD_LOCAL);
               if (!h) { L("dlopen FAILED: %s", dlerror()); return; }
               uint8_t *code = dlsym(h, "p2_code_start"), *data = dlsym(h, "p2_data_start");
@@ -4329,65 +4278,7 @@ jobs:
           #import <objc/message.h>
           #include "p2core.h"
 
-          /* ---- v103: p2.cfg for the Objective-C side. Documents/p2.cfg is one switch per line: "name" (a flag), "name value" (a host setting such as "screen 75" or "mod MyMod"),
-             or a numeric token such as waitspin_1000. Blank lines and lines starting with # are kept and ignored. The C side (mk_has / mk_val) reads the same file. ---- */
-          static NSString *p2Docs(void) { return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
-          static NSString *p2CfgPath(void) { return [p2Docs() stringByAppendingPathComponent:@"p2.cfg"]; }
-          static NSMutableArray<NSString *> *p2CfgRaw(void) {
-              NSString *raw = [NSString stringWithContentsOfFile:p2CfgPath() encoding:NSUTF8StringEncoding error:nil];
-              NSMutableArray<NSString *> *r = [NSMutableArray new]; if (!raw.length) return r;
-              for (NSString *l in [raw componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) if (l.length) [r addObject:l];
-              return r;
-          }
-          static BOOL p2CfgWrite(NSArray<NSString *> *lines) {
-              NSString *out = lines.count ? [[lines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] : @"";
-              return [out writeToFile:p2CfgPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
-          }
-          static BOOL p2CfgSplit(NSString *ln, NSString **k, NSString **v) {   /* NO for blank lines and comments */
-              NSString *t = [ln stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-              if (!t.length || [t hasPrefix:@"#"]) return NO;
-              NSRange r = [t rangeOfCharacterFromSet:NSCharacterSet.whitespaceCharacterSet];
-              if (r.location == NSNotFound) { if (k) *k = t; if (v) *v = @""; return YES; }
-              if (k) *k = [t substringToIndex:r.location];
-              if (v) *v = [[t substringFromIndex:r.location] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-              return YES;
-          }
-          static BOOL p2CfgHas(NSString *n) {
-              if ([n isEqualToString:@"own_layout"]) return [NSFileManager.defaultManager fileExistsAtPath:[p2Docs() stringByAppendingPathComponent:n]];   /* stays a real folder: it holds your layout file */
-              for (NSString *ln in p2CfgRaw()) { NSString *k, *v; if (p2CfgSplit(ln, &k, &v) && [k isEqualToString:n]) return YES; }
-              return NO;
-          }
-          static BOOL p2CfgSet(NSString *n, BOOL on) {
-              if ([n isEqualToString:@"own_layout"]) {
-                  NSFileManager *fm = NSFileManager.defaultManager; NSString *p = [p2Docs() stringByAppendingPathComponent:n]; BOOL has = [fm fileExistsAtPath:p];
-                  if (on && !has) return [fm createDirectoryAtPath:p withIntermediateDirectories:YES attributes:nil error:nil];
-                  if (!on && has) return [fm removeItemAtPath:p error:nil];
-                  return YES;
-              }
-              if (on && ([n rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location != NSNotFound || !n.length)) return NO;
-              NSMutableArray<NSString *> *out = [NSMutableArray new]; BOOL has = NO, changed = NO;
-              for (NSString *ln in p2CfgRaw()) {
-                  NSString *k, *v;
-                  if (p2CfgSplit(ln, &k, &v) && [k isEqualToString:n]) { if (on && !has) [out addObject:ln]; else changed = YES; has = YES; continue; }
-                  [out addObject:ln];
-              }
-              if (on && !has) { [out addObject:n]; changed = YES; }
-              return changed ? p2CfgWrite(out) : YES;
-          }
-          static BOOL p2IsNum(NSString *name, NSString *prefix) {   /* "waitspin_1000" matches prefix "waitspin_"; "imgdelay_all" does not match "imgdelay_" */
-              if (![name hasPrefix:prefix] || name.length <= prefix.length) return NO;
-              unichar ch = [name characterAtIndex:prefix.length]; return ch >= '0' && ch <= '9';
-          }
-          static NSArray<NSString *> *p2NumPrefixes(void) {
-              return @[@"dbgoff_", @"fakeaspect_", @"hold_ms_", @"hold_s5_", @"hold_s6_", @"imgdelay_", @"maxlod_", @"menu_speed_", @"mvk_prefill_", @"ncpu_", @"pan_lag_", @"passskip_", @"pdelay_", @"pthrottle_",
-                       @"renderscale_", @"ringsprint_", @"rstick_speed_", @"rstick_vert_", @"rt_render_", @"sleepcap_", @"waitspin_"];
-          }
-          static NSArray<NSString *> *p2CfgWithPrefix(NSString *prefix) {   /* the numeric tokens ("waitspin_1000") of p2.cfg that start with prefix */
-              NSMutableArray<NSString *> *r = [NSMutableArray new];
-              for (NSString *ln in p2CfgRaw()) { NSString *k, *v; if (p2CfgSplit(ln, &k, &v) && p2IsNum(k, prefix) && ![r containsObject:k]) [r addObject:k]; }
-              return r;
-          }
-          /* v69: touch move coalescing + touch trace. p2.cfg lines touch_coalesce and touch_trace (both off by default). */
+          /* v69: touch move coalescing + touch trace. Folders touch_coalesce and touch_trace (both off by default). */
           static int gTcInit, gTcCoalesce, gTcTrace;
           static CGPoint gTcPend[10]; static BOOL gTcPendOn[10];
           static double gTcWinStart, gTcLastTick, gTcLastIdle;
@@ -4397,9 +4288,11 @@ jobs:
           static BOOL gTcLink;   /* the display link exists (not hz_off) and ticks, so a tick can flush coalesced moves */
           static void tcInit(void) {
               if (gTcInit) return; gTcInit = 1;
-              gTcCoalesce = p2CfgHas(@"touch_coalesce");
-              gTcTrace = p2CfgHas(@"touch_trace");
-              p2_note([NSString stringWithFormat:@"TOUCH: move coalescing %s (line touch_coalesce), touch trace %s (line touch_trace)", gTcCoalesce ? "ON" : "off", gTcTrace ? "ON" : "off"].UTF8String);
+              NSString *d = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
+              NSFileManager *fm = NSFileManager.defaultManager;
+              gTcCoalesce = [fm fileExistsAtPath:[d stringByAppendingPathComponent:@"touch_coalesce"]];
+              gTcTrace = [fm fileExistsAtPath:[d stringByAppendingPathComponent:@"touch_trace"]];
+              p2_note([NSString stringWithFormat:@"TOUCH: move coalescing %s (folder touch_coalesce), touch trace %s (folder touch_trace)", gTcCoalesce ? "ON" : "off", gTcTrace ? "ON" : "off"].UTF8String);
           }
           static uint64_t tcNs(uint64_t t) { static mach_timebase_info_data_t tb; if (!tb.denom) mach_timebase_info(&tb); return t * tb.numer / tb.denom; }
           static void tcSend(int s, CGPoint p) {   /* one move event to the game; timed when the trace is on */
