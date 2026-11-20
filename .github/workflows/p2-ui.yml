@@ -27,24 +27,15 @@ jobs:
           }
 
           /* ================= v66 settings UI (UIKit, no storyboard) =================
-             A flag is a folder in Documents. Every control below only creates or deletes such folders. */
+             v103: a flag is a LINE in Documents/p2.cfg (it used to be a folder). Every control below only adds or removes such lines; the old folder names are still what the rows pass in, p2CfgHas / p2CfgSet translate them. */
           static NSString *uiDocs(void) { return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
-          static BOOL uiHas(NSString *n) { return [NSFileManager.defaultManager fileExistsAtPath:[uiDocs() stringByAppendingPathComponent:n]]; }
-          static void uiSet(NSString *n, BOOL on) {
-              NSFileManager *fm = NSFileManager.defaultManager; NSString *p = [uiDocs() stringByAppendingPathComponent:n];
-              BOOL has = [fm fileExistsAtPath:p];
-              if (on && !has) [fm createDirectoryAtPath:p withIntermediateDirectories:YES attributes:nil error:nil];
-              else if (!on && has) [fm removeItemAtPath:p error:nil];
-          }
+          static BOOL uiHas(NSString *n) { return p2CfgHas(n); }
+          static void uiSet(NSString *n, BOOL on) { p2CfgSet(n, on); }
           static BOOL uiIsNum(NSString *name, NSString *prefix) {   /* "waitspin_1000" matches prefix "waitspin_"; "imgdelay_all" does not match "imgdelay_" */
               if (![name hasPrefix:prefix] || name.length <= prefix.length) return NO;
               unichar c = [name characterAtIndex:prefix.length]; return c >= '0' && c <= '9';
           }
-          static NSArray<NSString *> *uiWithPrefix(NSString *prefix) {
-              NSMutableArray *r = [NSMutableArray new];
-              for (NSString *n in [NSFileManager.defaultManager contentsOfDirectoryAtPath:uiDocs() error:nil]) if (uiIsNum(n, prefix)) [r addObject:n];
-              return r;
-          }
+          static NSArray<NSString *> *uiWithPrefix(NSString *prefix) { return p2CfgWithPrefix(prefix); }
 
           /* v66: Play is refused when the game files are not where the game looks (Documents/Prototype2/game) or the engine dll is not the expected build.
              A game_folder.txt in Documents redirects the game to another folder, so the check steps aside then. */
@@ -86,7 +77,7 @@ jobs:
           }
           /* v83: the Android host reads these exact controls.cfg directives in android_main.
              Keep the file as the source of truth; the host parses these settings at next launch. */
-          static NSString *hostCfgPath(void) { return [uiDocs() stringByAppendingPathComponent:@"controls.cfg"]; }
+          static NSString *hostCfgPath(void) { return p2CfgPath(); }   /* v103: the host settings are lines of p2.cfg; at launch the loader writes the controls.cfg the Android host reads into Documents/.p2 */
           static NSArray<NSString *> *hostCfgLines(void) {
               NSString *raw = [NSString stringWithContentsOfFile:hostCfgPath() encoding:NSUTF8StringEncoding error:nil];
               return raw.length ? [raw componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] : @[];
@@ -114,14 +105,14 @@ jobs:
               NSString *out = lines.count ? [[lines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] : @"";
               return [out writeToFile:hostCfgPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
           }
-          /* Render scale: the host's RenderScalePercent never reads the controls.cfg "screen" line, it reads Documents/render_scale (30..100) at launch. Write both. */
+          /* Render scale: the host's RenderScalePercent reads a render_scale file (30..100) at launch. v103: the settings screen only writes the "screen N" line, the loader turns it into that file in Documents/.p2
+             at launch. A hand-written "renderscale N" line would win over it, so this removes one. */
           static BOOL hostScreenSet(NSString *v) {
-              NSString *f = [uiDocs() stringByAppendingPathComponent:@"render_scale"];
-              [[v stringByAppendingString:@"\n"] writeToFile:f atomically:NO encoding:NSUTF8StringEncoding error:nil];
+              p2CfgSet(@"renderscale_1", NO);
               return hostCfgSet(@"screen", v);
           }
           static NSArray<NSString *> *hostModNames(void) {
-              NSString *dir = [uiDocs() stringByAppendingPathComponent:@"Mods"];
+              NSString *dir = [uiDocs() stringByAppendingPathComponent:@"Prototype2/Mods"];   /* v103: mods live next to the game folder; the loader redirects the host's Documents/Mods here */
               NSArray *all = [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil];
               NSMutableArray *mods = [NSMutableArray array];
               for (NSString *name in all) { BOOL isDir = NO; NSString *path = [dir stringByAppendingPathComponent:name];
@@ -331,7 +322,7 @@ jobs:
               if (r.kind == SKLink && self.onLogs) self.onLogs();
               if (r.kind == SKButton && [r.flag isEqualToString:@"caches"]) { [self askClearCaches]; return; }
               if (r.kind == SKButton) {
-                  UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Reset to defaults?" message:@"Removes every switch folder this screen controls, then turns Skip splash back on and the traces off (their defaults). Your game files and caches are not touched." preferredStyle:UIAlertControllerStyleAlert];
+                  UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Reset to defaults?" message:@"Removes every switch line this screen controls from p2.cfg, then turns Skip splash back on and the traces off (their defaults). Your game files and caches are not touched." preferredStyle:UIAlertControllerStyleAlert];
                   [al addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
                   [al addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
                       for (NSArray<SRow *> *sec in self.rows) for (SRow *q in sec) {
@@ -423,9 +414,9 @@ jobs:
           }
           - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)section {
               section = hsL(section);
-              if (section == 0) return @"Host settings are written to the host's own controls.cfg and parsed by Android main on the next full app launch. Metal frame generation is intentionally not exposed here.";
-              if (section == 2 && self.mods.count == 0) return @"No mod folders found in Documents/Mods. Add one folder per mod; its folder name is used by the host's mod directive.";
-              if (section == 3) return @"Edit touch layout & buttons closes this panel so you can arrange the controls on the game screen. Camera sensitivity is saved to the host controls.cfg for the next full app launch.";
+              if (section == 0) return @"Host settings are saved in p2.cfg; at the next full app launch the loader hands them to the Android host as its controls.cfg. Metal frame generation is intentionally not exposed here.";
+              if (section == 2 && self.mods.count == 0) return @"No mod folders found in Prototype2/Mods (Files app > On My iPhone > Prototype 2 > Prototype2 > Mods). Add one folder per mod; its folder name is used by the host's mod directive.";
+              if (section == 3) return @"Edit touch layout & buttons closes this panel so you can arrange the controls on the game screen. Camera sensitivity is saved in p2.cfg for the next full app launch.";
               return nil;
           }
           - (NSString *)titleForRow:(NSIndexPath *)ip {
@@ -469,7 +460,7 @@ jobs:
               else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@%% · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 1 && ip.row == 0) { NSString *v = [self valueForRow:ip]; c.detailTextLabel.text = [v isEqualToString:@"-1"] ? @"Quality fallback · loaded next launch" : [NSString stringWithFormat:@"Preset %@ · loaded next launch", v]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 1 && ip.row == 3) { c.detailTextLabel.text = @"Fallback quality · used when preset is set to Quality fallback"; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
-              else if (ip.section == 2 && ip.row > 0 && !self.mods.count) { c.detailTextLabel.text = @"Create folders inside Documents/Mods"; c.selectionStyle = UITableViewCellSelectionStyleNone; }
+              else if (ip.section == 2 && ip.row > 0 && !self.mods.count) { c.detailTextLabel.text = @"Create folders inside Prototype2/Mods"; c.selectionStyle = UITableViewCellSelectionStyleNone; }
               else if (ip.section == 3 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@× · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else { c.detailTextLabel.text = ip.section == 3 ? @"Add, move, resize or delete buttons" : @""; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               return c;
@@ -478,7 +469,7 @@ jobs:
               NSString *ident = sw.accessibilityIdentifier ?: @""; BOOL ok = NO;
               if ([ident hasPrefix:@"mod:"]) ok = hostSetModEnabled([ident substringFromIndex:4], sw.isOn);
               else if (ident.length) ok = hostCfgSet(ident, sw.isOn ? @"1" : @"0");
-              if (!ok) { sw.on = !sw.isOn; UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Could not save setting" message:@"The host controls.cfg file could not be written." preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]]; [self presentViewController:a animated:YES completion:nil]; }
+              if (!ok) { sw.on = !sw.isOn; UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Could not save setting" message:@"The p2.cfg file could not be written." preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]]; [self presentViewController:a animated:YES completion:nil]; }
           }
           - (void)choose:(NSIndexPath *)ip title:(NSString *)title choices:(NSArray<NSString *> *)choices values:(NSArray<NSString *> *)values key:(NSString *)key {
               UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:@"Saved to the Android host configuration. Takes effect next launch." preferredStyle:UIAlertControllerStyleActionSheet];
@@ -959,6 +950,81 @@ jobs:
           - (BOOL)prefersHomeIndicatorAutoHidden { return self.menu.hidden; }
           @end
 
+          /* ---- v103: one-time (and idempotent) clean-up of everything the older builds left in Documents. Runs at every launch before any screen reads a setting:
+             flag folders -> lines of p2.cfg; the loader-made render_scale / waitspin / fake_aspect files and their .p2auto markers -> removed (the loader remakes them hidden in .p2);
+             the Android host's controls.cfg -> lines of p2.cfg; camera.txt / custom_buttons.txt / own_layout / layouts -> touch.cfg; Documents/Mods -> Prototype2/Mods. ---- */
+          static NSMutableString *gMigNote;
+          static void migNote(NSString *t) { if (!gMigNote) gMigNote = [NSMutableString new]; [gMigNote appendFormat:@"%@\n", t]; }
+          static BOOL p2IsFlagName(NSString *n) {
+              static NSSet<NSString *> *bools;
+              if (!bools) bools = [NSSet setWithArray:@[@"hz_off", @"hz_60", @"hz_90", @"rt_render", @"waittrace_off", @"rbtrace_off", @"gpuhud_off", @"threaddump_on", @"gpuhud_est", @"textrace_off", @"pcprof_on", @"futex_off", @"audio_off", @"auto_exit",
+                  @"qos_off", @"qos_initiated", @"vk_loadop_fix_off", @"vkshot", @"vktrace_now", @"settle_s6", @"swapchain_alpha_keep", @"imgdelay_all", @"mvk_argbuf_off", @"mvk_dumpshaders", @"mvk_fastmath_auto", @"mvk_fastmath_on", @"mvk_fastmath_off",
+                  @"mvk_log_info", @"mvk_perf_log", @"mvk_prefill_on", @"mvk_syncsubmit_off", @"shadowmin_off", @"passtime_on", @"inputtap_on", @"own_layout", @"rstick_on", @"rstick_invy", @"ovl_trace", @"ovl_hide", @"ovl_off", @"passtrace_now", @"drawtrace_now",
+                  @"env", @"nosplash", @"touch_coalesce", @"touch_trace", @"pan_smooth_off", @"pan_clock_off", @"swipe_classic", @"snapshot_off", @"metalfx_on", @"hold_off", @"dontcare_auto", @"menu_auto_off", @"menu_cursor_off", @"menu_force", @"menu_wheel_inv",
+                  @"menu_wheel_off", @"portoff", @"cmdline"]];
+              if ([bools containsObject:n]) return YES;
+              if (([n hasPrefix:@"setenv_"] || [n hasPrefix:@"dbgoff_"]) && n.length > 7) return YES;
+              if ([n hasPrefix:@"rtdump_ps="] && n.length > 10) return YES;
+              if (p2IsNum(n, @"dc_") || p2IsNum(n, @"dcx_")) return YES;
+              for (NSString *p in p2NumPrefixes()) if (p2IsNum(n, p)) return YES;
+              return NO;
+          }
+          static void p2MigrateFlags(void) {
+              NSFileManager *fm = NSFileManager.defaultManager; NSString *d = p2Docs(); int n = 0;
+              for (NSString *nm in [fm contentsOfDirectoryAtPath:d error:nil]) {
+                  if ([nm hasPrefix:@"."] || !p2IsFlagName(nm)) continue;
+                  NSString *path = [d stringByAppendingPathComponent:nm];
+                  p2CfgSet(nm, YES);
+                  if (![fm fileExistsAtPath:p2CfgPath()]) continue;   /* could not write p2.cfg: leave the folder alone */
+                  if ([nm isEqualToString:@"own_layout"] && [fm fileExistsAtPath:[path stringByAppendingPathComponent:@"own_layout.txt"]] && ![fm fileExistsAtPath:tcfPath()]) continue;   /* tcfMigrate imports its layout file first, then removes the folder */
+                  [fm removeItemAtPath:path error:nil]; n++;
+              }
+              if (n) migNote([NSString stringWithFormat:@"MIGRATE: %d flag folder(s) turned into lines of p2.cfg and removed", n]);
+          }
+          static void p2MigrateRootFiles(void) {
+              NSFileManager *fm = NSFileManager.defaultManager; NSString *d = p2Docs();
+              NSArray *pairs = @[@[@"render_scale", @"screen"], @[@"waitspin", @"waitspin_"], @[@"fake_aspect", @"fakeaspect_"]];
+              for (NSArray *pr in pairs) {
+                  NSString *f = [d stringByAppendingPathComponent:pr[0]], *mk = [f stringByAppendingString:@".p2auto"]; BOOL isDir = NO;
+                  if (![fm fileExistsAtPath:f isDirectory:&isDir]) { [fm removeItemAtPath:mk error:nil]; continue; }
+                  if (isDir) continue;
+                  if (![fm fileExistsAtPath:mk]) {   /* made by hand, not by the loader: keep its value as a p2.cfg line unless one is there already */
+                      NSString *t = [[NSString stringWithContentsOfFile:f encoding:NSUTF8StringEncoding error:nil] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+                      int v = [pr[0] isEqualToString:@"fake_aspect"] ? (int)lround(t.doubleValue * 10000.0) : t.intValue;
+                      if ([pr[0] isEqualToString:@"render_scale"]) { if (!p2CfgHas(@"screen_1") && v >= 30 && v <= 100) hostCfgSet(@"screen", [NSString stringWithFormat:@"%d", v]); }
+                      else if (t.length && ![p2CfgWithPrefix(pr[1]) count]) p2CfgSet([NSString stringWithFormat:@"%@%d", pr[1], v], YES);
+                  }
+                  [fm removeItemAtPath:f error:nil]; [fm removeItemAtPath:mk error:nil];
+              }
+              [fm removeItemAtPath:[d stringByAppendingPathComponent:@"P2_SWITCHES.txt"] error:nil];
+              /* the Android host's controls.cfg: its known settings become plain lines, anything else a "host ..." line */
+              NSString *cc = [d stringByAppendingPathComponent:@"controls.cfg"];
+              NSString *txt = [NSString stringWithContentsOfFile:cc encoding:NSUTF8StringEncoding error:nil];
+              if (txt) {
+                  NSArray *hk = @[@"upscale", @"gfx", @"gfxmanual", @"potato", @"quality", @"screen", @"fpscap", @"camera", @"modloader", @"mod", @"heatguard"];
+                  NSMutableArray<NSString *> *all = [p2CfgRaw() mutableCopy]; NSMutableSet *keys = [NSMutableSet new], *lines = [NSMutableSet new]; int added = 0;
+                  for (NSString *ln in all) { NSString *k, *v; if (p2CfgSplit(ln, &k, &v)) { [keys addObject:k]; [lines addObject:[ln stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]]; } }
+                  for (NSString *ln0 in [txt componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
+                      NSString *k, *v; if (!p2CfgSplit(ln0, &k, &v)) continue;
+                      NSString *ln = [ln0 stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet], *out = nil;
+                      if ([hk containsObject:k]) { if ([k isEqualToString:@"mod"] ? ![lines containsObject:ln] : ![keys containsObject:k]) out = ln; }
+                      else { NSString *h = [@"host " stringByAppendingString:ln]; if (![lines containsObject:h]) out = h; }
+                      if (out) { [all addObject:out]; [lines addObject:out]; added++; }
+                  }
+                  if (p2CfgWrite(all)) { [fm removeItemAtPath:cc error:nil]; migNote([NSString stringWithFormat:@"MIGRATE: controls.cfg folded into p2.cfg (%d line(s) added)", added]); }
+              }
+              /* mods: Documents/Mods -> Documents/Prototype2/Mods */
+              NSString *om = [d stringByAppendingPathComponent:@"Mods"], *nm = [d stringByAppendingPathComponent:@"Prototype2/Mods"]; BOOL dir = NO;
+              if ([fm fileExistsAtPath:om isDirectory:&dir] && dir && ![fm fileExistsAtPath:nm]) {
+                  [fm createDirectoryAtPath:[d stringByAppendingPathComponent:@"Prototype2"] withIntermediateDirectories:YES attributes:nil error:nil];
+                  if ([fm moveItemAtPath:om toPath:nm error:nil]) migNote(@"MIGRATE: Documents/Mods moved to Documents/Prototype2/Mods");
+              }
+          }
+          static void p2MigrateAll(void) {
+              p2MigrateFlags();
+              p2MigrateRootFiles();
+              if (![NSFileManager.defaultManager fileExistsAtPath:tcfPath()]) { tcfMigrate(); migNote(@"MIGRATE: camera.txt, custom_buttons.txt, own_layout and layouts folded into touch.cfg"); }
+          }
           @interface AD : UIResponder <UIApplicationDelegate>
           @property(strong, nonatomic) UIWindow *window;
           @end
@@ -981,39 +1047,39 @@ jobs:
                   {"hold_s5_",1,"hold at state 5"}, {"hold_s6_",1,"hold at state 6"}, {"ncpu_",1,"reported CPU count"},
                   {"pdelay_",1,"present delay"}, {"pthrottle_",1,"present throttle"}, {"setenv_",1,"sets an env var for the game"},
               };
-              NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
-              NSArray *names = [[NSFileManager.defaultManager contentsOfDirectoryAtPath:docs error:nil] sortedArrayUsingSelector:@selector(compare:)];
-              int n = 0;
-              [self note:"FLAGS (folders in Documents when the app started):"];
-              for (NSString *nm in names) {
-                  BOOL isDir = NO; [NSFileManager.defaultManager fileExistsAtPath:[docs stringByAppendingPathComponent:nm] isDirectory:&isDir];
-                  if (!isDir || [nm hasPrefix:@"."]) continue;
-                  const char *c = nm.UTF8String, *meaning = NULL;
-                  for (size_t i = 0; i < sizeof K / sizeof K[0]; i++)
-                      if (K[i].pre ? strncmp(c, K[i].n, strlen(K[i].n)) == 0 : strcmp(c, K[i].n) == 0) { meaning = K[i].m; break; }
-                  [self note:[NSString stringWithFormat:@"  %@  ->  %s", nm, meaning ? meaning : "not a known switch (ignored)"].UTF8String]; n++;
+          int n = 0;
+          static NSArray<NSString *> *host;
+          if (!host) host = @[@"upscale", @"gfx", @"gfxmanual", @"potato", @"quality", @"screen", @"fpscap", @"camera", @"modloader", @"mod", @"heatguard", @"host", @"renderscale", @"fakeaspect"];
+          [self note:"FLAGS (lines of Documents/p2.cfg when the app started):"];
+          for (NSString *ln in p2CfgRaw()) {
+              NSString *k, *v; if (!p2CfgSplit(ln, &k, &v)) continue;
+              const char *c = k.UTF8String, *meaning = NULL;
+              for (size_t i = 0; i < sizeof K / sizeof K[0]; i++) {
+                  size_t nl = strlen(K[i].n);
+                  if (K[i].pre ? (nl > 1 && strlen(c) == nl - 1 && strncmp(c, K[i].n, nl - 1) == 0) : strcmp(c, K[i].n) == 0) { meaning = K[i].m; break; }
               }
-              if (!n) [self note:"  (no flag folders)"];
-              [self note:"  no folder = defaults: 120 Hz lock on, RBTRACE on, WAITTRACE on, waitspin 1000 us, QoS interactive, rt_render off, futex on, LOAD_OP rewrite on"];
+              if (!meaning && [host containsObject:k]) meaning = "host setting (handed to the Android host through the hidden controls.cfg) or a number the loader turns into a file";
+              [self note:[NSString stringWithFormat:@"  %@  ->  %s", v.length ? [NSString stringWithFormat:@"%@ %@", k, v] : k, meaning ? meaning : "not a known switch (ignored)"].UTF8String]; n++;
+          }
+          if (!n) [self note:"  (no flag lines)"];
+              [self note:"  no line = defaults: 120 Hz lock on, RBTRACE on, WAITTRACE on, waitspin 1000 us, QoS interactive, rt_render off, futex on, LOAD_OP rewrite on"];
           }
           - (void)hzTick:(CADisplayLink *)l { tcTick(l); }   /* v69: still no real work unless touch_trace or touch_coalesce is on; the link mainly tells iOS which refresh rate this app wants */
           - (void)publishFlags { if (gFlags.length > 1000) [gFlags deleteCharactersInRange:NSMakeRange(1000, gFlags.length - 1000)]; p2_boot_flags = strdup(gFlags.UTF8String); }
           - (void)startHz {
-              NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
-              NSFileManager *fm = NSFileManager.defaultManager;
               NSInteger maxHz = UIScreen.mainScreen.maximumFramesPerSecond;
               p2_set_tick(1.0 / (double)(maxHz > 0 ? maxHz : 60));   /* v82: the pan clock steps in whole screen refreshes */
               float want = 120;
-              BOOL off = [fm fileExistsAtPath:[docs stringByAppendingPathComponent:@"hz_off"]];
-              if ([fm fileExistsAtPath:[docs stringByAppendingPathComponent:@"hz_90"]]) want = 90;
-              if ([fm fileExistsAtPath:[docs stringByAppendingPathComponent:@"hz_60"]]) want = 60;
-              if (off) { [self note:"HZ: hz_off folder present, display rate left to iOS"]; [self publishFlags]; return; }
+              BOOL off = p2CfgHas(@"hz_off");
+              if (p2CfgHas(@"hz_90")) want = 90;
+              if (p2CfgHas(@"hz_60")) want = 60;
+              if (off) { [self note:"HZ: hz_off line present, display rate left to iOS"]; [self publishFlags]; return; }
               if (maxHz < 120 && want > maxHz) { [self note:[NSString stringWithFormat:@"HZ: display tops out at %ld Hz, nothing to lock (need a ProMotion screen)", (long)maxHz].UTF8String]; [self publishFlags]; return; }
               gHzLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(hzTick:)];
               gHzLink.preferredFrameRateRange = CAFrameRateRangeMake(want, want, want);
               p2_set_tick(1.0 / (double)want);
               [gHzLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
-              [self note:[NSString stringWithFormat:@"HZ: locked display to %.0f Hz (screen max %ld Hz, CADisableMinimumFrameDurationOnPhone set). Folders: hz_off, hz_90, hz_60", want, (long)maxHz].UTF8String]; [self publishFlags];
+              [self note:[NSString stringWithFormat:@"HZ: locked display to %.0f Hz (screen max %ld Hz, CADisableMinimumFrameDurationOnPhone set). p2.cfg lines: hz_off, hz_90, hz_60", want, (long)maxHz].UTF8String]; [self publishFlags];
           }
           - (void)applicationDidReceiveMemoryWarning:(UIApplication *)a { p2_note("iOS: MEMORY WARNING received"); }
           - (void)applicationWillResignActive:(UIApplication *)a { p2_note("iOS: app will resign active (home gesture, control centre or a system overlay)"); p2_set_paused(1); }   /* v102: stop submitting GPU work before iOS takes it away */
@@ -1027,6 +1093,7 @@ jobs:
           - (void)applyHz { gTcLink = NO; tcFlush(); [gHzLink invalidate]; gHzLink = nil; [self startHz]; }
           - (BOOL)application:(UIApplication *)a didFinishLaunchingWithOptions:(NSDictionary *)o {
               gText = [NSMutableString string];
+              p2MigrateAll();   /* v103: before anything reads a setting */
               { NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;   /* nosplash is ON by default: create the folder once, on the first launch of v66; after that the user's choice sticks */
                 if (![ud boolForKey:@"nosplash_seeded"]) { uiSet(@"nosplash", YES); [ud setBool:YES forKey:@"nosplash_seeded"]; }
                 if (![ud boolForKey:@"traces_off_seeded"]) { uiSet(@"rbtrace_off", YES); uiSet(@"waittrace_off", YES); uiSet(@"textrace_off", YES); [ud setBool:YES forKey:@"traces_off_seeded"]; } }
@@ -1039,7 +1106,7 @@ jobs:
               RootVC *vc = [RootVC new]; vc.game = gGame;
               vc.onPlay = ^{ [self run]; };
               vc.onHz = ^{ [self applyHz]; };
-              self.window.rootViewController = vc; [self.window makeKeyAndVisible]; [self startFlags]; [self startHz]; return YES;
+              self.window.rootViewController = vc; [self.window makeKeyAndVisible]; if (gMigNote.length) [self note:[gMigNote stringByTrimmingCharactersInSet:NSCharacterSet.newlineCharacterSet].UTF8String]; [self startFlags]; [self startHz]; return YES;
           }
           - (void)run {
               if (gRan) { emit("(already ran in this launch: close the app from the app switcher and open it again to repeat)"); return; }
@@ -1047,7 +1114,8 @@ jobs:
               NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
               sFw = [[NSBundle mainBundle].privateFrameworksPath stringByAppendingString:@"/P2Code.framework/P2Code"];
               sRes = [NSBundle mainBundle].resourcePath;
-              sRep = [docs stringByAppendingString:@"/p2_loader_log.txt"];
+              sRep = [docs stringByAppendingString:@"/logs/p2_loader_log.txt"];   /* v103: every log lives in Documents/logs (the previous run in logs/prev) */
+              [NSFileManager.defaultManager createDirectoryAtPath:[docs stringByAppendingString:@"/logs"] withIntermediateDirectories:YES attributes:nil error:nil];
               { CGFloat sc = UIScreen.mainScreen.nativeScale; CGSize b = gGame.bounds.size;
             p2_win_w = (int)(b.width * sc); p2_win_h = (int)(b.height * sc); p2_metal_layer = (__bridge void *)gGame.layer;
             emit([NSString stringWithFormat:@"game surface %dx%d px (landscape is locked)", p2_win_w, p2_win_h].UTF8String); }
