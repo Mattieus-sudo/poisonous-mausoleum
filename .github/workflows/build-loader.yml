@@ -1715,7 +1715,7 @@ jobs:
           static void *gMvk;
           typedef void *(*PFN_pa)(void *, const char *);
           static PFN_pa gRealGipa, gRealGdpa;
-          static void *gVkInst, *gVkDev;
+          static void *gVkInst, *gVkDev, *gVkPhys;
           typedef struct { char name[256]; unsigned spec; } VkExtP;
           static int mk_val(const char *prefix) {
               if (!gDocs[0]) return -1; DIR *d = opendir(gDocs); if (!d) return -1; struct dirent *e; int r = -1; size_t pl = strlen(prefix);
@@ -1834,6 +1834,7 @@ jobs:
                   "pcprof_on            (v52) start the ~100 Hz PC sampler (PCPROF / PCCUM lines, pcprof_total.txt). OFF by default since v52 (it suspends the hot threads and may cost fps; v46 name pcprof_off is now the default). THREADCPU, FUTEXTRACE and WAITTRACE lines are always logged.\n"
                             "rbtrace_off          (v55) do not record RBTRACE (tiny image->buffer copies, Vulkan fence / semaphore / idle waits and queue submits, timed). On by default; measurement only.\n"
                             "maxlod_N             (v60, diagnostic) cap maxLod of every sampler the game creates at N. maxlod_0 = every texture is sampled from its full-size level only, so bad data in the small mips can never show. Read at launch. Costs some fps; distant textures shimmer. Off by default. SAMPLER / MAXLOD lines in the loader log show what was changed.\n"
+                  "snapshot_off        (v94) turn OFF the staging snapshot fix (default ON): texture upload copies normally read a loader-owned snapshot taken when the copy is recorded, because the game rewrites its staging memory before the submit. SNAPSHOT lines in the loader log show it working.\n"
                             "textrace_off         (v59) do not record TEXTRACE (texture upload source-memory hashes) and UPLOADGAP (mip levels that were never written). On by default; measurement only.\n"
                             "setenv_P2RE_VKLODBIAS=X  (the game's own switch, read through getenv; the meaning of X is UNVERIFIED until the v60 xref output shows its reader). Same for setenv_P2RE_VKANISO=N.\n"
                             "sleepcap_US          (v54, experiment) shorten guest sleeps of 2000..20000 us to US microseconds (try 1000, 500). Counts in waittrace_total.txt header. Off by default.\n"
@@ -2256,6 +2257,9 @@ jobs:
               { TxE *t = which ? gTxBuf : gTxMem; if (t) { unsigned h = tx_h(k), n = 0; while (t[h].k && n++ < TX_N) { if (t[h].k == k) { *o = t[h]; ok = 1; break; } h = (h + 1) & (TX_N - 1); } } }
               tx_unlock(); return ok;
           }
+          static int gSnWant = -1;
+          static int sn_want(void) { if (gSnWant < 0) gSnWant = mk_has("snapshot_off") ? 0 : 1; return gSnWant; }
+          #define tx_trk() (!gTxOff || sn_want())
           typedef struct { int sType; const void *pNext; unsigned flags; uint64_t size; unsigned usage; } VkBCI;
           static int (*gR_cbuf)(void *, const VkBCI *, const void *, uint64_t *);
           static int (*gR_mapm)(void *, uint64_t, uint64_t, uint64_t, unsigned, void **);
@@ -2265,22 +2269,22 @@ jobs:
           static void (*gR_cpb2i2)(void *, const void *);
           static int w_cbuf(void *dev, const VkBCI *ci, const void *al, uint64_t *pb) {
               int r = gR_cbuf(dev, ci, al, pb);
-              if (r == 0 && pb && !gTxOff) { tx_put(1, *pb, ci->size, 0, 0, 0); }
+              if (r == 0 && pb && tx_trk()) { tx_put(1, *pb, ci->size, 0, 0, 0); }
               return r;
           }
           static int w_mapm(void *dev, uint64_t mem, uint64_t off, uint64_t sz, unsigned fl, void **pp) {
               int r = gR_mapm(dev, mem, off, sz, fl, pp);
-              if (r == 0 && pp && *pp && !gTxOff) tx_put(0, mem, (uint64_t)(uintptr_t)*pp, off, 0, 0);
+              if (r == 0 && pp && *pp && tx_trk()) tx_put(0, mem, (uint64_t)(uintptr_t)*pp, off, 0, 0);
               return r;
           }
           static int w_bbm(void *dev, uint64_t buf, uint64_t mem, uint64_t off) {
               int r = gR_bbm(dev, buf, mem, off);
-              if (r == 0 && !gTxOff) tx_put(1, buf, 0, mem, off, 1);
+              if (r == 0 && tx_trk()) tx_put(1, buf, 0, mem, off, 1);
               return r;
           }
           static int w_bbm2(void *dev, unsigned n, const void *info) {
               int r = gR_bbm2(dev, n, info);
-              if (r == 0 && info && !gTxOff) { const char *q = (const char *)info; for (unsigned i = 0; i < n && i < 64; i++, q += 40) tx_put(1, *(const uint64_t *)(q + 16), 0, *(const uint64_t *)(q + 24), *(const uint64_t *)(q + 32), 1); }
+              if (r == 0 && info && tx_trk()) { const char *q = (const char *)info; for (unsigned i = 0; i < n && i < 64; i++, q += 40) tx_put(1, *(const uint64_t *)(q + 16), 0, *(const uint64_t *)(q + 24), *(const uint64_t *)(q + 32), 1); }
               return r;
           }
           static int tx_fmt(int f, unsigned *bw, unsigned *bh, unsigned *bs) {
@@ -2313,6 +2317,82 @@ jobs:
               uint64_t pitch = (uint64_t)((rl + bw - 1) / bw) * bs, rowsFull = (ih + bh - 1) / bh, rowsLast = (h + bh - 1) / bh, slice = pitch * rowsFull, ns = (uint64_t)ly * d;
               return slice * (ns - 1) + pitch * (rowsLast - 1) + (uint64_t)((w + bw - 1) / bw) * bs;
           }
+          /* v94: STAGING SNAPSHOT FIX. The game records vkCmdCopyBufferToImage but its staging memory is rewritten before vkQueueSubmit
+             (TEXTRACE CHANGED BEFORE SUBMIT). At record time the source bytes are copied into a loader-owned host-visible ring buffer
+             and the copy is redirected to that snapshot. ON by default; folder snapshot_off disables it. */
+          #define SN_MAXSPAN (16u << 20)
+          typedef struct { int sType; const void *pNext; unsigned flags; uint64_t size; unsigned usage, sharing, nq; const unsigned *pq; } VkBCIf;
+          typedef struct { int sType; const void *pNext; uint64_t size; unsigned type; } VkMAIf;
+          typedef struct { uint64_t size, align; unsigned bits; } VkMRf;
+          typedef struct { unsigned n; struct { unsigned flags, heap; } t[32]; unsigned hn; struct { uint64_t size; unsigned flags; } h[16]; } VkPDMPf;
+          static int gSnState = -1; static uint64_t gSnBuf, gSnSize, gSnHead; static unsigned char *gSnPtr; static volatile int gSnLk;
+          static unsigned long long gSnN, gSnBytes, gSnWrap, gSnSk[4];
+          static void sn_lock(void) { while (__atomic_exchange_n(&gSnLk, 1, __ATOMIC_ACQUIRE)) sched_yield(); }
+          static void sn_unlock(void) { __atomic_store_n(&gSnLk, 0, __ATOMIC_RELEASE); }
+          static int sn_init(void) {
+              int st = __atomic_load_n(&gSnState, __ATOMIC_ACQUIRE); if (st >= 0) return st;
+              if (!gVkDev || !gVkPhys || !gVkInst || !gRealGdpa || !gRealGipa) return 0;
+              sn_lock();
+              if (gSnState < 0) {
+                  int ok = 0;
+                  if (!sn_want()) L("SNAPSHOT: OFF (folder snapshot_off present)");
+                  else {
+                      int (*cb)(void *, const VkBCIf *, const void *, uint64_t *) = (int (*)(void *, const VkBCIf *, const void *, uint64_t *))gRealGdpa(gVkDev, "vkCreateBuffer");
+                      void (*gmr)(void *, uint64_t, VkMRf *) = (void (*)(void *, uint64_t, VkMRf *))gRealGdpa(gVkDev, "vkGetBufferMemoryRequirements");
+                      int (*am)(void *, const VkMAIf *, const void *, uint64_t *) = (int (*)(void *, const VkMAIf *, const void *, uint64_t *))gRealGdpa(gVkDev, "vkAllocateMemory");
+                      int (*bb)(void *, uint64_t, uint64_t, uint64_t) = (int (*)(void *, uint64_t, uint64_t, uint64_t))gRealGdpa(gVkDev, "vkBindBufferMemory");
+                      int (*mm)(void *, uint64_t, uint64_t, uint64_t, unsigned, void **) = (int (*)(void *, uint64_t, uint64_t, uint64_t, unsigned, void **))gRealGdpa(gVkDev, "vkMapMemory");
+                      void (*gpm)(void *, VkPDMPf *) = (void (*)(void *, VkPDMPf *))gRealGipa(gVkInst, "vkGetPhysicalDeviceMemoryProperties");
+                      if (!cb || !gmr || !am || !bb || !mm || !gpm) L("SNAPSHOT: needed Vulkan entry points missing, fix not active");
+                      else {
+                          static const uint64_t sizes[2] = { 128ull << 20, 48ull << 20 };
+                          for (int k = 0; k < 2 && !ok; k++) {
+                              uint64_t buf = 0, mem = 0; void *ptr = NULL; VkBCIf bci; memset(&bci, 0, sizeof bci); bci.sType = 12; bci.size = sizes[k]; bci.usage = 1;
+                              if (cb(gVkDev, &bci, NULL, &buf) != 0 || !buf) continue;
+                              VkMRf rq; memset(&rq, 0, sizeof rq); gmr(gVkDev, buf, &rq);
+                              VkPDMPf pm; memset(&pm, 0, sizeof pm); gpm(gVkPhys, &pm);
+                              int ti = -1; for (unsigned i = 0; i < pm.n && i < 32; i++) if (((rq.bits >> i) & 1u) && (pm.t[i].flags & 6u) == 6u) { ti = (int)i; break; }
+                              if (ti < 0) { L("SNAPSHOT: no host-visible coherent memory type for the ring (bits %x)", rq.bits); continue; }
+                              VkMAIf mai; memset(&mai, 0, sizeof mai); mai.sType = 5; mai.size = rq.size > sizes[k] ? rq.size : sizes[k]; mai.type = (unsigned)ti;
+                              if (am(gVkDev, &mai, NULL, &mem) == 0 && mem && bb(gVkDev, buf, mem, 0) == 0 && mm(gVkDev, mem, 0, ~0ULL, 0, &ptr) == 0 && ptr) {
+                                  gSnBuf = buf; gSnPtr = (unsigned char *)ptr; gSnSize = sizes[k]; ok = 1;
+                                  L("SNAPSHOT: ON, ring %u MB host-visible (memory type %d), buffer %llx. Copies are redirected to a record-time snapshot of the staging bytes. Folder snapshot_off disables.", (unsigned)(sizes[k] >> 20), ti, (unsigned long long)buf);
+                              } else L("SNAPSHOT: ring allocation of %u MB failed", (unsigned)(sizes[k] >> 20));
+                          }
+                          if (!ok) L("SNAPSHOT: could not create the ring, fix not active");
+                      }
+                  }
+                  __atomic_store_n(&gSnState, ok, __ATOMIC_RELEASE);
+              }
+              sn_unlock(); return gSnState;
+          }
+          /* Snapshot the source of one copy command. Returns the ring buffer handle and fills out[] with a patched copy of the region array, or 0 to pass the copy through untouched. */
+          static uint64_t sn_take(uint64_t buf, uint64_t img, const char *rg, unsigned n, size_t stride, size_t off, void *out) {
+              if (!rg || !n || n > 32 || sn_init() != 1) return 0;
+              ImgE ie; unsigned bw = 1, bh = 1, bs = 0;
+              if (!img_find(img, &ie) || !tx_fmt(ie.fmt, &bw, &bh, &bs)) { __atomic_add_fetch(&gSnSk[0], 1, __ATOMIC_RELAXED); return 0; }
+              TxE be, me; memset(&be, 0, sizeof be); memset(&me, 0, sizeof me);
+              if (!tx_get(1, buf, &be) || !be.b || !tx_get(0, be.b, &me) || !me.a) { __atomic_add_fetch(&gSnSk[1], 1, __ATOMIC_RELAXED); return 0; }
+              uint64_t lo = ~0ULL, hi = 0;
+              for (unsigned i = 0; i < n; i++) {
+                  const VkBIC *r = (const VkBIC *)(rg + i * stride + off); uint64_t nd = tx_need(r, bw, bh, bs);
+                  if (!nd || (be.a && r->off >= be.a)) { __atomic_add_fetch(&gSnSk[2], 1, __ATOMIC_RELAXED); return 0; }
+                  if (r->off < lo) { lo = r->off; } if (r->off + nd > hi) { hi = r->off + nd; }
+              }
+              uint64_t span = hi - lo;
+              if (!span || span > SN_MAXSPAN || be.c + lo < me.b) { __atomic_add_fetch(&gSnSk[2], 1, __ATOMIC_RELAXED); return 0; }
+              uint64_t addr = me.a + (be.c + lo - me.b), tot = (lo & 255u) + span, pos;
+              sn_lock(); pos = (gSnHead + 255u) & ~255ULL; if (pos + tot > gSnSize) { pos = 0; gSnWrap++; } gSnHead = pos + tot; sn_unlock();
+              uint64_t base = pos + (lo & 255u);
+              if (!safe_rd(addr, gSnPtr + base, (size_t)span)) { __atomic_add_fetch(&gSnSk[3], 1, __ATOMIC_RELAXED); return 0; }
+              memcpy(out, rg, (size_t)n * stride);
+              for (unsigned i = 0; i < n; i++) { const VkBIC *r = (const VkBIC *)(rg + i * stride + off); *(uint64_t *)((char *)out + i * stride + off) = base + (r->off - lo); }
+              unsigned long long k = __atomic_add_fetch(&gSnN, 1, __ATOMIC_RELAXED); __atomic_add_fetch(&gSnBytes, span, __ATOMIC_RELAXED);
+              if (k <= 3 || k % 2000 == 0) L("SNAPSHOT #%llu: %u region(s), %llu bytes, ring pos %llu | total %.1f MB, ring wraps %llu, passed through untouched: image/format unknown %llu, buffer/memory unknown %llu, bad extent or too big %llu, read failed %llu",
+                  k, n, (unsigned long long)span, (unsigned long long)pos, gSnBytes / 1048576.0, gSnWrap, gSnSk[0], gSnSk[1], gSnSk[2], gSnSk[3]);
+              return gSnBuf;
+          }
+
           #define TX_CAP 131072u
           static __thread unsigned char *tTxBuf;
           static int tx_hash(uint64_t addr, uint64_t n, uint64_t *h, int *zero) {
@@ -2363,10 +2443,17 @@ jobs:
                   __atomic_store_n(&p->ready, 1, __ATOMIC_RELEASE);
               }
           }
-          static void w_cpb2i(void *cb, uint64_t buf, uint64_t img, int lay, unsigned n, const VkBIC *rg) { if (!gTxOff && rg && n) tx_copy_note(cb, buf, img, (const char *)rg, n, sizeof(VkBIC), 0); gR_cpb2i(cb, buf, img, lay, n, rg); }
+          static void w_cpb2i(void *cb, uint64_t buf, uint64_t img, int lay, unsigned n, const VkBIC *rg) {
+              if (!gTxOff && rg && n) tx_copy_note(cb, buf, img, (const char *)rg, n, sizeof(VkBIC), 0);
+              if (rg && n) { uint64_t tmp[(32 * 72) / 8]; uint64_t sb = sn_take(buf, img, (const char *)rg, n, sizeof(VkBIC), 0, tmp); if (sb) { gR_cpb2i(cb, sb, img, lay, n, (const VkBIC *)tmp); return; } }
+              gR_cpb2i(cb, buf, img, lay, n, rg);
+          }
           static void w_cpb2i2(void *cb, const void *info) {
               if (!gTxOff && info) { const char *q = (const char *)info; uint64_t buf = *(const uint64_t *)(q + 16), img = *(const uint64_t *)(q + 24); unsigned n = *(const unsigned *)(q + 36); const char *rg = *(const char *const *)(q + 40);
                   if (rg && n) tx_copy_note(cb, buf, img, rg, n, 72, 16); }
+              if (info) { const char *q = (const char *)info; uint64_t sbuf = *(const uint64_t *)(q + 16), simg = *(const uint64_t *)(q + 24); unsigned sn = *(const unsigned *)(q + 36); const char *srg = *(const char *const *)(q + 40);
+                  if (srg && sn) { uint64_t tmp[(32 * 72) / 8], inf[6]; uint64_t sb = sn_take(sbuf, simg, srg, sn, 72, 16, tmp);
+                      if (sb) { memcpy(inf, q, 48); inf[2] = sb; *(const void **)&inf[5] = tmp; gR_cpb2i2(cb, inf); return; } } }
               gR_cpb2i2(cb, info);
           }
           static int tx_take(unsigned i, TxP *o) {
@@ -2374,7 +2461,8 @@ jobs:
               *o = *p; return __atomic_load_n(&p->ready, __ATOMIC_ACQUIRE) && p->seq == o->seq;
           }
           static void tx_changed(const char *stage, const TxP *o, uint64_t h1, int z1, unsigned long long dt) {
-              static int gTxChLog; int k = __atomic_add_fetch(&gTxChLog, 1, __ATOMIC_RELAXED); if (k <= 400) L("TEXTRACE CHANGED %s #%d: record tid=%d, fmt %d mip %u region %ux%u, %llu bytes at %llx, hash %016llx -> %016llx, source now %s, %.2f ms after record, s6=%d", stage, k, o->tid, o->fmt, o->mip, o->ew, o->eh, (unsigned long long)o->n, (unsigned long long)o->addr, (unsigned long long)o->h0, (unsigned long long)h1, z1 ? "ALL ZERO" : "other data", dt / 1e6, (int)gS6Seen);
+              int k = __atomic_add_fetch(&gTxLog, 1, __ATOMIC_RELAXED);
+              if (k <= 40) L("TEXTRACE CHANGED %s #%d: record tid=%d, fmt %d mip %u region %ux%u, %llu bytes at %llx, hash %016llx -> %016llx, source now %s, %.2f ms after record, s6=%d", stage, k, o->tid, o->fmt, o->mip, o->ew, o->eh, (unsigned long long)o->n, (unsigned long long)o->addr, (unsigned long long)o->h0, (unsigned long long)h1, z1 ? "ALL ZERO" : "other data", dt / 1e6, (int)gS6Seen);
           }
           static void tx_submit(const void *s, unsigned n, int v2, unsigned long long sq) {
               if (gTxOff || !s || !n) return;
@@ -2890,7 +2978,7 @@ jobs:
               }
               free(sup); c.nLayers = 0; c.ppLayers = NULL; c.nExt = n; c.ppExt = ex;
               int (*f)(void *, const VkDCI *, const void *, void **) = (int (*)(void *, const VkDCI *, const void *, void **))gRealGipa(gVkInst, "vkCreateDevice");
-              int r = f(phys, &c, alloc, pDev); L("PLAT vkCreateDevice -> %d (%u extensions passed)", r, n); if (r == 0) gVkDev = *pDev; return r;
+              gVkPhys = phys; int r = f(phys, &c, alloc, pDev); L("PLAT vkCreateDevice -> %d (%u extensions passed)", r, n); if (r == 0) gVkDev = *pDev; return r;
           }
           typedef struct { int sType; const void *pNext; unsigned flags; void *surface; unsigned minImg; int fmt, cs; unsigned w, h, layers, usage; } VkSCCI;
           static int w_create_swapchain(void *dev, const VkSCCI *ci, const void *alloc, void *pSw) {
