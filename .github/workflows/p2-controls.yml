@@ -317,11 +317,11 @@ jobs:
               int cx = (int)(fx * (float)gCliW / tvw), cy = (int)(fy * (float)gCliH / tvh);
               if (cx < 0) cx = 0; if (cy < 0) cy = 0; if (cx > gCliW - 1) cx = gCliW - 1; if (cy > gCliH - 1) cy = gCliH - 1;
               /* v92d: the counters integrate in the game's RENDER space (the dev's "arrow 1442,144 of 1568x720"), not client space: client coordinates land client/render = 1.22 times too far right and down. */
-              /* v105: READ THE GAME'S RENDER SIZE, DO NOT ASK FOR IT. GameBackBufferSize (elf 0x5a693f0) is a void setter that the host calls from Startup/Resize with the render size: it stores width/height at elf 0x5f436ac / 0x5f436b0 and logs "menu taps: the game renders at WxH". The v104 call got nothing back (0x0) and also overwrote those two values with the client size. Now they are read as the host left them, every touch, so any render scale or screen shape follows. If they are missing or absurd, the last good render/client ratio is used, and the dev's 0.8167 / 0.8145 only as the very last resort. */
+              /* v105: READ THE GAME'S RENDER SIZE, DO NOT ASK FOR IT. GameBackBufferSize (elf 0x5a693f0) is a void setter that the host calls from Startup/Resize with the render size: it stores width/height at elf 0x5e436ac / 0x5e436b0 (Ghidra shows them as 0x5f436ac / 0x5f436b0: Ghidra addresses are elf + 0x100000, the same shift as every elf+ note in the decomp) and logs "menu taps: the game renders at WxH". The v104 call got nothing back (0x0) and also overwrote those two values with the client size. Now they are read as the host left them, every touch, so any render scale or screen shape follows. If they are missing or absurd, the last good render/client ratio is used, and the dev's 0.8167 / 0.8145 only as the very last resort. */
               static int bbW, bbH, bbSrc = -1; static float bbRx = 0.81667f, bbRy = 0.81448f;
               {
-                  unsigned a = 0, b = 0; int ok = safe_rd(gBase + 0x5f436acUL, &a, 4) && safe_rd(gBase + 0x5f436b0UL, &b, 4);
-                  int use = ok && a > 16 && b > 16 && a < 20000 && b < 20000 && (!gCliReal || ((int)a <= gCliW + 8 && (int)b <= gCliH + 8));
+                  unsigned a = 0, b = 0; int ok = safe_rd(gBase + 0x5e436acUL, &a, 4) && safe_rd(gBase + 0x5e436b0UL, &b, 4);
+                  int use = ok && a > 16 && b > 16 && a < 20000 && b < 20000;   /* v105b: NOT limited by the client size. The render size is separate from the swap chain (the log shows a 1280x720 back buffer in a 1184x884 client) */
                   int nw, nh;
                   if (use) { nw = (int)a; nh = (int)b; if (gCliReal) { bbRx = (float)a / (float)gCliW; bbRy = (float)b / (float)gCliH; } }
                   else { nw = (int)(gCliW * bbRx); nh = (int)(gCliH * bbRy); }
