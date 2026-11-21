@@ -115,11 +115,20 @@ jobs:
               NSString *out = lines.count ? [[lines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] : @"";
               return [out writeToFile:hostCfgPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
           }
-          /* Render scale: the host's RenderScalePercent never reads the controls.cfg "screen" line, it reads Documents/render_scale (30..100) at launch. Write both. */
+          /* Render scale (v104): the host reads ONLY Documents/.render_scale (30..100) at launch. The launcher writes that file and nothing else: no controls.cfg "screen" line (the host never read it),
+             no p2.cfg entry. A leftover renderscale_N line in p2.cfg would make the loader overwrite this file at the next start, and the loader's .render_scale.p2auto marker would make it delete
+             the file, so both are cleared here. */
+          static NSString *hostScreenPath(void) { return [uiDocs() stringByAppendingPathComponent:@".render_scale"]; }
+          static NSString *hostScreenValue(void) {
+              NSString *raw = [NSString stringWithContentsOfFile:hostScreenPath() encoding:NSUTF8StringEncoding error:nil];
+              NSString *t = [raw stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+              return t.length ? t : @"67";   /* no file = the game's own default */
+          }
           static BOOL hostScreenSet(NSString *v) {
-              NSString *f = [uiDocs() stringByAppendingPathComponent:@".render_scale"];
-              [[v stringByAppendingString:@"\n"] writeToFile:f atomically:NO encoding:NSUTF8StringEncoding error:nil];
-              return hostCfgSet(@"screen", v);
+              cfgReady();
+              for (NSString *f in uiWithPrefix(@"renderscale_")) uiSet(f, NO);
+              [NSFileManager.defaultManager removeItemAtPath:[uiDocs() stringByAppendingPathComponent:@".render_scale.p2auto"] error:nil];
+              return [[v stringByAppendingString:@"\n"] writeToFile:hostScreenPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
           }
           static NSArray<NSString *> *hostModNames(void) {
               NSString *dir = [uiDocs() stringByAppendingPathComponent:@"Mods"];
@@ -437,7 +446,7 @@ jobs:
               return @"Open live log";
           }
           - (NSString *)keyForRow:(NSIndexPath *)ip {
-              if (ip.section == 0) return @[@"upscale", @"", @"screen"][ip.row];
+              if (ip.section == 0) return @[@"upscale", @"", @""][ip.row];   /* v104: row 2 (render scale) reads Documents/.render_scale, not controls.cfg */
               if (ip.section == 1) return @[@"gfx", @"gfxmanual", @"potato", @"quality"][ip.row];
               if (ip.section == 2 && ip.row == 0) return @"modloader";
               return nil;
@@ -449,7 +458,7 @@ jobs:
               if (ip.section == 3 && ip.row == 1) return hostCfgValue(@"camera", @"1.0");
               if (ip.section == 1 && ip.row == 0) return hostCfgValue(@"gfx", @"-1");
               if (ip.section == 1 && ip.row == 3) return hostCfgValue(@"quality", @"0");
-              if (ip.section == 0 && ip.row == 2) return hostCfgValue(@"screen", @"100");
+              if (ip.section == 0 && ip.row == 2) return hostScreenValue();
               return @"";
           }
           - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
@@ -493,7 +502,7 @@ jobs:
               NSIndexPath *dip = ip;   /* v86: the displayed row, used to reload it and anchor the sheet */
               ip = [NSIndexPath indexPathForRow:ip.row inSection:hsL(ip.section)];
               if (ip.section == 0 && ip.row == 1) [self choose:dip title:@"FPS limit" choices:@[@"30 FPS", @"45 FPS", @"60 FPS", @"90 FPS", @"120 FPS", @"144 FPS", @"165 FPS", @"180 FPS", @"240 FPS"] values:@[@"30", @"45", @"60", @"90", @"120", @"144", @"165", @"180", @"240"] key:@"fpscap"];
-              else if (ip.section == 0 && ip.row == 2) [self choose:dip title:@"Render scale" choices:@[@"60%", @"75%", @"100%"] values:@[@"60", @"75", @"100"] key:@"screen"];
+              else if (ip.section == 0 && ip.row == 2) [self choose:dip title:@"Render scale" choices:@[@"60%", @"67% (game default)", @"75%", @"80%", @"100%"] values:@[@"60", @"67", @"75", @"80", @"100"] key:@"screen"];
               else if (ip.section == 1 && ip.row == 0) [self choose:dip title:@"Graphics preset" choices:@[@"Use quality fallback", @"Very Low", @"Low", @"Medium", @"High"] values:@[@"<remove>", @"0", @"1", @"2", @"3"] key:@"gfx"];
               else if (ip.section == 1 && ip.row == 3) [self choose:dip title:@"Quality level" choices:@[@"Low", @"Medium", @"High"] values:@[@"0", @"1", @"2"] key:@"quality"];
               else if (ip.section == 3 && ip.row == 0) { if (self.onEdit) self.onEdit(); }
