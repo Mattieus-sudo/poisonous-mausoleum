@@ -811,6 +811,7 @@ jobs:
           int p2_cfg_val(const char *prefix);                 /* number after prefix in the first entry like prefix123, else -1 */
           int p2_cfg_set(const char *name, int on);           /* add (on) or remove (off) one entry; 1 = file written / nothing to do */
           int p2_cfg_next(int *it, char *out, size_t n);      /* walk the entries: start with *it = 0, returns 0 at the end */
+          extern volatile int p2_settings_open;               /* v105: 1 while the settings panel behind the cog is open (set by the UI); the present hook only re-reads p2.cfg then */
           #endif
           EOF_P2CORE_H
           cat > p2core_head.c <<'EOF_P2CORE_HEAD'
@@ -3116,6 +3117,7 @@ jobs:
           typedef struct { int sType; const void *pNext; unsigned flags, nQ; const void *pQ; unsigned nLayers; const char *const *ppLayers; unsigned nExt; const char *const *ppExt; const void *pFeat; } VkDCI;
           static int gMfxExt;   /* METALFX: VK_EXT_metal_objects was enabled */
           int p2_mfx_sharp = 0;   /* METALFX: sharpen strength, 0 = off, 1..100; read by mfx.m */
+          volatile int p2_settings_open = 0;   /* v105: set by the UI while the cog's settings panel is open */
           extern void p2_mfx_frame(void *dev, void *queue, const void *presentInfo, void *(*gdpa)(void *, const char *));
           static int w_create_device(void *phys, const VkDCI *ci, const void *alloc, void **pDev) {
               VkDCI c = *ci; const char *ex[80]; unsigned n = 0, ns = 0;
@@ -3150,7 +3152,7 @@ jobs:
               { static int pd = -2, pt = -2; if (pd == -2) { pd = mk_val("pdelay_"); pt = mk_val("pthrottle_"); L("present switches: pdelay %d ms (first present), pthrottle %d us (first 300 presents), -1 = off", pd, pt); }
                 if (n == 0 && pd > 0 && pd <= 8000) { L("PDELAY: pausing the presenting thread %d ms before its first present", pd); usleep(pd * 1000); }
                 if (pt > 0 && n < 300) usleep((useconds_t)(pt > 100000 ? 100000 : pt)); }
-              { static int mfxOn = -2, sk = 0; if (mfxOn == -2) mfxOn = mk_has("metalfx_on") && gMfxExt; if (mfxOn > 0) { if ((sk++ & 31) == 0) { int sv = 0; if (mk_has("metalfx_sharp")) { sv = mk_val("metalfx_sharp_"); if (sv < 0) sv = 50; if (sv > 100) sv = 100; } if (sv != p2_mfx_sharp) { p2_mfx_sharp = sv; L("METALFX SHARP: strength %d (0 = off)", sv); } } p2_mfx_frame(gVkDev, q, pi, (void *(*)(void *, const char *))gRealGdpa); } }   /* METALFX: runs before the real present, on the same Metal queue; the sharpen setting is re-read every 32 presents so the in-game slider is live */
+              { static int mfxCap = -2, mfxOn = 0, sk = 0, seen = 0, wasOpen = 0; if (mfxCap == -2) mfxCap = gMfxExt; if (mfxCap > 0) { int op = p2_settings_open; if (!seen || op != wasOpen || (op && (sk++ & 31) == 0)) { seen = 1; wasOpen = op; int on = mk_has("metalfx_on"); if (on != mfxOn) { mfxOn = on; L("METALFX: %s from the settings panel", on ? "switched on" : "switched off, the game layer is shown again"); if (!on) p2_mfx_frame(gVkDev, q, NULL, (void *(*)(void *, const char *))gRealGdpa); } int sv = 0; if (mfxOn && mk_has("metalfx_sharp")) { sv = mk_val("metalfx_sharp_"); if (sv < 0) sv = 50; if (sv > 100) sv = 100; } if (sv != p2_mfx_sharp) { p2_mfx_sharp = sv; L("METALFX SHARP: strength %d (0 = off)", sv); } } if (mfxOn) p2_mfx_frame(gVkDev, q, pi, (void *(*)(void *, const char *))gRealGdpa); } }   /* METALFX: runs before the real present, on the same Metal queue; p2.cfg (metalfx_on, metalfx_sharp, metalfx_sharp_N) is read once at the first present, once when the settings panel opens, once when it closes, and every 32 presents only while it is open, so the switch and the slider are live without polling during play. The pass can only be switched ON live when this launch started with metalfx_on (the device extension and the swapchain usage are fixed at creation); OFF always works */
               int r = f(q, pi); n++; __atomic_add_fetch(&gPresN, 1, __ATOMIC_RELAXED); if (n <= 3 || (r != 0 && bad++ < 8)) L("PLAT vkQueuePresentKHR #%d tid=%d -> %d", n, p2_tid(), r); trace_present(); return r;
           }
           static void *w_gipa(void *inst, const char *name);
@@ -4470,6 +4472,7 @@ jobs:
               static CAMetalLayer *ml; static id sc; static NSUInteger iw, ih; static MTLPixelFormat ifmt;
               static void *cachedSw; static void *imgs[16]; static unsigned nImg;
               static id<MTLTexture> mid; static id<MTLComputePipelineState> sps; static int sharpDead;
+              if (!pi) { if (ml) mfxHide(ml, YES); return; }   /* v105: pi == NULL = MetalFX was switched off in the settings panel, show the game layer again */
               if (dead) return;
               if (@available(iOS 16.0, *)) {
                   @autoreleasepool {
