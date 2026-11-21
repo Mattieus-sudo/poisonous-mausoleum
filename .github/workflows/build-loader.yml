@@ -632,11 +632,12 @@ jobs:
           set +e
           export OBJDUMP="$(xcrun -f llvm-objdump 2>/dev/null || command -v llvm-objdump || command -v objdump || true)"
           echo "Using OBJDUMP=$OBJDUMP"
-          python3 prep.py ../work/libp2re.so . > prep-full.log 2>&1
+          mkdir -p ../Logs
+          python3 prep.py ../work/libp2re.so . > ../Logs/prep-full.log 2>&1
           PREP_RC=$?
           echo "prep.py exit code: $PREP_RC"
           echo "---- full prep.py output (last 180 lines) ----"
-          tail -180 prep-full.log
+          tail -180 ../Logs/prep-full.log
           echo "---- end prep.py output ----"
           if [ "$PREP_RC" -eq 0 ]; then
             test -s code.bin && test -s layout.h
@@ -669,7 +670,7 @@ jobs:
         with:
           name: p2-prep-debug
           path: |
-            src/prep-full.log
+            Logs/prep-full.log
             src/prep-report.md
           if-no-files-found: warn
           retention-days: 3
@@ -790,6 +791,7 @@ jobs:
           cat > p2core.h <<'EOF_P2CORE_H'
           #ifndef P2CORE_H
           #define P2CORE_H
+          #include <stddef.h>
           void p2_run(void (*emit)(const char *), const char *fw_path, const char *res_dir, const char *report_path);
           extern void *p2_metal_layer;
           extern int p2_win_w, p2_win_h;
@@ -802,6 +804,13 @@ jobs:
           void p2_set_paused(int on);   /* v102: 1 = park every vkQueueSubmit / vkQueuePresent caller and the audio thread (use when the app goes inactive / background), 0 = resume */
           int p2_parked_threads(void);
           void p2_set_emit_live(int on);   /* 1 = L() also forwards log lines to the main thread (live log screen / launcher), 0 = file only */
+          /* .p2.cfg (Documents/.p2.cfg): the one configuration file. One entry per line, named exactly like the Documents folder that used to carry the flag. */
+          void p2_cfg_init(const char *docs);                /* sets the path, creates the file with its header when it is missing; safe to call again */
+          const char *p2_cfg_path(void);                      /* full path of .p2.cfg ("" before p2_cfg_init) */
+          int p2_cfg_has(const char *name);                   /* 1 when the entry is present */
+          int p2_cfg_val(const char *prefix);                 /* number after prefix in the first entry like prefix123, else -1 */
+          int p2_cfg_set(const char *name, int on);           /* add (on) or remove (off) one entry; 1 = file written / nothing to do */
+          int p2_cfg_next(int *it, char *out, size_t n);      /* walk the entries: start with *it = 0, returns 0 at the end */
           #endif
           EOF_P2CORE_H
           cat > p2core_head.c <<'EOF_P2CORE_HEAD'
@@ -1584,8 +1593,6 @@ jobs:
           static volatile int gAlogN;
           static volatile int gOvrSeen;
           static int mk_has(const char *name);
-          static FILE *p2_cfg_open(void);
-          static int p2_cfg_remove(const char *key);
           static void alog(long prio, uint64_t tag, const char *msg) {
               if (msg && strstr(msg, "game state: state 5 target 3")) { static int hd; if (!hd) { hd = 1; int h = mk_val("hold_s5_"); if (h > 0 && h <= 5000) { L("HOLD: pausing the state thread for %d ms at state 5 target 3", h); usleep(h * 1000); } } }
           if (msg && strstr(msg, "game state: state")) { static int gsn; if (gsn < 14) { gsn++; p2_snap(msg + 12 < msg + strlen(msg) ? msg + 12 : msg); } }
@@ -1627,33 +1634,95 @@ jobs:
               return d;
           }
           static char gDocs[1100];
+          /* ---- Logs: every log / diagnostic file of the loader lives in Documents/Logs ---- */
+          static void logp(char *out, size_t n, const char *name) {
+              char d[1200]; snprintf(d, sizeof d, "%s/Logs", gDocs); mkdir(d, 0755);
+              snprintf(out, n, "%s/%s", d, name);
+          }
+          /* ---- .p2.cfg: the single configuration file. Each line is one switch, spelled exactly like the Documents folder that used to carry it
+                (hz_off, imgdelay_6000, setenv_P2RE_VKGPUTIME=1 ...). Present = ON. Blank lines and lines starting with # are comments. ---- */
+          static char gCfgPath[1200];
+          static pthread_mutex_t gCfgMu = PTHREAD_MUTEX_INITIALIZER;
+          static const char kCfgHeader[] =
+              "# .p2.cfg - the single configuration file of the Prototype 2 loader (Documents/.p2.cfg).\n"
+              "# One switch per line, spelled exactly like the Documents folder that used to carry it (hz_off, imgdelay_6000, setenv_P2RE_VKGPUTIME=1, ...).\n"
+              "# A switch is ON while its line is present; no line = the default. Blank lines and lines starting with # are ignored.\n"
+              "# Edit it while the app is closed, or use the in-app settings. All log files are written to Documents/Logs.\n"
+              "# controls.cfg (the Android host's own settings) is a separate file and is not touched.\n";
+          static int cfg_line(FILE *f, char *b, size_t n) {
+              while (fgets(b, (int)n, f)) {
+                  size_t l = strlen(b); while (l && (b[l - 1] == '\n' || b[l - 1] == '\r' || b[l - 1] == ' ' || b[l - 1] == '\t')) b[--l] = 0;
+                  char *q = b; while (*q == ' ' || *q == '\t') q++;
+                  if (!*q || *q == '#') continue;
+                  if (q != b) memmove(b, q, strlen(q) + 1);
+                  return 1;
+              }
+              return 0;
+          }
+          static int cfg_write(const char *body_extra, const char *skip) {   /* rewrite the file: all lines except skip, then body_extra; atomic via rename */
+              char tmp[1260], b[1200]; snprintf(tmp, sizeof tmp, "%s.tmp", gCfgPath);
+              FILE *o = fopen(tmp, "w"); if (!o) return 0;
+              FILE *f = fopen(gCfgPath, "r"); int hadHdr = 0;
+              if (f) { while (fgets(b, sizeof b, f)) {
+                      char t[1200]; snprintf(t, sizeof t, "%s", b); size_t l = strlen(t); while (l && (t[l - 1] == '\n' || t[l - 1] == '\r' || t[l - 1] == ' ' || t[l - 1] == '\t')) t[--l] = 0;
+                      if (skip && !strcmp(t, skip)) continue;
+                      fputs(b, o); if (l && b[strlen(b) - 1] != '\n') fputc('\n', o); hadHdr = 1; }
+                  fclose(f); }
+              if (!hadHdr) fputs(kCfgHeader, o);
+              if (body_extra) fprintf(o, "%s\n", body_extra);
+              if (fclose(o) != 0) { unlink(tmp); return 0; }
+              return rename(tmp, gCfgPath) == 0;
+          }
+          void p2_cfg_init(const char *docs) {
+              if (!docs || !*docs) return;
+              pthread_mutex_lock(&gCfgMu);
+              if (!gCfgPath[0]) snprintf(gCfgPath, sizeof gCfgPath, "%s/.p2.cfg", docs);
+              struct stat st; if (stat(gCfgPath, &st) != 0) cfg_write(NULL, NULL);
+              pthread_mutex_unlock(&gCfgMu);
+          }
+          const char *p2_cfg_path(void) { return gCfgPath; }
+          int p2_cfg_next(int *it, char *out, size_t n) {
+              if (!gCfgPath[0] || !it || !out || !n) return 0;
+              FILE *f = fopen(gCfgPath, "r"); if (!f) return 0;
+              char b[1200]; int i = 0, r = 0;
+              while (cfg_line(f, b, sizeof b)) if (i++ == *it) { snprintf(out, n, "%s", b); (*it)++; r = 1; break; }
+              fclose(f); return r;
+          }
+          int p2_cfg_has(const char *name) {
+              if (!gCfgPath[0] || !name || !*name) return 0;
+              FILE *f = fopen(gCfgPath, "r"); if (!f) return 0;
+              char b[1200]; int r = 0; while (cfg_line(f, b, sizeof b)) if (!strcmp(b, name)) { r = 1; break; }
+              fclose(f); return r;
+          }
+          int p2_cfg_val(const char *prefix) {
+              if (!gCfgPath[0] || !prefix) return -1;
+              FILE *f = fopen(gCfgPath, "r"); if (!f) return -1;
+              char b[1200]; int r = -1; size_t pl = strlen(prefix);
+              while (cfg_line(f, b, sizeof b)) if (!strncmp(b, prefix, pl) && b[pl] >= '0' && b[pl] <= '9') { r = atoi(b + pl); break; }
+              fclose(f); return r;
+          }
+          int p2_cfg_set(const char *name, int on) {
+              if (!gCfgPath[0] || !name || !*name) return 0;
+              pthread_mutex_lock(&gCfgMu);
+              int has = p2_cfg_has(name), r = 1;
+              if (on != has) r = cfg_write(on ? name : NULL, on ? NULL : name);
+              pthread_mutex_unlock(&gCfgMu);
+              return r;
+          }
           static const char *fixp(const char *in, char *out, size_t n) {
               static int logged; static const char *pre[] = {"/storage/emulated/0", "/storage/emulated/legacy", "/storage/self/primary", "/sdcard", "/mnt/sdcard"};
               if (!in || !gDocs[0] || !okptr((uint64_t)in)) return in;
               if (strstr(in, "kgsl-3d0/gpubusy")) { const char *r_ = gpuhud_path(out, n); return r_ ? r_ : in; }
-              /* DataRoot() may already be the iOS Documents path passed through NativeActivity. */
-              size_t dl = strlen(gDocs);
-              if (!strncmp(in, gDocs, dl) && (in[dl] == 0 || in[dl] == '/')) {
-                  const char *tail = in + dl;
-                  if (!strcmp(tail, "/p2.log") || !strcmp(tail, "/p2_loader_log.txt") || !strcmp(tail, "/mvk_stderr.log") || !strcmp(tail, "/waittrace_total.txt") || !strcmp(tail, "/pcprof_total.txt")) snprintf(out, n, "%s/logs%s", gDocs, tail);
-                  else if (!strcmp(tail, "/controls.cfg") || !strcmp(tail, "/render_scale") || !strcmp(tail, "/waitspin") || !strcmp(tail, "/fake_aspect") || !strcmp(tail, "/nosplash") || !strcmp(tail, "/env") || !strcmp(tail, "/vkshot")) snprintf(out, n, "%s/.p2%s", gDocs, tail);
-                  else return in;
-                  if (logged++ < 40) L("REDIRECT %s -> %s", in, out); return out;
-              }
+              const char *res = in;
               for (unsigned i = 0; i < sizeof pre / sizeof pre[0]; i++) {
                   size_t l = strlen(pre[i]);
-                  if (!strncmp(in, pre[i], l) && (in[l] == 0 || in[l] == '/')) {
-                      const char *tail = in + l;
-                      /* ModsFolder() is the app Documents/Mods directory exposed in Files as
-                         On My iPhone > Prototype 2 > Mods; do not move it under Prototype2/game. */
-                      if (!strcmp(tail, "/p2.log") || !strcmp(tail, "/p2_loader_log.txt") || !strcmp(tail, "/mvk_stderr.log") || !strcmp(tail, "/waittrace_total.txt") || !strcmp(tail, "/pcprof_total.txt")) { snprintf(out, n, "%s/logs%s", gDocs, tail); }
-                      else if (!strcmp(tail, "/controls.cfg") || !strcmp(tail, "/render_scale") || !strcmp(tail, "/waitspin") || !strcmp(tail, "/fake_aspect") || !strcmp(tail, "/nosplash") || !strcmp(tail, "/env") || !strcmp(tail, "/vkshot")) { snprintf(out, n, "%s/.p2%s", gDocs, tail); }
-                      else { snprintf(out, n, "%s%s", gDocs, tail); }
-                      if (logged++ < 40) L("REDIRECT %s -> %s", in, out);
-                      return out;
-                  }
+                  if (!strncmp(in, pre[i], l) && (in[l] == 0 || in[l] == '/')) { snprintf(out, n, "%s%s", gDocs, in + l); if (logged++ < 12) L("PLAT path %s -> %s", in, out); res = out; break; }
               }
-              return in;
+              /* the game's own log (p2.log in its data folder) goes to Documents/Logs */
+              { size_t dl = strlen(gDocs); const char *rest = NULL;
+                if (!strncmp(res, gDocs, dl) && res[dl] == '/') rest = res + dl + 1; else if (!strcmp(res, "p2.log")) rest = res;
+                if (rest && !strcmp(rest, "p2.log")) { logp(out, n, "p2.log"); return out; } }
+              return res;
           }
           static int bio_oflags(int f);
           static void st_to_bionic(const struct stat *s, uint8_t *o) {
@@ -1679,14 +1748,14 @@ jobs:
           static int sh_access(const char *p, int m) { char b[1100]; return access(fixp(p, b, sizeof b), m); }
           static void *rt_serve(void) {
               if (!gDocs[0]) return NULL;
-              char hex[40] = "", nm[300] = ""; FILE *cfg = p2_cfg_open(); char line[512], key[256];
-              if (cfg) { while (fgets(line, sizeof line, cfg)) { key[0] = 0; if (sscanf(line, " %255s", key) == 1 && !strncmp(key, "rtdump_ps=", 10)) { snprintf(nm, sizeof nm, "%s", key); snprintf(hex, sizeof hex, "%.30s", key + 10); break; } } fclose(cfg); }
-              if (!hex[0]) return NULL;
-              p2_cfg_remove(nm);
+              char hex[40] = "", nm[300] = ""; int it = 0, ei = 0;
+              while (p2_cfg_next(&it, nm, sizeof nm)) if (!strncmp(nm, "rtdump_ps=", 10)) { snprintf(hex, sizeof hex, "%.30s", nm + 10); ei = 1; break; }
+              if (!ei || !hex[0]) return NULL;
+              p2_cfg_set(nm, 0);
               for (const char *c = hex; *c; c++) if (!((*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f') || (*c >= 'A' && *c <= 'F'))) { L("RTDUMP trigger ignored (not a hex number): %s", nm); return NULL; }
               char fp[1200]; snprintf(fp, sizeof fp, "%s/rtdump_trigger.txt", gDocs);
               FILE *w = fopen(fp, "w"); if (!w) return NULL; fprintf(w, "%s\n", hex); fclose(w);
-              L("RTDUMP trigger served to the game: ps %s (folder %s removed)", hex, nm);
+              L("RTDUMP trigger served to the game: ps %s (.p2.cfg entry %s removed)", hex, nm);
               return fopen(fp, "r");
           }
           static void *sh_fopen(const char *p, const char *m) {
@@ -1735,36 +1804,8 @@ jobs:
           static PFN_pa gRealGipa, gRealGdpa;
           static void *gVkInst, *gVkDev, *gVkPhys;
           typedef struct { char name[256]; unsigned spec; } VkExtP;
-          static FILE *p2_cfg_open(void) { char p[1200]; if (!gDocs[0]) return NULL; snprintf(p, sizeof p, "%s/p2.cfg", gDocs); return fopen(p, "r"); }
-          static int p2_cfg_remove(const char *wanted) {
-              if (!wanted || !*wanted || !gDocs[0]) return 0;
-              char src[1200], tmp[1200]; snprintf(src, sizeof src, "%s/p2.cfg", gDocs); snprintf(tmp, sizeof tmp, "%s/p2.cfg.tmp", gDocs);
-              FILE *in = fopen(src, "r"); if (!in) return 0; FILE *out = fopen(tmp, "w"); if (!out) { fclose(in); return 0; }
-              char line[512], key[256]; int removed = 0;
-              while (fgets(line, sizeof line, in)) { key[0] = 0; if (sscanf(line, " %255s", key) == 1 && !strcmp(key, wanted)) { removed++; continue; } fputs(line, out); }
-              fclose(in); fclose(out); if (rename(tmp, src) != 0) { unlink(tmp); return 0; } return removed;
-          }
-          static int mk_has(const char *name) {
-              if (!name || !*name) return 0; FILE *f = p2_cfg_open(); if (!f) return 0;
-              char line[512], key[256]; int found = 0;
-              while (fgets(line, sizeof line, f)) { key[0] = 0; if (sscanf(line, " %255s", key) == 1 && !strcmp(key, name)) { found = 1; break; } }
-              fclose(f); return found;
-          }
-          static int mk_val(const char *prefix) {
-              if (!prefix || !*prefix) return -1; FILE *f = p2_cfg_open(); if (!f) return -1;
-              char line[512], key[256]; int r = -1; size_t pl = strlen(prefix);
-              while (fgets(line, sizeof line, f)) {
-                  key[0] = 0; if (sscanf(line, " %255s", key) != 1) continue;
-                  if (!strncmp(key, prefix, pl) && key[pl] >= '0' && key[pl] <= '9') { r = atoi(key + pl); break; }
-              }
-              fclose(f); return r;
-          }
-          static int p2_cfg_value(const char *wanted, char *value, size_t cap) {
-              if (!wanted || !value || !cap) return 0; FILE *f = p2_cfg_open(); if (!f) return 0;
-              char line[512], key[256], val[256]; int found = 0;
-              while (fgets(line, sizeof line, f)) if (sscanf(line, " %255s %255s", key, val) == 2 && !strcmp(key, wanted)) { snprintf(value, cap, "%s", val); found = 1; break; }
-              fclose(f); return found;
-          }
+          static int mk_val(const char *prefix) { if (!gDocs[0]) return -1; return p2_cfg_val(prefix); }   /* v103: flags live in .p2.cfg, not in Documents folders */
+          static int mk_has(const char *name) { if (!gDocs[0]) return 0; return p2_cfg_has(name); }
           static int fx_mode(void) {
               static int m = -1;
               int v = __atomic_load_n(&m, __ATOMIC_RELAXED);
@@ -1812,13 +1853,13 @@ jobs:
               (void)k; (void)entry;
           #endif
           }
-          static void mk_eat(const char *name) { char p[1200]; if (!gDocs[0]) return; p2_cfg_remove(name); snprintf(p, sizeof p, "%s/%s", gDocs, name); rmdir(p); unlink(p); }
+          static void mk_eat(const char *name) { if (!gDocs[0]) return; p2_cfg_set(name, 0); }
           static void mvk_env_setup(void) {
               static int done; if (done) return; done = 1;
               char p[1200], dump[1200] = "";
               { snprintf(p, sizeof p, "%s/P2_SWITCHES.txt", gDocs); FILE *f = fopen(p, "w");
                 if (f) { fputs(
-                  "P2 loader v31 switches. Add the exact flag as a line in Documents/p2.cfg (one flag per line).\n\n"
+                  "P2 loader switches. Every switch below is one LINE in the file .p2.cfg in this Documents folder (Files app > On My iPhone > Prototype 2; the leading dot makes iOS hide it, the in-app settings write it too). Add a line with the exact name, remove the line to go back to the default. Close the app first. Wherever the text below says 'folder X' or 'create the folder X', read it as 'the line X in .p2.cfg'.\n\n"
                   "mvk_fastmath_on     MoltenVK shader fast-math ON. Since v72 this is the DEFAULT (MoltenVK's own default); v29-v71 had it off for the black-world hunt, which was closed as a texture-timing problem. This folder is still accepted and does nothing new.\n"
                   "mvk_fastmath_off    (v72) turn shader fast-math OFF (the v29-v71 behaviour). Use it only to test a black or flickering shader.\n"
           "mvk_fastmath_auto   fast-math ON except for shaders that ask for strict NaN/Inf handling.\n"
@@ -1885,9 +1926,9 @@ jobs:
                             "sleepcap_US          (v54, experiment) shorten guest sleeps of 2000..20000 us to US microseconds (try 1000, 500). Counts in waittrace_total.txt header. Off by default.\n"
                             "waittrace_off        (v52) do not record WAITTRACE (per-thread time blocked in cond waits, futex waits, sleeps, yields and contended mutexes, by guest caller). On by default.\n"
                   "RACEPROBE / THREADSTART / CLOCKPROBE / IMGCHAIN lines are always logged.\n\n"
-                  "Log files are in Documents/logs/: p2_loader_log.txt, p2.log, mvk_stderr.log, waittrace_total.txt, pcprof_total.txt.\n"
-                  "Log rotation: Documents/logs/ keeps the current run and one previous run under *_prev names.\n", f); fclose(f); } }
-              { char ld[1200]; snprintf(ld, sizeof ld, "%s/logs", gDocs); mkdir(ld, 0755); snprintf(p, sizeof p, "%s/mvk_stderr.log", ld); }
+                  "Log files (all in Documents/Logs): p2_loader_log.txt (run start time, VKTRACE / MVKENV / P2RE_ENV / GUEST getenv lines), p2.log (the game's own log), mvk_stderr.log (MoltenVK's own messages), waittrace_total.txt, pcprof_total.txt; vkshots/ and mvk_shaders/ (diagnostic dumps) are there too.\n"
+                  "Log rotation: only the last two runs are kept. The latest run uses the normal name; the run before it is renamed with _prev (p2_prev.log, p2_loader_log_prev.txt, mvk_stderr_prev.log, ...). Anything older is deleted when a run starts.\n", f); fclose(f); } }
+              logp(p, sizeof p, "mvk_stderr.log");
               int fd = open(p, O_WRONLY | O_CREAT | O_TRUNC, 0644); if (fd >= 0) { dup2(fd, 2); close(fd); }
               int fm = mk_has("mvk_fastmath_off") ? 0 : mk_has("mvk_fastmath_auto") ? 2 : 1;
               setenv("MVK_CONFIG_FAST_MATH_ENABLED", fm == 1 ? "1" : fm == 2 ? "2" : "0", 1);
@@ -1898,58 +1939,50 @@ jobs:
               if (pf >= 0) { char pv[16]; snprintf(pv, sizeof pv, "%d", pf); setenv("MVK_CONFIG_PREFILL_METAL_COMMAND_BUFFERS", pv, 1); }
               int ss = mk_has("mvk_syncsubmit_off"); if (ss) setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "0", 1);   /* default 1: submit/present run on the calling thread; 0 hands them to a GCD queue */
               int pl = mk_has("mvk_perf_log"); if (pl) { setenv("MVK_CONFIG_PERFORMANCE_TRACKING", "1", 1); setenv("MVK_CONFIG_PERFORMANCE_LOGGING_FRAME_COUNT", "300", 1); setenv("MVK_CONFIG_LOG_LEVEL", "3", 1); }
-              int ds = mk_has("mvk_dumpshaders"); if (ds) { snprintf(dump, sizeof dump, "%s/mvk_shaders", gDocs); mkdir(dump, 0755); setenv("MVK_CONFIG_SHADER_DUMP_DIR", dump, 1); }
+              int ds = mk_has("mvk_dumpshaders"); if (ds) { logp(dump, sizeof dump, "mvk_shaders"); mkdir(dump, 0755); setenv("MVK_CONFIG_SHADER_DUMP_DIR", dump, 1); }
               L("MVKENV fast_math=%d log_level=%s argbuf_off=%d prefill=%d syncsubmit_off=%d perf_log=%d dumpshaders=%d stderr->mvk_stderr.log (%s)", fm, (pl || mk_has("mvk_log_info")) ? "3" : "2", ab, pf, ss, pl, ds, fd >= 0 ? "ok" : "FAILED"); if (pf == 3) L("MVKENV WARNING: prefill 3 assumes every recording thread has an autorelease pool; the guest render thread probably does not");
-          }
-          static void p2_hostcfg_setup(void) {
-              if (!gDocs[0]) return;
-              char dir[1200], path[1200]; snprintf(dir, sizeof dir, "%s/.p2", gDocs); mkdir(dir, 0755);
-              snprintf(path, sizeof path, "%s/controls.cfg", dir);
-              FILE *in = p2_cfg_open(), *out = fopen(path, "w");
-              if (!out) { L("HOSTCFG: cannot write %s", path); if (in) fclose(in); return; }
-              int count = 0; char line[512], key[256];
-              if (in) { while (fgets(line, sizeof line, in)) { key[0] = 0; if (sscanf(line, " %255s", key) != 1) continue;
-                  if (!strcmp(key, "upscale") || !strcmp(key, "gfx") || !strcmp(key, "gfxmanual") || !strcmp(key, "potato") || !strcmp(key, "quality") || !strcmp(key, "screen") || !strcmp(key, "fpscap") || !strcmp(key, "camera") || !strcmp(key, "modloader") || !strcmp(key, "mod") || !strcmp(key, "heatguard")) { fputs(line, out); count++; }
-                  else if (!strcmp(key, "host")) { char *v = strchr(line, ' '); if (v) { while (*v == ' ') v++; fputs(v, out); count++; } }
-              } fclose(in); }
-              fclose(out); L("HOSTCFG: wrote %s (%d directive(s))", path, count);
-              /* Generated host settings are isolated in .p2; the UI's p2.cfg remains the sole source of truth. */
-              { char v[64], p[1200]; snprintf(p, sizeof p, "%s/render_scale", dir); if (p2_cfg_value("screen", v, sizeof v) && atoi(v) >= 30 && atoi(v) <= 100) { FILE *f = fopen(p, "w"); if (f) { fprintf(f, "%d\n", atoi(v)); fclose(f); } } else unlink(p); }
-              { int v = mk_val("waitspin_"); char p[1200]; snprintf(p, sizeof p, "%s/waitspin", dir); if (v < 0) v = 1000; FILE *f = fopen(p, "w"); if (f) { fprintf(f, "%d\n", v); fclose(f); } }
-              { int v = mk_val("fakeaspect_"); char p[1200]; snprintf(p, sizeof p, "%s/fake_aspect", dir); if (v > 5000 && v < 40000) { FILE *f = fopen(p, "w"); if (f) { fprintf(f, "%d.%04d\n", v / 10000, v % 10000); fclose(f); } } else unlink(p); }
-              { const char *flags[] = {"nosplash", "env", "vkshot"}; for (unsigned i = 0; i < sizeof flags / sizeof flags[0]; i++) { char p[1200]; snprintf(p, sizeof p, "%s/%s", dir, flags[i]); if (mk_has(flags[i])) mkdir(p, 0755); else rmdir(p); } }
           }
           static void p2re_env_setup(void) {
               if (!gDocs[0]) return;
+              /* v103: nosplash is read by the game itself as a folder in its data folder (Documents/nosplash), so the loader mirrors the .p2.cfg entry onto that marker folder at every start */
+              { char nsp[1300]; snprintf(nsp, sizeof nsp, "%s/nosplash", gDocs); if (mk_has("nosplash")) mkdir(nsp, 0755); else rmdir(nsp); }
               if (p2_boot_flags) L("BOOT FLAGS (as seen when the app started):\n%s", p2_boot_flags);
               gRbOff = mk_has("rbtrace_off") ? 1 : 0; gTxOff = mk_has("textrace_off") ? 1 : 0; L("TEXTRACE: %s (folder textrace_off disables; needs RBTRACE on for the submit / done checks%s)", gTxOff ? "OFF" : "on", gRbOff ? "; RBTRACE IS OFF so only record-time facts are logged" : ""); L("RBTRACE: %s (folder rbtrace_off disables)", gRbOff ? "OFF" : "on"); gMaxLod = mk_val("maxlod_"); L("MAXLOD: %s", gMaxLod >= 0 ? "ON, every sampler the game creates gets maxLod capped at that value (folder maxlod_<N>; maxlod_0 = sample only the full-size mip level, so no mip data is ever read)" : "off (folder maxlod_0 pins every sampler to the full-size level; maxlod_<N> caps at level N; read at launch only)"); L("UPLOADGAP: %s (texture-like images older than 5 s whose mip levels were never written; reported in the TEXTRACE window; folder textrace_off disables)", gTxOff ? "OFF" : "on"); gSleepCap = mk_val("sleepcap_"); L("SLEEPCAP: %s", gSleepCap >= 0 ? "ON, guest sleeps of 2000..20000 us are shortened (folder sleepcap_<us>)" : "off (folder sleepcap_<us> shortens frame-sized guest sleeps to <us>; experiment)"); gWtOff = mk_has("waittrace_off") ? 1 : 0; L("WAITTRACE: %s (folder waittrace_off disables)", gWtOff ? "OFF" : "on"); gpuhud_start();
-              /* waitspin, fake_aspect and render_scale are materialized once in Documents/.p2 by p2_hostcfg_setup. */
+              { int ws = mk_val("waitspin_"); int wsDef = 0; if (ws < 0) { ws = 1000; wsDef = 1; } char wp[1200], wa[1200]; snprintf(wp, sizeof wp, "%s/waitspin", gDocs); snprintf(wa, sizeof wa, "%s/waitspin.p2auto", gDocs);
+                if (ws >= 0) { FILE *wf = fopen(wp, "w"); if (wf) { fprintf(wf, "%d\n", ws); fclose(wf); FILE *wm = fopen(wa, "w"); if (wm) fclose(wm); L("WAITSPIN: %s -> wrote Documents/waitspin = %d (game default 250 us; check the game's 'waits: spin N us' line)", wsDef ? "no waitspin_ folder, built-in default (v56)" : "folder override", ws); } else L("WAITSPIN: could not write Documents/waitspin"); }
+                }
+              { int fa = mk_val("fakeaspect_"); char fp[1200], fm[1200]; snprintf(fp, sizeof fp, "%s/fake_aspect", gDocs); snprintf(fm, sizeof fm, "%s/fake_aspect.p2auto", gDocs);
+                if (fa > 5000 && fa < 40000) { FILE *ff = fopen(fp, "w"); if (ff) { fprintf(ff, "%d.%04d\n", fa / 10000, fa % 10000); fclose(ff); FILE *fq = fopen(fm, "w"); if (fq) fclose(fq); L("FAKE_ASPECT: folder fakeaspect_%d -> wrote Documents/fake_aspect = %d.%04d (the game's own 'test switch fake_aspect' log line shows whether it was read)", fa, fa / 10000, fa % 10000); } else L("FAKE_ASPECT: could not write Documents/fake_aspect"); }
+                else if (fa >= 0) L("FAKE_ASPECT: folder fakeaspect_%d ignored (the ratio x 10000 must be between 5001 and 39999)", fa);
+                else if (mk_has("fake_aspect.p2auto")) { unlink(fp); unlink(fm); L("FAKE_ASPECT: no fakeaspect_ folder, removed the Documents/fake_aspect the loader wrote earlier"); }
+                else if (mk_has("fake_aspect")) L("FAKE_ASPECT: no fakeaspect_ folder; Documents/fake_aspect exists (made by hand) and is left alone"); }
+              { int rs = mk_val("renderscale_"); char rp[1200], rm[1200]; snprintf(rp, sizeof rp, "%s/render_scale", gDocs); snprintf(rm, sizeof rm, "%s/render_scale.p2auto", gDocs);   /* the host reads Documents/render_scale at launch (30..100, % of the panel) */
+                if (rs >= 30 && rs <= 100) { FILE *rf = fopen(rp, "w"); if (rf) { fprintf(rf, "%d\n", rs); fclose(rf); FILE *rq = fopen(rm, "w"); if (rq) fclose(rq); L("RENDER_SCALE: folder renderscale_%d -> wrote Documents/render_scale = %d", rs, rs); } else L("RENDER_SCALE: could not write Documents/render_scale"); }
+                else if (rs >= 0) L("RENDER_SCALE: folder renderscale_%d ignored (the host accepts 30 to 100)", rs);
+                else if (mk_has("render_scale.p2auto")) { unlink(rp); unlink(rm); L("RENDER_SCALE: no renderscale_ folder, removed the Documents/render_scale the loader wrote earlier"); } }
               { char dp[1300], dm[1300], txt[260] = {0}; int nn = 0; snprintf(dp, sizeof dp, "%s/../debugoff", gDocs); snprintf(dm, sizeof dm, "%s/../debugoff.p2auto", gDocs);
-                FILE *df = p2_cfg_open();
-                if (df) { char ln[512], key[256]; while (fgets(ln, sizeof ln, df)) { key[0] = 0; if (sscanf(ln, " %255s", key) != 1 || strncmp(key, "dbgoff_", 7) || !key[7]) continue;
-                    int okc = 1; for (const char *q = key + 7; *q; q++) if (!((*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9'))) okc = 0;
-                    size_t l = strlen(txt); if (okc && l + strlen(key + 7) + 2 < sizeof txt - 1) { snprintf(txt + l, sizeof txt - l, "%s%s", l ? " " : "", key + 7); nn++; } } fclose(df); }
+                { char cn[300]; int cit = 0; while (p2_cfg_next(&cit, cn, sizeof cn)) { const char *n = cn; if (strncmp(n, "dbgoff_", 7) || !n[7]) continue; int okc = 1; for (const char *q = n + 7; *q; q++) if (!((*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9'))) okc = 0;
+                    size_t l = strlen(txt); if (okc && l + strlen(n + 7) + 2 < sizeof txt - 1) { snprintf(txt + l, sizeof txt - l, "%s%s", l ? " " : "", n + 7); nn++; } } }
                 if (nn) { FILE *f = fopen(dp, "w"); if (f) { fprintf(f, "%s", txt); fclose(f); FILE *m = fopen(dm, "w"); if (m) fclose(m); L("DEBUGOFF: wrote %s = \"%s\" (the dev's own log line \"debugoff: ...\" in p2.log confirms it was read)", dp, txt); } else L("DEBUGOFF: cannot write %s", dp); }
-                else if (access(dm, F_OK) == 0) { unlink(dp); unlink(dm); L("DEBUGOFF: no dbgoff_ folders, removed the debugoff file the loader wrote earlier"); } }
+                else if (access(dm, F_OK) == 0) { unlink(dp); unlink(dm); L("DEBUGOFF: no dbgoff_ entries in .p2.cfg, removed the debugoff file the loader wrote earlier"); } }
           if (!mk_has("shadowmin_off")) { setenv("P2RE_VKSHADOWMIN", "1024", 1); L("P2RE_ENV built-in P2RE_VKSHADOWMIN=1024 (folder shadowmin_off removes it; a setenv_P2RE_VKSHADOWMIN=N folder overrides it)"); }
           else L("P2RE_ENV folder shadowmin_off: no built-in P2RE_VKSHADOWMIN, every shadow caster is drawn");
           setenv("P2RE_VKSHADOWHALF", "1", 1); L("P2RE_ENV built-in P2RE_VKSHADOWHALF=1 (half-size shadow maps)");
-          FILE *cfg = p2_cfg_open(); if (!cfg) { L("P2RE_ENV: cannot open Documents/p2.cfg"); return; }
-              int n = 0; char line[512], key[256];
-              while (fgets(line, sizeof line, cfg)) {
-                  key[0] = 0; if (sscanf(line, " %255s", key) != 1 || strncmp(key, "setenv_", 7)) continue;
-                  char nm[256]; snprintf(nm, sizeof nm, "%s", key + 7);
+          if (!p2_cfg_path()[0]) { L("P2RE_ENV: .p2.cfg is not available"); return; }
+              int n = 0; char en[300]; int eit = 0;
+              while (p2_cfg_next(&eit, en, sizeof en)) {
+                  if (strncmp(en, "setenv_", 7)) continue;
+                  char nm[256]; snprintf(nm, sizeof nm, "%s", en + 7);
                   const char *val = "1"; char *eq = strchr(nm, '=');
                   if (eq) { *eq = 0; val = eq + 1; if (!*val) val = "1"; }
                   int ok = !strncmp(nm, "P2RE_", 5) && nm[5];
                   for (const char *c = nm; ok && *c; c++) if (!((*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '_')) ok = 0;
-                  if (!ok) { L("P2RE_ENV ignored (only P2RE_ + capital letters/digits/_ are accepted): %s", key); continue; }
-                  if (!strcmp(nm, "P2RE_VKSHADOWHALF")) { L("P2RE_ENV ignored: P2RE_VKSHADOWHALF is built in since v72 (%s)", key); continue; }
-                  setenv(nm, val, 1); n++; L("P2RE_ENV setenv %s=%s", nm, val);
+                  if (!ok) { L("P2RE_ENV ignored (only P2RE_ + capital letters/digits/_ are accepted): %s", en); continue; }
+                  if (!strcmp(nm, "P2RE_VKSHADOWHALF")) { L("P2RE_ENV ignored: P2RE_VKSHADOWHALF is built in since v72 (%s)", en); continue; }
+              setenv(nm, val, 1); n++; L("P2RE_ENV setenv %s=%s", nm, val);
               }
-              fclose(cfg);
               if (getenv("P2RE_VKSHOT") && !getenv("P2RE_VKSHOTDIR")) {
-                  char sd[1200]; snprintf(sd, sizeof sd, "%s/vkshots", gDocs); mkdir(sd, 0755); setenv("P2RE_VKSHOTDIR", sd, 1);
+                  char sd[1200]; logp(sd, sizeof sd, "vkshots"); mkdir(sd, 0755); setenv("P2RE_VKSHOTDIR", sd, 1);
                   L("P2RE_ENV P2RE_VKSHOTDIR not given: set to %s (files named vkshot_<number>.bmp are expected there)", sd);
               }
               L("P2RE_ENV: %d switch(es) applied before the game starts; Documents/env %s, Documents/vkshot %s", n,
@@ -2106,15 +2139,13 @@ jobs:
           }
           static void dc_scan(void) {
               unsigned long long f = 0, x = 0; int a = mk_has("dontcare_auto");
-              if (gDocs[0]) { DIR *d = opendir(gDocs);
-                  if (d) { struct dirent *e;
-                      while ((e = readdir(d))) {
-                          int n;
-                          if (!strncmp(e->d_name, "dc_", 3) && e->d_name[3] >= '0' && e->d_name[3] <= '9') { n = atoi(e->d_name + 3); if (n >= 0 && n < SIG_N) f |= 1ULL << n; }
-                          else if (!strncmp(e->d_name, "dcx_", 4) && e->d_name[4] >= '0' && e->d_name[4] <= '9') { n = atoi(e->d_name + 4); if (n >= 0 && n < SIG_N) x |= 1ULL << n; }
-                      }
-                      closedir(d); } }
-              if (a != gDcAuto || f != gDcForce || x != gDcExcl) L("DONTCARE: auto %s, forced kinds mask 0x%llx (folders dc_K), excluded kinds mask 0x%llx (folders dcx_K). Kind numbers are the PASSSIG numbers of THIS run.", a ? "ON" : "off", f, x);
+              if (gDocs[0]) { char cn[300]; int cit = 0;
+                  while (p2_cfg_next(&cit, cn, sizeof cn)) {
+                      int n;
+                      if (!strncmp(cn, "dc_", 3) && cn[3] >= '0' && cn[3] <= '9') { n = atoi(cn + 3); if (n >= 0 && n < SIG_N) f |= 1ULL << n; }
+                      else if (!strncmp(cn, "dcx_", 4) && cn[4] >= '0' && cn[4] <= '9') { n = atoi(cn + 4); if (n >= 0 && n < SIG_N) x |= 1ULL << n; }
+                  } }
+              if (a != gDcAuto || f != gDcForce || x != gDcExcl) L("DONTCARE: auto %s, forced kinds mask 0x%llx (.p2.cfg entries dc_K), excluded kinds mask 0x%llx (.p2.cfg entries dcx_K). Kind numbers are the PASSSIG numbers of THIS run.", a ? "ON" : "off", f, x);
               gDcAuto = a; gDcForce = f; gDcExcl = x; gDcOn = a || f != 0;
           }
           static void dc_report(void) {
@@ -3882,7 +3913,7 @@ jobs:
           static unsigned cum_sorted(PfH *tab) { unsigned n = 0; for (int i = 0; i < CUM_SLOTS; i++) if (tab[i].n) gCumTmp[n++] = tab[i]; qsort(gCumTmp, n, sizeof(PfH), cum_cmp); return n; }
           static void cum_name(char *o, size_t n, uintptr_t key) { if (key == 1) snprintf(o, n, "no-entry threads"); else if (key == 2) snprintf(o, n, "vkpddi-named threads"); else snprintf(o, n, "entry e+%lx", (unsigned long)key); }
           static void cum_dump(unsigned win) {
-              FILE *f = NULL; if (gDocs[0]) { char p[1200]; snprintf(p, sizeof p, "%s/logs/pcprof_total.txt", gDocs); f = fopen(p, "w"); }
+              FILE *f = NULL; if (gDocs[0]) { char p[1200]; logp(p, sizeof p, "pcprof_total.txt"); f = fopen(p, "w"); }
               if (f) fprintf(f, "PCPROF cumulative, window %u. 64-byte buckets. Format: e+OFFSET count percent-of-group-samples. 'G' = where the thread was executing guest code; 'C' = return address of that sample (the caller).\n", win);
               for (int gi = 0; gi < gCumN; gi++) {
                   CumG *C = &gCum[gi]; if (!C->total) continue; char nm[48]; cum_name(nm, sizeof nm, C->key);
@@ -4009,7 +4040,7 @@ jobs:
                   }
               }
               if (gDocs[0] && win % 10 == 0) {
-                  char fp[1200]; snprintf(fp, sizeof fp, "%s/logs/waittrace_total.txt", gDocs); FILE *f = fopen(fp, "w");
+                  char fp[1200]; logp(fp, sizeof fp, "waittrace_total.txt"); FILE *f = fopen(fp, "w");
                   if (f) {
                       fprintf(f, "WAITTRACE cumulative since start (window %u). tid entry kind caller(e+) calls total_ms avg_us caller2(e+) caller3(e+). For cvwait/mutex caller is who called the libc++ wrapper; for sleep it is the shim caller, then two frames up (v54). walk ok %d fail %d, sleepcap %d clamped %d. Map e+ offsets with guest-syms.txt.\n", win, gWtWalkOk, gWtWalkFail, gSleepCap, gSleepClamped);
                       for (int t = 0; t < nt; t++) { int ne = __atomic_load_n(&gWt[t].ne, __ATOMIC_ACQUIRE); for (int i = 0; i < ne; i++) { WtE *e = &gWt[t].e[i];
@@ -4147,7 +4178,7 @@ jobs:
               if (!P2_OFF_NAOC) { L("ANativeActivity_onCreate is not exported, stopping"); return; }
               static NaCb cbs; static NaAct act; static char path[1100];
               snprintf(path, sizeof path, "%s", docs);
-              snprintf(gDocs, sizeof gDocs, "%s", docs); game_preflight(); p2_hostcfg_setup(); p2re_env_setup();
+              snprintf(gDocs, sizeof gDocs, "%s", docs); p2_cfg_init(docs); game_preflight(); p2re_env_setup();
           jni_setup();
               act.callbacks = &cbs; act.vm = &gVm; act.env = &gEnv; act.clazz = gClazz; act.internalDataPath = path; act.externalDataPath = path;
               act.sdkVersion = 35; act.assetManager = gAam; act.obbPath = path;
@@ -4174,29 +4205,38 @@ jobs:
           gWdStop = 1;
           }
           static char gRotNote[600]; static int gRotLegacy;
-          static void rotate_logs(const char *docs) {
+          static void rotate_logs(const char *logs, const char *docs) {   /* logs = Documents/Logs (the only place logs live now); docs = Documents, only swept of the old scattered copies */
               static const char *const lg[][2] = { {"p2", ".log"}, {"p2_loader_log", ".txt"}, {"mvk_stderr", ".log"}, {"waittrace_total", ".txt"}, {"pcprof_total", ".txt"} };
               gRotNote[0] = 0; gRotLegacy = 0;
               for (unsigned i = 0; i < sizeof lg / sizeof lg[0]; i++) {
                   char cur[1200], prv[1200]; struct stat st;
-                  snprintf(cur, sizeof cur, "%s/%s%s", docs, lg[i][0], lg[i][1]);
-                  snprintf(prv, sizeof prv, "%s/%s_prev%s", docs, lg[i][0], lg[i][1]);
+                  snprintf(cur, sizeof cur, "%s/%s%s", logs, lg[i][0], lg[i][1]);
+                  snprintf(prv, sizeof prv, "%s/%s_prev%s", logs, lg[i][0], lg[i][1]);
                   unlink(prv);
                   if (stat(cur, &st) == 0 && rename(cur, prv) == 0) { size_t n = strlen(gRotNote); snprintf(gRotNote + n, sizeof gRotNote - n, "%s%s%s -> %s_prev%s", n ? ", " : "", lg[i][0], lg[i][1], lg[i][0], lg[i][1]); }
-              }
-              DIR *d = opendir(docs); if (!d) return; struct dirent *e;
-              while ((e = readdir(d))) {
-                  const char *nm = e->d_name; size_t L0 = strlen("p2_loader_log_"), ln = strlen(nm);
-                  if (ln > L0 + 4 && strncmp(nm, "p2_loader_log_", L0) == 0 && nm[L0] >= '0' && nm[L0] <= '9' && strcmp(nm + ln - 4, ".txt") == 0) {
-                      char dp[1200]; snprintf(dp, sizeof dp, "%s/%s", docs, nm); if (unlink(dp) == 0) gRotLegacy++;
+                  if (strcmp(docs, logs)) {   /* leftovers of the old layout (logs next to the game files): redundant now, removed */
+                      snprintf(cur, sizeof cur, "%s/%s%s", docs, lg[i][0], lg[i][1]); snprintf(prv, sizeof prv, "%s/%s_prev%s", docs, lg[i][0], lg[i][1]);
+                      if (unlink(cur) == 0) gRotLegacy++; if (unlink(prv) == 0) gRotLegacy++;
                   }
               }
-              closedir(d);
+              const char *const dirs[2] = { logs, docs };
+              for (int di = 0; di < 2; di++) {
+                  if (di == 1 && !strcmp(docs, logs)) break;
+                  DIR *d = opendir(dirs[di]); if (!d) continue; struct dirent *e;
+                  while ((e = readdir(d))) {
+                      const char *nm = e->d_name; size_t L0 = strlen("p2_loader_log_"), ln = strlen(nm);
+                      if (ln > L0 + 4 && strncmp(nm, "p2_loader_log_", L0) == 0 && nm[L0] >= '0' && nm[L0] <= '9' && strcmp(nm + ln - 4, ".txt") == 0) {
+                          char dp[1200]; snprintf(dp, sizeof dp, "%s/%s", dirs[di], nm); if (unlink(dp) == 0) gRotLegacy++;
+                      }
+                  }
+                  closedir(d);
+              }
           }
           void p2_run(void (*emit)(const char *), const char *fw, const char *res, const char *report) {
               gEmit = emit; gRes = res;
               { size_t pn = 0; gPhdr = slurp(res, "p2phdr.bin", &pn); }
-              { char dd[1100]; snprintf(dd, sizeof dd, "%s", report); char *sl0 = strrchr(dd, '/'); if (sl0) { *sl0 = 0; rotate_logs(dd); } }
+              /* report = <Documents>/Logs/p2_loader_log.txt: the Logs folder is made here, Documents is its parent */
+              { char dd[1100], dc[1100]; snprintf(dd, sizeof dd, "%s", report); char *sl0 = strrchr(dd, '/'); if (sl0) { *sl0 = 0; mkdir(dd, 0755); snprintf(dc, sizeof dc, "%s", dd); char *sl1 = strrchr(dc, '/'); if (sl1) *sl1 = 0; rotate_logs(dd, dc); } }
               if (gFd < 0) gFd = open(report, O_WRONLY | O_CREAT | O_TRUNC, 0644);
               struct sigaction sa; memset(&sa, 0, sizeof sa); p2_altstack(); atexit(on_exit_log); sa.sa_sigaction = crash; sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
               int sigs[] = {SIGSEGV, SIGBUS, SIGILL, SIGTRAP, SIGABRT, SIGFPE};
@@ -4262,7 +4302,7 @@ jobs:
                   L("  status=%d result=%s", st, out ? out : "(null)"); free(out);
               }
               run_init_array(code);
-              { char docs[1100]; snprintf(docs, sizeof docs, "%s", report); char *sl2 = strrchr(docs, '/'); if (sl2) *sl2 = 0; run_activity(code, docs); }
+              { char docs[1100]; snprintf(docs, sizeof docs, "%s", report); char *sl2 = strrchr(docs, '/'); if (sl2) *sl2 = 0; sl2 = strrchr(docs, '/'); if (sl2) *sl2 = 0; run_activity(code, docs); }   /* report is in Documents/Logs, the game's data folder is Documents */
               L("== DONE: native code from the patched libp2re executed ==");
           }
           EOF_P2CORE_TAIL
@@ -4278,7 +4318,13 @@ jobs:
           #import <objc/message.h>
           #include "p2core.h"
 
-          /* v69: touch move coalescing + touch trace. Folders touch_coalesce and touch_trace (both off by default). */
+          /* v103: the flags that used to be folders in Documents live in Documents/.p2.cfg; every piece below reads and writes them through p2_cfg_* (p2core.c). */
+          static void cfgReady(void) {
+              static dispatch_once_t once;
+              dispatch_once(&once, ^{ p2_cfg_init([NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] fileSystemRepresentation]); });
+          }
+
+          /* v69: touch move coalescing + touch trace. Flags touch_coalesce and touch_trace (both off by default). */
           static int gTcInit, gTcCoalesce, gTcTrace;
           static CGPoint gTcPend[10]; static BOOL gTcPendOn[10];
           static double gTcWinStart, gTcLastTick, gTcLastIdle;
@@ -4288,10 +4334,9 @@ jobs:
           static BOOL gTcLink;   /* the display link exists (not hz_off) and ticks, so a tick can flush coalesced moves */
           static void tcInit(void) {
               if (gTcInit) return; gTcInit = 1;
-              NSString *d = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
-              NSFileManager *fm = NSFileManager.defaultManager;
-              gTcCoalesce = [fm fileExistsAtPath:[d stringByAppendingPathComponent:@"touch_coalesce"]];
-              gTcTrace = [fm fileExistsAtPath:[d stringByAppendingPathComponent:@"touch_trace"]];
+              cfgReady();
+              gTcCoalesce = p2_cfg_has("touch_coalesce");
+              gTcTrace = p2_cfg_has("touch_trace");
               p2_note([NSString stringWithFormat:@"TOUCH: move coalescing %s (folder touch_coalesce), touch trace %s (folder touch_trace)", gTcCoalesce ? "ON" : "off", gTcTrace ? "ON" : "off"].UTF8String);
           }
           static uint64_t tcNs(uint64_t t) { static mach_timebase_info_data_t tb; if (!tb.denom) mach_timebase_info(&tb); return t * tb.numer / tb.denom; }
@@ -4452,7 +4497,7 @@ jobs:
           </dict></plist>
           EOF_APPPLIST
           # ---- v66: app icon. Order: icon_url input, then p2-icon.png in the repo root, then the best launcher PNG inside the APK ----
-          mkdir -p ../iconwork && ( . ../.venv/bin/activate && pip install -q pillow )
+          mkdir -p ../iconwork ../Logs && ( . ../.venv/bin/activate && pip install -q pillow )
           ICON_SRC=""
           if [ -n "$ICON_URL" ]; then
             case "$ICON_URL" in
@@ -4494,7 +4539,7 @@ jobs:
           for name, px in (("LauncherIcon.png", 1024), ("AppIcon60x60@3x.png", 180), ("AppIcon60x60@2x.png", 120)):
               flat.resize((px, px), Image.LANCZOS).save(os.path.join(app, name)); print("ICON wrote", name, px)
           EOF_ICON_PY
-          ( . ../.venv/bin/activate && python3 ../iconwork/mkicon.py "$APP" ../game.apk "$ICON_SRC" ) 2>&1 | tee ../iconwork/icon.log
+          ( . ../.venv/bin/activate && python3 ../iconwork/mkicon.py "$APP" ../game.apk "$ICON_SRC" ) 2>&1 | tee ../Logs/icon.log
           rm -f "Prototype 2.ipa"
           zip -qry "Prototype 2.ipa" Payload
           ls -l "Prototype 2.ipa"

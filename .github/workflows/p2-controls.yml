@@ -616,8 +616,9 @@ jobs:
           static void ownLoad(void) {
               if (gOwnLoaded) return; gOwnLoaded = 1;
               NSString *d = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
-              gOwnOn = [NSFileManager.defaultManager fileExistsAtPath:[d stringByAppendingPathComponent:@"own_layout"]];
-              gSwClassic = [NSFileManager.defaultManager fileExistsAtPath:[d stringByAppendingPathComponent:@"swipe_classic"]];
+              cfgReady();   /* v103: the own_layout and swipe_classic flags are lines in .p2.cfg; the own_layout folder still holds own_layout.txt */
+              gOwnOn = p2_cfg_has("own_layout") != 0;
+              gSwClassic = p2_cfg_has("swipe_classic") != 0;
               { NSString *camRoot = [d stringByAppendingPathComponent:@"camera.txt"];
                 NSString *ct = [NSString stringWithContentsOfFile:camRoot encoding:NSUTF8StringEncoding error:nil];   /* the camera percents are global */
                 for (NSString *ln in [ct componentsSeparatedByString:@"\n"]) { const char *c = ln.UTF8String; float a, b; if (c && c[0] != '#' && sscanf(c, "camsens %f %f", &a, &b) == 2) { gCamSx = a; gCamSy = b; } }

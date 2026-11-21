@@ -65,7 +65,7 @@ jobs:
           fi
       - name: Imports and Vulkan names (cheap, no Ghidra)
         run: |
-          mkdir -p out
+          mkdir -p out Logs
           nm -D --undefined-only by work/libp2re.so > out/imports.txt 2>out/imports.err || true
           nm -D --defined-only -S -n work/libp2re.so 2>>out/imports.err | gzip -9 > out/zz-exports.txt.gz || true
           python3 - <<'EOF_VKNAMES'
@@ -972,16 +972,24 @@ jobs:
           }
           EOF_P2DECOMP
           # Whole-program auto-analysis is skipped on purpose (the library is ~100 MB of recompiled code); the script makes functions only where asked.
-          "$G/support/analyzeHeadless" "$PWD/ghproj" p2 -import work/libp2re.so -noanalysis -readOnly -max-cpu 2 -scriptPath "$PWD/ghscripts" -postScript P2Decomp.java "$PWD/targets.txt" "$PWD/out" 2>&1 | tee out/ghidra.log | tail -n 400
+          "$G/support/analyzeHeadless" "$PWD/ghproj" p2 -import work/libp2re.so -noanalysis -readOnly -max-cpu 2 -scriptPath "$PWD/ghscripts" -postScript P2Decomp.java "$PWD/targets.txt" "$PWD/out" 2>&1 | tee Logs/ghidra.log | tail -n 400
       - name: Step summary
         if: always()
         continue-on-error: true
         run: |
-          { echo '```'; grep -E 'P2Decomp|target |roots:|ERROR|Exception' out/ghidra.log 2>/dev/null | head -n 80; echo '--- functions.txt (first 80) ---'; head -n 80 out/functions.txt 2>/dev/null; echo '```'; } >> $GITHUB_STEP_SUMMARY
+          { echo '```'; grep -E 'P2Decomp|target |roots:|ERROR|Exception' Logs/ghidra.log 2>/dev/null | head -n 80; echo '--- functions.txt (first 80) ---'; head -n 80 out/functions.txt 2>/dev/null; echo '```'; } >> $GITHUB_STEP_SUMMARY
       - name: Upload decompile output (contains decompiled game code, private repo only)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: p2-decomp
           path: out/
+          retention-days: 3
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-decomp-logs
+          path: Logs/
+          if-no-files-found: ignore
           retention-days: 3
