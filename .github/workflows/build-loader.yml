@@ -4448,6 +4448,7 @@ jobs:
           #import <Metal/Metal.h>
           #import <QuartzCore/QuartzCore.h>
           #import <MetalFX/MetalFX.h>
+          #import <mach/mach_time.h>
 
           /* METALFX (EXPERIMENT, p2.cfg line metalfx_on). Called from the present hook in the loader, before MoltenVK's own present.
              It takes the game's low-res swapchain image as an MTLTexture (VK_EXT_metal_objects), runs a MetalFX spatial scaler on the SAME MTLCommandQueue (so it is ordered after the
@@ -4463,12 +4464,16 @@ jobs:
           typedef int (*MfxImgsFn)(void *, void *, unsigned *, void **);
 
           static void mfxlog(NSString *s) { p2_note(s.UTF8String); }
+          /* v106: MetalFX must never hold up the game's present. At most 2 output drawables may be in flight (the layer has 3), so nextDrawable can not block;
+             if both are busy this frame is skipped (the previous MetalFX picture stays up for one frame) instead of stalling the game thread. */
+          static volatile int mfxInflight; static int mfxSkipRun, mfxSkipped;
+          static double mfxNdSum, mfxNdMax; static int mfxNdN;
           static void mfxHide(CAMetalLayer *ml, BOOL hide) {
               static int cur = -1; if (cur == (hide ? 1 : 0)) return; cur = hide ? 1 : 0;
               dispatch_async(dispatch_get_main_queue(), ^{ [CATransaction begin]; [CATransaction setDisableActions:YES]; ml.hidden = hide; [CATransaction commit]; });
           }
 
-          void p2_mfx_frame(void *dev, void *queue, const void *pi, void *(*gdpa)(void *, const char *)) {
+          static void mfx_frame_impl(void *dev, void *queue, const void *pi, void *(*gdpa)(void *, const char *)) {
               static int dead, frames;
               static MfxExportFn expf; static MfxImgsFn getf;
               static CAMetalLayer *ml; static id sc; static NSUInteger iw, ih; static MTLPixelFormat ifmt;
@@ -4514,7 +4519,15 @@ jobs:
                           iw = src.width; ih = src.height; ifmt = src.pixelFormat;
                           mfxlog([NSString stringWithFormat:@"METALFX: scaler %lux%lu (format %lu, usage 0x%lx) -> %lux%lu", (unsigned long)iw, (unsigned long)ih, (unsigned long)ifmt, (unsigned long)src.usage, (unsigned long)W, (unsigned long)H]);
                       }
+                      if (__atomic_load_n(&mfxInflight, __ATOMIC_ACQUIRE) >= 2) {   /* v106: both output drawables are busy, skip instead of blocking the game */
+                          mfxSkipped++; if (++mfxSkipRun > 30) { __atomic_store_n(&mfxInflight, 0, __ATOMIC_RELEASE); mfxSkipRun = 0; mfxlog(@"METALFX: output drawables looked stuck, limiter reset"); }
+                          return;
+                      }
+                      mfxSkipRun = 0;
+                      uint64_t ndT0 = mach_absolute_time();
                       id<CAMetalDrawable> dr = [ml nextDrawable]; if (!dr) return;
+                      { static mach_timebase_info_data_t tb; if (!tb.denom) mach_timebase_info(&tb); double ms = (double)(mach_absolute_time() - ndT0) * tb.numer / tb.denom / 1e6; mfxNdSum += ms; mfxNdN++; if (ms > mfxNdMax) mfxNdMax = ms; }
+                      __atomic_add_fetch(&mfxInflight, 1, __ATOMIC_ACQ_REL);
                       id<MTLFXSpatialScaler> s = sc;
                       /* SHARPEN: scale into a private full-size texture, then a contrast-adaptive sharpen (CAS, same idea as FSR's RCAS) writes the drawable */
                       int sharp = (p2_mfx_sharp > 0 && !sharpDead);
@@ -4559,11 +4572,24 @@ jobs:
                           NSUInteger tw = sps.threadExecutionWidth, th = MAX((NSUInteger)1, sps.maxTotalThreadsPerThreadgroup / tw);
                           [ce dispatchThreads:MTLSizeMake(W, H, 1) threadsPerThreadgroup:MTLSizeMake(tw, th, 1)]; [ce endEncoding];
                       }
+                      [dr addPresentedHandler:^(id<MTLDrawable> d) { (void)d; __atomic_sub_fetch(&mfxInflight, 1, __ATOMIC_ACQ_REL); }];
                       [cb presentDrawable:dr]; [cb commit];
                       mfxHide(ml, NO);
                       if (++frames == 1) mfxlog(@"METALFX: first scaled frame presented");
                   }
               } else { mfxlog(@"METALFX: needs iOS 16, switched off"); dead = 1; }
+          }
+          /* v106: wrapper. Times the whole MetalFX call on the game's present thread and logs a summary every 300 frames, so the next log shows exactly what MetalFX costs there. */
+          void p2_mfx_frame(void *dev, void *queue, const void *pi, void *(*gdpa)(void *, const char *)) {
+              static mach_timebase_info_data_t tb; static double sum, mx; static int n; if (!tb.denom) mach_timebase_info(&tb);
+              uint64_t t0 = mach_absolute_time();
+              mfx_frame_impl(dev, queue, pi, gdpa);
+              if (!pi) return;
+              double ms = (double)(mach_absolute_time() - t0) * tb.numer / tb.denom / 1e6; sum += ms; if (ms > mx) mx = ms;
+              if (++n >= 300) {
+                  mfxlog([NSString stringWithFormat:@"METALFX TIMING (last %d presents): whole call avg %.2f ms max %.2f ms | waiting for output drawable avg %.2f ms max %.2f ms | frames skipped %d", n, sum / n, mx, mfxNdN ? mfxNdSum / mfxNdN : 0.0, mfxNdMax, mfxSkipped]);
+                  sum = 0; mx = 0; n = 0; mfxNdSum = 0; mfxNdMax = 0; mfxNdN = 0; mfxSkipped = 0;
+              }
           }
           EOF_MFX_M
           clang -target arm64-apple-ios15.0 -isysroot "$SDK" -fobjc-arc -O1 -framework UIKit -framework Foundation -framework Metal -framework QuartzCore -framework AudioToolbox -framework AVFoundation -framework CoreGraphics -weak_framework MetalFX $MVK_LINK main.m mfx.m p2core.c p2imports.c p2stubs.s p2asm.s -o $APP/P2Loader
