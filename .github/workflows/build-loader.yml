@@ -1225,6 +1225,7 @@ jobs:
           static struct { uintptr_t caller; long us; int n; } gSl[16];
           static int gSlLock; static long gSlLastSec = -1; static long gSlTotal; static int gSlLines;
           static void sl_note(uintptr_t caller, long us) {
+              if (gWtOff) return;
               while (__atomic_exchange_n(&gSlLock, 1, __ATOMIC_ACQUIRE)) sched_yield();
               gSlTotal++;
               int k = -1;
@@ -1246,11 +1247,11 @@ jobs:
               if (doLog) L("SLEEPTRACE last second:%s (total calls so far %ld)", buf, tot);
           }
           #define SLEEPCAP_FIX(us) do { if (gSleepCap >= 0 && (us) >= 2000 && (us) <= 20000 && (us) > (unsigned long)gSleepCap) { (us) = (unsigned long)gSleepCap; __atomic_add_fetch(&gSleepClamped, 1, __ATOMIC_RELAXED); } } while (0)
-          static int sh_usleep(unsigned int us) { sl_note((uintptr_t)__builtin_return_address(0) - (uintptr_t)gBase, (long)us); uintptr_t c0 = WT_CALLER(), c1 = 0, c2 = 0; if (!wt_walk(__builtin_frame_address(0), &c1, &c2)) { c1 = 0; c2 = 0; } unsigned long u = us; SLEEPCAP_FIX(u); unsigned long long t0 = wt_now(); int r = usleep((useconds_t)u); wt_add3(WK_SLEEP, c0, c1, c2, wt_now() - t0); return r; }
-          static int sh_sched_yield(void) { unsigned long long t0 = wt_now(); int r = sched_yield(); wt_add(WK_YIELD, WT_CALLER(), wt_now() - t0); return r; }
+          static int sh_usleep(unsigned int us) { sl_note((uintptr_t)__builtin_return_address(0) - (uintptr_t)gBase, (long)us); uintptr_t c0 = WT_CALLER(), c1 = 0, c2 = 0; if (gWtOff || !wt_walk(__builtin_frame_address(0), &c1, &c2)) { c1 = 0; c2 = 0; } unsigned long u = us; SLEEPCAP_FIX(u); unsigned long long t0 = wt_now(); int r = usleep((useconds_t)u); wt_add3(WK_SLEEP, c0, c1, c2, wt_now() - t0); return r; }
+          static int sh_sched_yield(void) { if (gWtOff) return sched_yield(); unsigned long long t0 = wt_now(); int r = sched_yield(); wt_add(WK_YIELD, WT_CALLER(), wt_now() - t0); return r; }
           static int sh_nanosleep(const struct timespec *rq, struct timespec *rm) {
               sl_note((uintptr_t)__builtin_return_address(0) - (uintptr_t)gBase, rq ? (long)(rq->tv_sec * 1000000L + rq->tv_nsec / 1000) : -1);
-              { uintptr_t c0 = WT_CALLER(), c1 = 0, c2 = 0; if (!wt_walk(__builtin_frame_address(0), &c1, &c2)) { c1 = 0; c2 = 0; }
+              { uintptr_t c0 = WT_CALLER(), c1 = 0, c2 = 0; if (gWtOff || !wt_walk(__builtin_frame_address(0), &c1, &c2)) { c1 = 0; c2 = 0; }
                 struct timespec cq; const struct timespec *use = rq;
                 if (rq && gSleepCap >= 0 && rq->tv_sec == 0) { unsigned long us = (unsigned long)(rq->tv_nsec / 1000); SLEEPCAP_FIX(us); if (us != (unsigned long)(rq->tv_nsec / 1000)) { cq.tv_sec = 0; cq.tv_nsec = (long)us * 1000L; use = &cq; } }
                 unsigned long long t0 = wt_now(); int r = nanosleep(use, rm); wt_add3(WK_SLEEP, c0, c1, c2, wt_now() - t0); return r; }
@@ -1659,6 +1660,37 @@ jobs:
               }
               return 0;
           }
+          /* PERF: p2.cfg is parsed once into memory. The file is stat()ed at most every 500 ms (so hand edits and the *_now triggers still show up); every lookup is a memory scan, no fopen. */
+          static char **gCfgLines; static int gCfgNL, gCfgCap, gCfgLoaded; static off_t gCfgSz; static long gCfgMtS, gCfgMtN; static long long gCfgChk;
+          static void cfg_stat_key(const struct stat *st, off_t *sz, long *ms, long *mn) {
+              *sz = st->st_size;
+          #ifdef __APPLE__
+              *ms = (long)st->st_mtimespec.tv_sec; *mn = (long)st->st_mtimespec.tv_nsec;
+          #else
+              *ms = (long)st->st_mtime; *mn = 0;
+          #endif
+          }
+          static void cfg_load_locked(void) {
+              struct stat st; for (int i = 0; i < gCfgNL; i++) free(gCfgLines[i]); gCfgNL = 0; gCfgLoaded = 1; gCfgChk = fx_now_ns(CLOCK_MONOTONIC);
+              if (stat(gCfgPath, &st) != 0) { gCfgSz = -1; gCfgMtS = gCfgMtN = 0; return; }
+              cfg_stat_key(&st, &gCfgSz, &gCfgMtS, &gCfgMtN);
+              FILE *f = fopen(gCfgPath, "r"); if (!f) return;
+              char b[1200];
+              while (cfg_line(f, b, sizeof b)) {
+                  if (gCfgNL == gCfgCap) { int nc = gCfgCap ? gCfgCap * 2 : 64; char **p = realloc(gCfgLines, (size_t)nc * sizeof *p); if (!p) break; gCfgLines = p; gCfgCap = nc; }
+                  char *d = strdup(b); if (!d) break; gCfgLines[gCfgNL++] = d;
+              }
+              fclose(f);
+          }
+          static void cfg_refresh_locked(void) {
+              if (!gCfgLoaded) { cfg_load_locked(); return; }
+              long long now = fx_now_ns(CLOCK_MONOTONIC); if (now - gCfgChk < 500000000LL) return;
+              gCfgChk = now;
+              struct stat st; off_t sz = -1; long ms = 0, mn = 0;
+              if (stat(gCfgPath, &st) == 0) cfg_stat_key(&st, &sz, &ms, &mn);
+              if (sz != gCfgSz || ms != gCfgMtS || mn != gCfgMtN) cfg_load_locked();
+          }
+          static int cfg_has_locked(const char *name) { cfg_refresh_locked(); for (int i = 0; i < gCfgNL; i++) if (!strcmp(gCfgLines[i], name)) return 1; return 0; }
           static int cfg_write(const char *body_extra, const char *skip) {   /* rewrite the file: all lines except skip, then body_extra; atomic via rename */
               char tmp[1260], b[1200]; snprintf(tmp, sizeof tmp, "%s.tmp", gCfgPath);
               FILE *o = fopen(tmp, "w"); if (!o) return 0;
@@ -1671,7 +1703,7 @@ jobs:
               if (!hadHdr) fputs(kCfgHeader, o);
               if (body_extra) fprintf(o, "%s\n", body_extra);
               if (fclose(o) != 0) { unlink(tmp); return 0; }
-              return rename(tmp, gCfgPath) == 0;
+              { int ok_ = rename(tmp, gCfgPath) == 0; if (ok_) cfg_load_locked(); return ok_; }
           }
           void p2_cfg_init(const char *docs) {
               if (!docs || !*docs) return;
@@ -1698,28 +1730,25 @@ jobs:
           const char *p2_cfg_path(void) { return gCfgPath; }
           int p2_cfg_next(int *it, char *out, size_t n) {
               if (!gCfgPath[0] || !it || !out || !n) return 0;
-              FILE *f = fopen(gCfgPath, "r"); if (!f) return 0;
-              char b[1200]; int i = 0, r = 0;
-              while (cfg_line(f, b, sizeof b)) if (i++ == *it) { snprintf(out, n, "%s", b); (*it)++; r = 1; break; }
-              fclose(f); return r;
+              pthread_mutex_lock(&gCfgMu); cfg_refresh_locked();
+              int r = 0; if (*it >= 0 && *it < gCfgNL) { snprintf(out, n, "%s", gCfgLines[*it]); (*it)++; r = 1; }
+              pthread_mutex_unlock(&gCfgMu); return r;
           }
           int p2_cfg_has(const char *name) {
               if (!gCfgPath[0] || !name || !*name) return 0;
-              FILE *f = fopen(gCfgPath, "r"); if (!f) return 0;
-              char b[1200]; int r = 0; while (cfg_line(f, b, sizeof b)) if (!strcmp(b, name)) { r = 1; break; }
-              fclose(f); return r;
+              pthread_mutex_lock(&gCfgMu); int r = cfg_has_locked(name); pthread_mutex_unlock(&gCfgMu); return r;
           }
           int p2_cfg_val(const char *prefix) {
               if (!gCfgPath[0] || !prefix) return -1;
-              FILE *f = fopen(gCfgPath, "r"); if (!f) return -1;
-              char b[1200]; int r = -1; size_t pl = strlen(prefix);
-              while (cfg_line(f, b, sizeof b)) if (!strncmp(b, prefix, pl) && b[pl] >= '0' && b[pl] <= '9') { r = atoi(b + pl); break; }
-              fclose(f); return r;
+              pthread_mutex_lock(&gCfgMu); cfg_refresh_locked();
+              int r = -1; size_t pl = strlen(prefix);
+              for (int i = 0; i < gCfgNL; i++) { const char *b = gCfgLines[i]; if (!strncmp(b, prefix, pl) && b[pl] >= '0' && b[pl] <= '9') { r = atoi(b + pl); break; } }
+              pthread_mutex_unlock(&gCfgMu); return r;
           }
           int p2_cfg_set(const char *name, int on) {
               if (!gCfgPath[0] || !name || !*name) return 0;
               pthread_mutex_lock(&gCfgMu);
-              int has = p2_cfg_has(name), r = 1;
+              int has = cfg_has_locked(name), r = 1;
               if (on != has) r = cfg_write(on ? name : NULL, on ? NULL : name);
               pthread_mutex_unlock(&gCfgMu);
               return r;
@@ -2207,7 +2236,7 @@ jobs:
               if ((gSigStats || gDcOn) && fr % 300 == 0) sig_report(fr);
           }
           static int pr_draw(void) {
-              __sync_fetch_and_add(&gDrawTot, 1); PRec *r = tCur; if (!r) { __sync_fetch_and_add(&gDrawOut, 1); return 0; }
+              __atomic_fetch_add(&gDrawTot, 1, __ATOMIC_RELAXED); PRec *r = tCur; if (!r) { __atomic_fetch_add(&gDrawOut, 1, __ATOMIC_RELAXED); return 0; }
               unsigned k = r->draws++; if (k == 0 || k == 49) {
                   PSt *s = &r->s[k ? 1 : 0]; s->ok = 1; if (tVpOK) s->vp = tVp; if (tScOK) memcpy(s->sc, tSc, sizeof s->sc);
                   s->cull = tCull; s->front = tFront; s->dt = tDT; s->dw = tDW; s->dop = tDop;
@@ -2487,7 +2516,8 @@ jobs:
               uint64_t addr = me.a + (be.c + lo - me.b), tot = (lo & 255u) + span, pos;
               sn_lock(); pos = (gSnHead + 255u) & ~255ULL; if (pos + tot > gSnSize) { pos = 0; gSnWrap++; } gSnHead = pos + tot; sn_unlock();
               uint64_t base = pos + (lo & 255u);
-              if (!safe_rd(addr, gSnPtr + base, (size_t)span)) { __atomic_add_fetch(&gSnSk[3], 1, __ATOMIC_RELAXED); return 0; }
+              if (be.a && hi <= be.a) memcpy(gSnPtr + base, (const void *)addr, (size_t)span);   /* PERF: span is inside the bound buffer, plain memcpy instead of a Mach vm_read_overwrite */
+              else if (!safe_rd(addr, gSnPtr + base, (size_t)span)) { __atomic_add_fetch(&gSnSk[3], 1, __ATOMIC_RELAXED); return 0; }
               memcpy(out, rg, (size_t)n * stride);
               for (unsigned i = 0; i < n; i++) { const VkBIC *r = (const VkBIC *)(rg + i * stride + off); *(uint64_t *)((char *)out + i * stride + off) = base + (r->off - lo); }
               unsigned long long k = __atomic_add_fetch(&gSnN, 1, __ATOMIC_RELAXED); __atomic_add_fetch(&gSnBytes, span, __ATOMIC_RELAXED);
@@ -2913,7 +2943,7 @@ jobs:
               static int said, cfgd, logs, cfgtry; uintptr_t base = gBase + DEV_BTN_VECS; unsigned total = 0, cleared = 0;
               for (int i = 0; i < 6; i++) {
                   uintptr_t v[3] = {0, 0, 0};
-                  if (!safe_rd(base + (uintptr_t)i * 0x18, v, sizeof v)) return;
+                  memcpy(v, (const void *)(base + (uintptr_t)i * 0x18), sizeof v);   /* PERF: plain read (the write below is already unguarded); was a Mach call */
                   if (v[1] < v[0] || v[1] - v[0] > (1u << 20)) continue;
                   unsigned n = (unsigned)((v[1] - v[0]) / 0x2c); total += n;
                   if (v[1] != v[0]) { *(volatile uintptr_t *)(base + (uintptr_t)i * 0x18 + 8) = v[0]; cleared += n; }
@@ -4065,10 +4095,11 @@ jobs:
               }
               (void)tot_w;
           }
+          static int dm_on(void) { static int v = -1; if (v < 0) v = mk_has("dropmon_on") ? 1 : 0; return v; }   /* PERF: DROPMON is an old diagnostic, off unless p2.cfg has dropmon_on */
           static void *mem_thread(void *p) {
               (void)p;
               for (;;) {
-                  dm_window();
+                  if (dm_on()) dm_window(); else usleep(2000000);
                   task_vm_info_data_t vi; mach_msg_type_number_t cnt = TASK_VM_INFO_COUNT;
                   if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vi, &cnt) == KERN_SUCCESS)
                       L("MEM footprint %llu MB, iOS says %llu MB still available to this app", (unsigned long long)(vi.phys_footprint >> 20), (unsigned long long)(os_proc_available_memory() >> 20));
