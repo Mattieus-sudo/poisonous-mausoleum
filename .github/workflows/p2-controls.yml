@@ -329,7 +329,8 @@ jobs:
                   else { bbW = (int)(gCliW * bbRx); bbH = (int)(gCliH * bbRy); L("MENUPLACE: not usable, using render/client ratio %.4f x %.4f -> %dx%d", bbRx, bbRy, bbW, bbH); }
                   bbReal = gCliReal;
               }
-              cx = (int)(fx * (float)bbW / tvw); cy = (int)(fy * (float)bbH / tvh);
+              static int msInit, msPct = 100; if (!msInit) { msInit = 1; int v = mk_val("menu_scale_"); if (v >= 50 && v <= 150) msPct = v; L("MENUPLACE: cursor space scale %d percent (folder menu_scale_N, 100 = the game's own render size; below 100 if the cursor lands right of / below the finger)", msPct); }
+              cx = (int)(fx * (float)bbW * (float)msPct / 100.0f / tvw); cy = (int)(fy * (float)bbH * (float)msPct / 100.0f / tvh);
               if (cx < 0) cx = 0; if (cy < 0) cy = 0; if (cx > bbW - 1) cx = bbW - 1; if (cy > bbH - 1) cy = bbH - 1;
               if (doWarp && !held) { gPlX = cx; gPlY = cy; gPlStart = fx_now_ns(CLOCK_UPTIME_RAW); acc_write(-30000, -30000, 0); gPlPh = 1; }
               else if (doWarp) {
