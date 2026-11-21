@@ -1,4 +1,4 @@
-name: "P2 controls source (v100 touch timing diagnostics)"
+name: "P2 controls source (v104 dynamic menu render space)"
 # (icons and layouts hook in here: the picture code is in p2-icons.yml, the per-layout code in p2-layouts.yml; both are joined into main.m around this piece)
 # CONTROLS: the touch input path in p2core.c (pan smoothing, right stick, swipe feed) and, in main.m, the own controls, the right stick and its menu, custom buttons and the add list.
 # Called by build-loader.yml (uses: ./.github/workflows/p2-controls.yml). It only writes source text and uploads it; the loader joins the pieces and compiles.
@@ -185,7 +185,7 @@ jobs:
           #define EO_NOWNS         0x5a7b440UL   /* _Z5NowNsv: the game's own clock (ARM counter = CLOCK_UPTIME_RAW; it does NOT count device sleep) */
           #define EO_POSTRAWBTN    0x5ac36a0UL   /* _Z18PostRawMouseButtonib (button, down): the dev's own left click calls it right after writing its ring entry */
           int p2_layout_ok(void);
-          static int gMenuInit, gMenuAutoOff, gMenuForce, gMenuCurOff, gMenuAuto, gMcSpeed = 90, gCliW = 1616, gCliH = 728;
+          static int gMenuInit, gMenuAutoOff, gMenuForce, gMenuCurOff, gMenuAuto, gMcSpeed = 90, gCliW = 1616, gCliH = 728, gCliReal;
           static long long gMenuAt, gCliAt;
           static double gMcDx, gMcDy;   /* pixels the stick still owes the cursor (client space), under gInMu */
           static volatile float gTvW, gTvH;   /* v91: the REAL size of the touch view in pixels (bounds x nativeScale), set by the UI thread from every touch. p2_win_w/h is a hardcoded 2556x1179 and is only right on that one phone. */
@@ -260,7 +260,7 @@ jobs:
               unsigned long hw = ((unsigned long (*)(void))(gBase + EO_GUESTWIN))();
               int w = 1616, h = 728;
               if ((int)hw) ((void (*)(unsigned, int *, int *))(gBase + EO_GUESTWINSIZE))((unsigned)hw, &w, &h);
-              if (w > 16 && h > 16 && w < 20000 && h < 20000) { gCliW = w; gCliH = h; }
+              if ((int)hw && w > 16 && h > 16 && w < 20000 && h < 20000) { gCliW = w; gCliH = h; gCliReal = 1; }   /* v104: gCliReal = this is the game window's size, not the 1616x728 placeholder */
           }
           static void btn_push(int button, int down, int x, int y) {   /* the dev's mouse-button function (elf 0x5a69c30) done by hand: ring entry type 0xC+button, button byte Input()+0x964+button, WM message. No cursor movement, unlike SetTouchMouse. */
               uint8_t *mu = (uint8_t *)(gBase + EO_MOUSEMU); volatile uint32_t *ip = (volatile uint32_t *)(gBase + EO_MOUSERINGIDX);
@@ -317,10 +317,18 @@ jobs:
               int cx = (int)(fx * (float)gCliW / tvw), cy = (int)(fy * (float)gCliH / tvh);
               if (cx < 0) cx = 0; if (cy < 0) cy = 0; if (cx > gCliW - 1) cx = gCliW - 1; if (cy > gCliH - 1) cy = gCliH - 1;
               /* v92d: the counters integrate in the game's RENDER space (the dev's "arrow 1442,144 of 1568x720"), not client space: client coordinates land client/render = 1.22 times too far right and down. */
-              static int bbDone, bbW, bbH;
-              if (!bbDone) { bbDone = 1; unsigned long r = ((unsigned long (*)(int, int))(gBase + 0x5a693f0UL))(gCliW, gCliH); int a = (int)(r & 0xffffffffu), b = (int)(r >> 32);
-                  L("MENUPLACE: GameBackBufferSize(%d,%d) returned 0x%lx -> %d x %d", gCliW, gCliH, r, a, b);
-                  if (a > 16 && b > 16 && a <= gCliW + 8 && b <= gCliH + 8) { bbW = a; bbH = b; } else { bbW = (int)(gCliW * 0.81667f); bbH = (int)(gCliH * 0.81448f); L("MENUPLACE: not usable, assuming render %dx%d (the 1568x720 of the dev's log, scaled)", bbW, bbH); } }
+              /* v104: DYNAMIC RENDER SPACE. The one-shot cache (bbDone) is gone. The game's render size is asked again whenever the game window's size changes (render scale, rotation, a window that only
+                 became real after the first touch), so the finger -> cursor map is always finger / view * the CURRENT render size. A result outside the client is refused and the last good
+                 render/client ratio is reused (the 0.8167 / 0.8145 of the dev's 1568x720 log is only the very last resort). */
+              static int bbW, bbH, bbForW, bbForH, bbReal; static float bbRx = 0.81667f, bbRy = 0.81448f;
+              if (!bbW || bbForW != gCliW || bbForH != gCliH || (!bbReal && gCliReal)) {
+                  bbForW = gCliW; bbForH = gCliH;
+                  unsigned long r = ((unsigned long (*)(int, int))(gBase + 0x5a693f0UL))(gCliW, gCliH); int a = (int)(r & 0xffffffffu), b = (int)(r >> 32);
+                  static int nbb; if (nbb++ < 40) L("MENUPLACE: GameBackBufferSize(%d,%d) returned 0x%lx -> %d x %d (client size %s)", gCliW, gCliH, r, a, b, gCliReal ? "real" : "placeholder");
+                  if (a > 16 && b > 16 && a <= gCliW + 8 && b <= gCliH + 8) { bbW = a; bbH = b; bbRx = (float)a / (float)gCliW; bbRy = (float)b / (float)gCliH; }
+                  else { bbW = (int)(gCliW * bbRx); bbH = (int)(gCliH * bbRy); L("MENUPLACE: not usable, using render/client ratio %.4f x %.4f -> %dx%d", bbRx, bbRy, bbW, bbH); }
+                  bbReal = gCliReal;
+              }
               cx = (int)(fx * (float)bbW / tvw); cy = (int)(fy * (float)bbH / tvh);
               if (cx < 0) cx = 0; if (cy < 0) cy = 0; if (cx > bbW - 1) cx = bbW - 1; if (cy > bbH - 1) cy = bbH - 1;
               if (doWarp && !held) { gPlX = cx; gPlY = cy; gPlStart = fx_now_ns(CLOCK_UPTIME_RAW); acc_write(-30000, -30000, 0); gPlPh = 1; }
@@ -328,11 +336,11 @@ jobs:
                   int ddy = cy - gPlLastY; acc_write(cx - gPlLastX, ddy, 1);
                   /* v92e: a drag also turns the mouse wheel (Input()+0x954, 120 per notch, positive = up), about one notch per 40 render pixels, so lists scroll from anywhere on the screen and not only when the press starts on the game's own scroll bar. Folders: menu_wheel_off, menu_wheel_inv. */
                   { static int wInit, wOff, wInv; static float wRem; if (!wInit) { wInit = 1; wOff = mk_has("menu_wheel_off"); wInv = mk_has("menu_wheel_inv"); L("MENUWHEEL: drag scrolls the wheel %s, direction %s (folders menu_wheel_off, menu_wheel_inv)", wOff ? "OFF" : "ON", wInv ? "flipped" : "finger down = scroll up"); }
-                    if (!wOff && ddy) { wRem += (float)(wInv ? -ddy : ddy) * 3.0f; int w = (int)wRem; if (w) { wRem -= (float)w; uint8_t *mu = (uint8_t *)(gBase + EO_MOUSEMU); sh_mx_lock(mu); *(volatile int *)(gBase + 0x5e41c94UL) += w; sh_mx_unlock(mu); } } }
+                    if (!wOff && ddy) { wRem += (float)(wInv ? -ddy : ddy) * 3.0f * (720.0f / (float)(bbH > 0 ? bbH : 720));   /* v104: scroll speed per screen height, the same at every render scale (3 per pixel is the 720-line reference) */ int w = (int)wRem; if (w) { wRem -= (float)w; uint8_t *mu = (uint8_t *)(gBase + EO_MOUSEMU); sh_mx_lock(mu); *(volatile int *)(gBase + 0x5e41c94UL) += w; sh_mx_unlock(mu); } } }
                   gPlLastX = cx; gPlLastY = cy;
               }
               if (doPress || doRel) btn_push(0, doPress ? 1 : 0, gPlLastX, gPlLastY);
-              { static int n; if (n++ < 120) { int rx = -1, ry = -1, rl = -1; cur_rd(&rx, &ry, &rl); L("MENUTOUCH: %s finger %.0f,%.0f of view %.0fx%.0f (hardcoded win %dx%d) -> cursor %d,%d of client %dx%d; game cursor reads back %d,%d left %d", doPress ? "press" : doRel ? "release" : held ? "drag" : "warp", fx, fy, tvw, tvh, p2_win_w, p2_win_h, cx, cy, gCliW, gCliH, rx, ry, rl); } }
+              { static int n; if (n++ < 120) { int rx = -1, ry = -1, rl = -1; cur_rd(&rx, &ry, &rl); L("MENUTOUCH: %s finger %.0f,%.0f of view %.0fx%.0f (hardcoded win %dx%d) -> cursor %d,%d of render %dx%d (client %dx%d); game cursor reads back %d,%d left %d", doPress ? "press" : doRel ? "release" : held ? "drag" : "warp", fx, fy, tvw, tvh, p2_win_w, p2_win_h, cx, cy, bbW, bbH, gCliW, gCliH, rx, ry, rl); } }
           }
           static void menu_cursor_apply(void) {   /* game thread, gInMu NOT held: the menu finger, then move the game's cursor by what the stick owes, keeping the button as it is (hold Left Click and push = drag) */
               if (!gBase) return;
