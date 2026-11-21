@@ -426,7 +426,7 @@ jobs:
           - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 5; }
           - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section {
               section = hsL(section);
-              if (section == 0) return 3; if (section == 1) return 4; if (section == 2) return MAX(2, (NSInteger)self.mods.count + 1); if (section == 3) return 2; return 1;
+              if (section == 0) return 5; if (section == 1) return 4; if (section == 2) return MAX(2, (NSInteger)self.mods.count + 1); if (section == 3) return 2; return 1;
           }
           - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)section {
               return @[@"PERFORMANCE", @"GRAPHICS", @"MODS", @"CONTROLS", @"SYSTEM"][hsL(section)];
@@ -439,21 +439,22 @@ jobs:
               return nil;
           }
           - (NSString *)titleForRow:(NSIndexPath *)ip {
-              if (ip.section == 0) return @[@"FSR upscaling", @"FPS limit", @"Render scale"][ip.row];
+              if (ip.section == 0) return @[@"FSR upscaling", @"FPS limit", @"Render scale", @"MetalFX sharpen", @"Sharpen strength"][ip.row];
               if (ip.section == 1) return @[@"Graphics preset", @"Manual graphics", @"Potato graphics", @"Quality level"][ip.row];
               if (ip.section == 2) return ip.row == 0 ? @"Mod loader" : (self.mods.count ? self.mods[(NSUInteger)ip.row - 1] : @"No installed mods");
               if (ip.section == 3) return @[@"Edit touch layout & buttons", @"Camera sensitivity"][ip.row];
               return @"Open live log";
           }
           - (NSString *)keyForRow:(NSIndexPath *)ip {
-              if (ip.section == 0) return @[@"upscale", @"", @""][ip.row];   /* v104: row 2 (render scale) reads Documents/.render_scale, not controls.cfg */
+              if (ip.section == 0) return @[@"upscale", @"", @"", @"p2:metalfx_sharp", @""][ip.row];   /* v104: row 2 (render scale) reads Documents/.render_scale, not controls.cfg */
               if (ip.section == 1) return @[@"gfx", @"gfxmanual", @"potato", @"quality"][ip.row];
               if (ip.section == 2 && ip.row == 0) return @"modloader";
               return nil;
           }
-          - (BOOL)isSwitchRow:(NSIndexPath *)ip { return (ip.section == 0 && ip.row == 0) || (ip.section == 1 && (ip.row == 1 || ip.row == 2)) || (ip.section == 2 && ip.row == 0); }
+          - (BOOL)isSwitchRow:(NSIndexPath *)ip { return (ip.section == 0 && (ip.row == 0 || ip.row == 3)) || (ip.section == 1 && (ip.row == 1 || ip.row == 2)) || (ip.section == 2 && ip.row == 0); }
           - (NSString *)valueForRow:(NSIndexPath *)ip {
-              NSString *key = [self keyForRow:ip]; if (key.length) return hostCfgValue(key, @"0");
+              NSString *key = [self keyForRow:ip]; if ([key hasPrefix:@"p2:"]) return uiHas([key substringFromIndex:3]) ? @"1" : @"0";   /* p2.cfg switch */
+              if (key.length) return hostCfgValue(key, @"0");
               if (ip.section == 0 && ip.row == 1) return hostCfgValue(@"fpscap", @"60");
               if (ip.section == 3 && ip.row == 1) return hostCfgValue(@"camera", @"1.0");
               if (ip.section == 1 && ip.row == 0) return hostCfgValue(@"gfx", @"-1");
@@ -466,7 +467,7 @@ jobs:
               UITableViewCell *c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
               c.backgroundColor = [UIColor colorWithWhite:1 alpha:0.035]; c.textLabel.textColor = UIColor.labelColor; c.detailTextLabel.textColor = UIColor.secondaryLabelColor;
               c.textLabel.text = [self titleForRow:ip]; c.detailTextLabel.numberOfLines = 2;
-              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right"], @[@"slider.horizontal.3", @"wrench.and.screwdriver", @"leaf", @"dial.low"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
+              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right", @"wand.and.stars", @"slider.horizontal.below.rectangle"], @[@"slider.horizontal.3", @"wrench.and.screwdriver", @"leaf", @"dial.low"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
               c.imageView.image = [UIImage systemImageNamed:icons[ip.section][MIN((NSUInteger)ip.row, [icons[ip.section] count] - 1)]]; c.imageView.tintColor = [UIColor colorWithRed:0.35 green:0.68 blue:1 alpha:1];
               if ([self isSwitchRow:ip] || (ip.section == 2 && ip.row > 0 && self.mods.count)) {
                   UISwitch *sw = [UISwitch new];
@@ -475,6 +476,15 @@ jobs:
                   sw.accessibilityIdentifier = (ip.section == 2 && ip.row > 0) ? [@"mod:" stringByAppendingString:self.mods[(NSUInteger)ip.row - 1]] : [self keyForRow:ip];
                   [sw addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged]; c.accessoryView = sw;
                   c.selectionStyle = UITableViewCellSelectionStyleNone;
+                  if (ip.section == 0 && ip.row == 3) c.detailTextLabel.text = @"Sharpens the MetalFX picture (needs metalfx_on in p2.cfg) · live";
+              } else if (ip.section == 0 && ip.row == 4) {
+                  int sv = p2_cfg_val("metalfx_sharp_"); if (sv < 1) sv = 50; if (sv > 100) sv = 100;
+                  c.detailTextLabel.text = [NSString stringWithFormat:@"%d%% · live", sv];
+                  UISlider *sl = [[UISlider alloc] initWithFrame:CGRectMake(0, 0, 170, 34)]; sl.minimumValue = 1; sl.maximumValue = 100; sl.value = sv; sl.continuous = YES;
+                  sl.enabled = uiHas(@"metalfx_sharp"); sl.tag = 7104;
+                  [sl addTarget:self action:@selector(sharpDragged:) forControlEvents:UIControlEventValueChanged];
+                  [sl addTarget:self action:@selector(sharpSaved:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+                  c.accessoryView = sl; c.selectionStyle = UITableViewCellSelectionStyleNone;
               } else if (ip.section == 0 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@ FPS · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@%% · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 1 && ip.row == 0) { NSString *v = [self valueForRow:ip]; c.detailTextLabel.text = [v isEqualToString:@"-1"] ? @"Quality fallback · loaded next launch" : [NSString stringWithFormat:@"Preset %@ · loaded next launch", v]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
@@ -484,9 +494,26 @@ jobs:
               else { c.detailTextLabel.text = ip.section == 3 ? @"Add, move, resize or delete buttons" : @""; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               return c;
           }
+          - (NSIndexPath *)sharpSliderRow {   /* displayed position of original section 0 (PERFORMANCE), row 4 */
+              for (NSInteger d = 0; d < 5; d++) if (hsL(d) == 0) return [NSIndexPath indexPathForRow:4 inSection:d];
+              return nil;
+          }
+          - (void)sharpDragged:(UISlider *)sl {   /* label only while dragging; p2.cfg is written when the finger lifts */
+              UITableViewCell *c = [self.tableView cellForRowAtIndexPath:[self sharpSliderRow]];
+              c.detailTextLabel.text = [NSString stringWithFormat:@"%d%% · live", (int)lroundf(sl.value)];
+          }
+          - (void)sharpSaved:(UISlider *)sl {
+              int v = (int)lroundf(sl.value); if (v < 1) v = 1; if (v > 100) v = 100;
+              for (NSString *n in uiWithPrefix(@"metalfx_sharp_")) uiSet(n, NO);
+              uiSet([NSString stringWithFormat:@"metalfx_sharp_%d", v], YES);
+          }
           - (void)switchChanged:(UISwitch *)sw {
               NSString *ident = sw.accessibilityIdentifier ?: @""; BOOL ok = NO;
-              if ([ident hasPrefix:@"mod:"]) ok = hostSetModEnabled([ident substringFromIndex:4], sw.isOn);
+              if ([ident hasPrefix:@"p2:"]) {   /* a plain switch line in p2.cfg */
+                  uiSet([ident substringFromIndex:3], sw.isOn); ok = YES;
+                  if ([ident isEqualToString:@"p2:metalfx_sharp"]) { UITableViewCell *c = [self.tableView cellForRowAtIndexPath:[self sharpSliderRow]]; if ([c.accessoryView isKindOfClass:UISlider.class]) ((UISlider *)c.accessoryView).enabled = sw.isOn; }
+              }
+              else if ([ident hasPrefix:@"mod:"]) ok = hostSetModEnabled([ident substringFromIndex:4], sw.isOn);
               else if (ident.length) ok = hostCfgSet(ident, sw.isOn ? @"1" : @"0");
               if (!ok) { sw.on = !sw.isOn; UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Could not save setting" message:@"The host controls.cfg file could not be written." preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]]; [self presentViewController:a animated:YES completion:nil]; }
           }

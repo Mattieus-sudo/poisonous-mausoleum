@@ -1,4 +1,4 @@
-name: "Build loader v96b (v95 + pass load/store log + DONT_CARE test, no extra per-frame work)"
+name: "Build loader v98 (sharpen toggle + slider in settings)"
 # PRIVATE REPOS ONLY. The IPA artifact contains the patched game code. Delete the artifact after downloading.
 # Pushes run the download/disassembly/prep inspection. A full IPA build requires manual dispatch with inspect_only=false.
 on:
@@ -1949,6 +1949,7 @@ jobs:
                   "fakeaspect_N         (v67) the loader writes Documents/fake_aspect = N/10000 (17778 = 16:9, 16000 = 16:10, 15000 = 3:2, 13333 = 4:3). The game then sees a screen of that shape, so its resolution list and window follow it. Applies at the next start. Only a file the loader wrote itself is removed when the folder is gone.\n"
                   "renderscale_N        the loader writes Documents/render_scale = N (30 to 100, % of the panel) for the game to read at launch. 67 is the game's own default; 75 or 80 is sharper but heavier, 100 = full resolution (MetalFX then has nothing to scale). Remove the folder to go back to the default. Applies at the next launch.\n\n"
                   "metalfx_on           (EXPERIMENT) scale the game picture up to the panel with MetalFX (spatial) instead of letting the display stretch it. Needs iOS 16+ and a render scale below 100 (menu > Render scale) with FSR off. The loader enables VK_EXT_metal_objects, lets the swapchain be read, and on every present scales the low-res image onto its own full-size layer. The HUD is scaled with the picture. Create the folder with the app CLOSED. Log lines start with METALFX. If anything fails it switches itself off and the normal path takes over.\n\n"
+                  "metalfx_sharp        (needs metalfx_on) sharpen the MetalFX picture with a contrast-adaptive pass (the same idea as the FSR sharpening step). Add metalfx_sharp_N (N = 1 to 100) for the strength; without it the strength is 50. The in-game settings cog (Sharpen toggle and slider) writes both lines, and a change shows within about half a second. Log lines start with METALFX SHARP.\n\n"
                   "pan_smooth_off       (v81) smooth camera panning is ON by default: touch moves are kept with their real timestamps and the game gets one move per frame, interpolated on the finger path a measured few ms back (touch_coalesce is ignored while it is on). This folder gives the old raw behaviour.\n"
                   "pan_lag_N            (v81) smooth panning: use a fixed lag of N ms instead of the measured one (try 8 to 30). Less = more responsive, more = smoother on a bumpy touch feed. The PAN lines in p2.log show the measured lag.\n"
                   "hold_ms_N            (v97) minimum time a key or click stays down after a quick tap, in ms (0 to 200). Default: two measured game frames (33 ms at 60 fps, 20 ms floor, 110 ms ceiling). hold_off = no minimum at all.\n"
@@ -3114,6 +3115,7 @@ jobs:
           }
           typedef struct { int sType; const void *pNext; unsigned flags, nQ; const void *pQ; unsigned nLayers; const char *const *ppLayers; unsigned nExt; const char *const *ppExt; const void *pFeat; } VkDCI;
           static int gMfxExt;   /* METALFX: VK_EXT_metal_objects was enabled */
+          int p2_mfx_sharp = 0;   /* METALFX: sharpen strength, 0 = off, 1..100; read by mfx.m */
           extern void p2_mfx_frame(void *dev, void *queue, const void *presentInfo, void *(*gdpa)(void *, const char *));
           static int w_create_device(void *phys, const VkDCI *ci, const void *alloc, void **pDev) {
               VkDCI c = *ci; const char *ex[80]; unsigned n = 0, ns = 0;
@@ -3148,7 +3150,7 @@ jobs:
               { static int pd = -2, pt = -2; if (pd == -2) { pd = mk_val("pdelay_"); pt = mk_val("pthrottle_"); L("present switches: pdelay %d ms (first present), pthrottle %d us (first 300 presents), -1 = off", pd, pt); }
                 if (n == 0 && pd > 0 && pd <= 8000) { L("PDELAY: pausing the presenting thread %d ms before its first present", pd); usleep(pd * 1000); }
                 if (pt > 0 && n < 300) usleep((useconds_t)(pt > 100000 ? 100000 : pt)); }
-              { static int mfxOn = -2; if (mfxOn == -2) mfxOn = mk_has("metalfx_on") && gMfxExt; if (mfxOn > 0) p2_mfx_frame(gVkDev, q, pi, (void *(*)(void *, const char *))gRealGdpa); }   /* METALFX: runs before the real present, on the same Metal queue */
+              { static int mfxOn = -2, sk = 0; if (mfxOn == -2) mfxOn = mk_has("metalfx_on") && gMfxExt; if (mfxOn > 0) { if ((sk++ & 31) == 0) { int sv = 0; if (mk_has("metalfx_sharp")) { sv = mk_val("metalfx_sharp_"); if (sv < 0) sv = 50; if (sv > 100) sv = 100; } if (sv != p2_mfx_sharp) { p2_mfx_sharp = sv; L("METALFX SHARP: strength %d (0 = off)", sv); } } p2_mfx_frame(gVkDev, q, pi, (void *(*)(void *, const char *))gRealGdpa); } }   /* METALFX: runs before the real present, on the same Metal queue; the sharpen setting is re-read every 32 presents so the in-game slider is live */
               int r = f(q, pi); n++; __atomic_add_fetch(&gPresN, 1, __ATOMIC_RELAXED); if (n <= 3 || (r != 0 && bad++ < 8)) L("PLAT vkQueuePresentKHR #%d tid=%d -> %d", n, p2_tid(), r); trace_present(); return r;
           }
           static void *w_gipa(void *inst, const char *name);
@@ -4448,6 +4450,7 @@ jobs:
              game's rendering) into a full-size CAMetalLayer of its own that sits on top of the game layer, and presents that. Any failure switches it off for the run. */
           extern void *p2_metal_layer;
           extern void p2_note(const char *s);
+          extern int p2_mfx_sharp;
 
           typedef struct { int sType; const void *pNext; void *queue; void *mtlQueue; } MfxExpQ;                                                        /* VkExportMetalCommandQueueInfoEXT */
           typedef struct { int sType; const void *pNext; void *image; void *imageView; void *bufferView; unsigned plane; void *mtlTexture; } MfxExpT;   /* VkExportMetalTextureInfoEXT */
@@ -4466,6 +4469,7 @@ jobs:
               static MfxExportFn expf; static MfxImgsFn getf;
               static CAMetalLayer *ml; static id sc; static NSUInteger iw, ih; static MTLPixelFormat ifmt;
               static void *cachedSw; static void *imgs[16]; static unsigned nImg;
+              static id<MTLTexture> mid; static id<MTLComputePipelineState> sps; static int sharpDead;
               if (dead) return;
               if (@available(iOS 16.0, *)) {
                   @autoreleasepool {
@@ -4507,9 +4511,50 @@ jobs:
                       }
                       id<CAMetalDrawable> dr = [ml nextDrawable]; if (!dr) return;
                       id<MTLFXSpatialScaler> s = sc;
-                      s.colorTexture = src; s.outputTexture = dr.texture; s.inputContentWidth = src.width; s.inputContentHeight = src.height;
+                      /* SHARPEN: scale into a private full-size texture, then a contrast-adaptive sharpen (CAS, same idea as FSR's RCAS) writes the drawable */
+                      int sharp = (p2_mfx_sharp > 0 && !sharpDead);
+                      if (sharp && !sps) {
+                          NSString *msl = @"#include <metal_stdlib>\n"
+                              "using namespace metal;\n"
+                              "kernel void p2sharp(texture2d<float, access::read> in [[texture(0)]], texture2d<float, access::write> out [[texture(1)]], constant float &amt [[buffer(0)]], uint2 g [[thread_position_in_grid]]) {\n"
+                              "  if (g.x >= out.get_width() || g.y >= out.get_height()) return;\n"
+                              "  int2 p = int2(g); int2 m = int2(in.get_width() - 1, in.get_height() - 1);\n"
+                              "  float3 c = in.read(g).rgb;\n"
+                              "  float3 b = in.read(uint2(clamp(p + int2(0, -1), int2(0), m))).rgb;\n"
+                              "  float3 d = in.read(uint2(clamp(p + int2(-1, 0), int2(0), m))).rgb;\n"
+                              "  float3 f = in.read(uint2(clamp(p + int2(1, 0), int2(0), m))).rgb;\n"
+                              "  float3 e = in.read(uint2(clamp(p + int2(0, 1), int2(0), m))).rgb;\n"
+                              "  float3 mn = min(min(min(d, e), min(f, b)), c); float3 mx = max(max(max(d, e), max(f, b)), c);\n"
+                              "  float3 amp = sqrt(saturate(min(mn, 1.0 - mx) / max(mx, float3(1e-4))));\n"
+                              "  float peak = -1.0 / mix(8.0, 5.0, amt);\n"
+                              "  float3 w = amp * peak;\n"
+                              "  float3 r = (b * w + d * w + f * w + e * w + c) / (1.0 + 4.0 * w);\n"
+                              "  out.write(float4(saturate(r), 1.0), g);\n"
+                              "}\n";
+                          NSError *er = nil; id<MTLLibrary> lib = [cq.device newLibraryWithSource:msl options:nil error:&er];
+                          id<MTLFunction> fn = lib ? [lib newFunctionWithName:@"p2sharp"] : nil;
+                          if (fn) sps = [cq.device newComputePipelineStateWithFunction:fn error:&er];
+                          if (!sps) { mfxlog([NSString stringWithFormat:@"METALFX SHARP: could not build the sharpen pass (%@), sharpening off", er.localizedDescription]); sharpDead = 1; sharp = 0; }
+                          else mfxlog([NSString stringWithFormat:@"METALFX SHARP: sharpen pass ready, strength %d", p2_mfx_sharp]);
+                      }
+                      if (sharp && !(dr.texture.usage & MTLTextureUsageShaderWrite)) { mfxlog(@"METALFX SHARP: the output layer cannot be written by a compute pass, sharpening off"); sharpDead = 1; sharp = 0; }
+                      if (sharp && (!mid || mid.width != W || mid.height != H)) {
+                          MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:ml.pixelFormat width:W height:H mipmapped:NO];
+                          td.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite; td.storageMode = MTLStorageModePrivate;
+                          mid = [cq.device newTextureWithDescriptor:td];
+                          if (!mid) { mfxlog(@"METALFX SHARP: could not allocate the scaler output texture, sharpening off"); sharpDead = 1; sharp = 0; }
+                      }
+                      s.colorTexture = src; s.outputTexture = sharp ? mid : dr.texture; s.inputContentWidth = src.width; s.inputContentHeight = src.height;
                       id<MTLCommandBuffer> cb = [cq commandBuffer];
-                      [s encodeToCommandBuffer:cb]; [cb presentDrawable:dr]; [cb commit];
+                      [s encodeToCommandBuffer:cb];
+                      if (sharp) {
+                          id<MTLComputeCommandEncoder> ce = [cb computeCommandEncoder];
+                          float amt = (float)p2_mfx_sharp / 100.0f;
+                          [ce setComputePipelineState:sps]; [ce setTexture:mid atIndex:0]; [ce setTexture:dr.texture atIndex:1]; [ce setBytes:&amt length:sizeof amt atIndex:0];
+                          NSUInteger tw = sps.threadExecutionWidth, th = MAX((NSUInteger)1, sps.maxTotalThreadsPerThreadgroup / tw);
+                          [ce dispatchThreads:MTLSizeMake(W, H, 1) threadsPerThreadgroup:MTLSizeMake(tw, th, 1)]; [ce endEncoding];
+                      }
+                      [cb presentDrawable:dr]; [cb commit];
                       mfxHide(ml, NO);
                       if (++frames == 1) mfxlog(@"METALFX: first scaled frame presented");
                   }
