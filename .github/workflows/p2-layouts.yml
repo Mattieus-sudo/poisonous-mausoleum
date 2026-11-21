@@ -14,8 +14,8 @@ jobs:
           mkdir -p parts
           cat > parts/lay_head.m <<'EOF_LAY_HEAD_M'
           /* ---- LAYOUTS (1/2): one control layout per part of the game, like the dev's own touch layouts. The loader asks the game which layout it is in (p2_ctx: 0 on foot, 1 in a vehicle, 2 menu or pause,
-             3 and up = the dev's other layouts) and loads that layout's buttons. Files: Documents/layouts/<name>/custom_buttons.txt and own_layout.txt. A part of the game with no file of its own uses the
-             plain files in Documents (custom_buttons.txt, own_layout/own_layout.txt), which are also the "foot" layout. The switching code is in the second piece, after the custom buttons. ---- */
+             3 and up = the dev's other layouts) and loads that layout's buttons. Files: Documents/layouts/<name>/custom_buttons.txt, own_layout.txt and camera.txt. "foot" (On foot) is just another folder, Documents/layouts/foot/. A part of the game with no file of its own uses the
+             foot files. The switching code is in the second piece, after the custom buttons. ---- */
           extern int p2_ctx(void);
           extern int p2_ctx_known(void);
           static BOOL gLayWait = YES;                    /* until the game has told us its layout, the custom buttons stay invisible instead of flashing "on foot" */
@@ -24,11 +24,24 @@ jobs:
           static __weak UIView *gLayGV;                  /* the game view, kept so the own_layout drawing can be rebuilt on a switch */
           static BOOL layNoStick(void) { return ![gLayCtx isEqualToString:@"foot"] && ![gLayCtx isEqualToString:@"vehicle"]; }   /* menu, video, layout3 ...: no movement stick, ever */
           static NSString *layDocs(void) { return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
-          static NSString *layPath(NSString *rootPath, NSString *name, BOOL write) {   /* read: this layout's file if it has one, else the plain one. write: always this layout's own file (created on the first save), "foot" writes the plain file */
-              if ([gLayCtx isEqualToString:@"foot"]) return rootPath;
+          static NSString *layName(int c);
+          static void layInit(void) {   /* once: layouts/foot/ is the On foot layout. Files from the old loose places (Documents/custom_buttons.txt, camera.txt, own_layout/own_layout.txt) are moved in if foot has no file of that name yet. */
+              static BOOL done; if (done) return; done = YES;
+              layName(0);   /* runs the first-run setup of layouts/ (video layout, contexts.txt) before foot's folder exists */
+              NSFileManager *fm = NSFileManager.defaultManager; NSString *d = layDocs(), *own = [d stringByAppendingPathComponent:@"own_layout"];
+              NSString *fd = [[d stringByAppendingPathComponent:@"layouts"] stringByAppendingPathComponent:@"foot"];
+              [fm createDirectoryAtPath:fd withIntermediateDirectories:YES attributes:nil error:nil];
+              NSArray<NSArray<NSString *> *> *mv = @[ @[[d stringByAppendingPathComponent:@"custom_buttons.txt"], @"custom_buttons.txt"], @[[d stringByAppendingPathComponent:@"camera.txt"], @"camera.txt"], @[[own stringByAppendingPathComponent:@"own_layout.txt"], @"own_layout.txt"] ];
+              for (NSArray<NSString *> *m in mv) { NSString *dst = [fd stringByAppendingPathComponent:m[1]]; if ([fm fileExistsAtPath:m[0]] && ![fm fileExistsAtPath:dst]) [fm moveItemAtPath:m[0] toPath:dst error:nil]; }
+              if ([fm fileExistsAtPath:own] && [fm contentsOfDirectoryAtPath:own error:nil].count == 0) [fm removeItemAtPath:own error:nil];
+          }
+          static NSString *layFootPath(NSString *name) { layInit(); return [[[layDocs() stringByAppendingPathComponent:@"layouts"] stringByAppendingPathComponent:@"foot"] stringByAppendingPathComponent:name]; }
+          static NSString *layPath(NSString *footPath, NSString *name, BOOL write) {   /* footPath = layFootPath(name). read: this layout's file if it has one, else the foot one. write: always this layout's own file (created on the first save); foot writes layouts/foot/ */
+              layInit();
               NSString *dir = [[layDocs() stringByAppendingPathComponent:@"layouts"] stringByAppendingPathComponent:gLayCtx], *p = [dir stringByAppendingPathComponent:name];
               if (write) { [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil]; return p; }
-              return [NSFileManager.defaultManager fileExistsAtPath:p] ? p : rootPath;
+              if ([gLayCtx isEqualToString:@"foot"]) return p;
+              return [NSFileManager.defaultManager fileExistsAtPath:p] ? p : footPath;
           }
           static void layStart(UIView *gv);
           static void layPrepareEdit(void);   /* sync the game's current layout before entering edit mode */
@@ -46,7 +59,7 @@ jobs:
                   gLayNames = [NSMutableDictionary new]; NSFileManager *fm = NSFileManager.defaultManager; NSString *d = [layDocs() stringByAppendingPathComponent:@"layouts"], *f = layCtxFile();
                   if (![fm fileExistsAtPath:d]) {   /* first run: the folder, the names file, and a video layout that is just a Skip (M) button with no stick */
                       [fm createDirectoryAtPath:[d stringByAppendingPathComponent:@"video"] withIntermediateDirectories:YES attributes:nil error:nil];
-                      [@"# Names for the game's touch layouts. layout N name. Built in: 0 foot (the plain files), 1 vehicle, 2 menu (pause, options, any screen with the game's cursor). Others are called layoutN until named here.\n# Easiest: be in a video or a vehicle, open the editor, pick the layout in the picker and choose \"Assign to the game's current screen\". Or watch p2.log for LAYOUT: lines and add e.g.  layout 3 video\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                      [@"# Names for the game's touch layouts. layout N name. Built in: 0 foot (layouts/foot), 1 vehicle, 2 menu (pause, options, any screen with the game's cursor). Others are called layoutN until named here.\n# Easiest: be in a video or a vehicle, open the editor, pick the layout in the picker and choose \"Assign to the game's current screen\". Or watch p2.log for LAYOUT: lines and add e.g.  layout 3 video\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
                       [@"# video layout: only a Skip button (M).\nbtn 32 0.8300 0.7800 0.1000 0.1700 M\n" writeToFile:[d stringByAppendingPathComponent:@"video/custom_buttons.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
                       [@"# video layout: no stick, no buttons from the plain layout.\n" writeToFile:[d stringByAppendingPathComponent:@"video/own_layout.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
                   }

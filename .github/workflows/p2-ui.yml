@@ -27,13 +27,13 @@ jobs:
           }
 
           /* ================= v66 settings UI (UIKit, no storyboard) =================
-             A flag is one line in Documents/p2.cfg (v103; it used to be a folder in Documents). Every control below only adds or removes such lines. */
+             A switch is one line in Documents/p2.cfg. Every control below only adds or removes such lines.
+             CONFIG MODEL: behaviour changes = lines in p2.cfg (loader reads them via p2_cfg_*); host settings = the hidden Documents/.controls.cfg (hostCfgPath). Switches are never written as folders;
+             the only exceptions are the nosplash marker folder (mirrored by the loader from p2.cfg) and files the host reads itself (.render_scale). */
           static NSString *uiDocs(void) { cfgReady(); return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
           static BOOL uiHas(NSString *n) { cfgReady(); return p2_cfg_has(n.UTF8String) != 0; }
           static void uiSet(NSString *n, BOOL on) {
               cfgReady();
-              if (on && [n isEqualToString:@"own_layout"])   /* own_layout is also the folder that holds own_layout.txt, which the controls piece saves into */
-                  [NSFileManager.defaultManager createDirectoryAtPath:[uiDocs() stringByAppendingPathComponent:n] withIntermediateDirectories:YES attributes:nil error:nil];
               p2_cfg_set(n.UTF8String, on ? 1 : 0);
           }
           static BOOL uiIsNum(NSString *name, NSString *prefix) {   /* "waitspin_1000" matches prefix "waitspin_"; "imgdelay_all" does not match "imgdelay_" */
@@ -63,23 +63,23 @@ jobs:
           @interface SRow : NSObject
           @property (nonatomic) SKind kind;
           @property (nonatomic, copy) NSString *title, *detail;
-          @property (nonatomic, copy) NSString *flag;               /* switch: folder name */
-          @property (nonatomic) BOOL onWhenPresent;                 /* switch: YES = folder present means ON; NO = folder present means OFF */
+          @property (nonatomic, copy) NSString *cfgKey;             /* switch: the p2.cfg line name (button rows: the action id) */
+          @property (nonatomic) BOOL onWhenSet;                     /* switch: YES = line present means ON; NO = line present means OFF */
           @property (nonatomic, copy) NSArray<NSString *> *labels;  /* menu: label per choice */
-          @property (nonatomic, copy) NSArray<NSString *> *folders; /* menu: folder per choice, @"" = no folder (the default) */
-          @property (nonatomic, copy) NSString *prefix;             /* menu: also clear every <prefix><digits> folder */
+          @property (nonatomic, copy) NSArray<NSString *> *cfgKeys; /* menu: p2.cfg line per choice, @"" = no line (the default) */
+          @property (nonatomic, copy) NSString *prefix;             /* menu: also clear every <prefix><digits> line */
           @property (nonatomic) BOOL hz;                            /* menu: apply the display lock right away */
           @end
           @implementation SRow @end
 
-          static SRow *sSwitch(NSString *t, NSString *d, NSString *flag, BOOL onWhenPresent) {
-              SRow *r = [SRow new]; r.kind = SKSwitch; r.title = t; r.detail = d; r.flag = flag; r.onWhenPresent = onWhenPresent; return r;
+          static SRow *sSwitch(NSString *t, NSString *d, NSString *cfgKey, BOOL onWhenSet) {
+              SRow *r = [SRow new]; r.kind = SKSwitch; r.title = t; r.detail = d; r.cfgKey = cfgKey; r.onWhenSet = onWhenSet; return r;
           }
-          static SRow *sMenu(NSString *t, NSString *d, NSArray *labels, NSArray *folders, NSString *prefix) {
-              SRow *r = [SRow new]; r.kind = SKMenu; r.title = t; r.detail = d; r.labels = labels; r.folders = folders; r.prefix = prefix; return r;
+          static SRow *sMenu(NSString *t, NSString *d, NSArray *labels, NSArray *cfgKeys, NSString *prefix) {
+              SRow *r = [SRow new]; r.kind = SKMenu; r.title = t; r.detail = d; r.labels = labels; r.cfgKeys = cfgKeys; r.prefix = prefix; return r;
           }
           static SRow *sPlain(SKind k, NSString *t, NSString *d) { SRow *r = [SRow new]; r.kind = k; r.title = t; r.detail = d; return r; }
-          static SRow *sBtn(NSString *t, NSString *action) { SRow *r = sPlain(SKButton, t, @""); r.flag = action; return r; }
+          static SRow *sBtn(NSString *t, NSString *action) { SRow *r = sPlain(SKButton, t, @""); r.cfgKey = action; return r; }
           static unsigned long long uiDirSize(NSString *path) {
               NSFileManager *fm = NSFileManager.defaultManager; unsigned long long tot = 0;
               for (NSString *sub in [fm enumeratorAtPath:path]) tot += [[fm attributesOfItemAtPath:[path stringByAppendingPathComponent:sub] error:nil] fileSize];
@@ -256,16 +256,16 @@ jobs:
               if (s == 2) return @"Traces are off by default and only measure. Turn them on when you need to send logs.";
               return nil;
           }
-          - (NSInteger)currentIndex:(SRow *)r {   /* -1 = a custom folder the list does not offer */
-              for (NSInteger i = 0; i < (NSInteger)r.folders.count; i++) if (r.folders[i].length && uiHas(r.folders[i])) return i;
+          - (NSInteger)currentIndex:(SRow *)r {   /* -1 = a custom p2.cfg line the list does not offer */
+              for (NSInteger i = 0; i < (NSInteger)r.cfgKeys.count; i++) if (r.cfgKeys[i].length && uiHas(r.cfgKeys[i])) return i;
               if (r.prefix.length && uiWithPrefix(r.prefix).count) return -1;
-              for (NSInteger i = 0; i < (NSInteger)r.folders.count; i++) if (!r.folders[i].length) return i;
+              for (NSInteger i = 0; i < (NSInteger)r.cfgKeys.count; i++) if (!r.cfgKeys[i].length) return i;
               return 0;
           }
           - (void)choose:(SRow *)r index:(NSInteger)i {
-              for (NSString *f in r.folders) if (f.length) uiSet(f, NO);
+              for (NSString *f in r.cfgKeys) if (f.length) uiSet(f, NO);
               if (r.prefix.length) for (NSString *f in uiWithPrefix(r.prefix)) uiSet(f, NO);
-              if (r.folders[i].length) uiSet(r.folders[i], YES);
+              if (r.cfgKeys[i].length) uiSet(r.cfgKeys[i], YES);
               if (r.hz && self.onHz) self.onHz();
           }
           - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
@@ -276,7 +276,7 @@ jobs:
               c.detailTextLabel.text = r.detail.length ? r.detail : nil; c.detailTextLabel.numberOfLines = 0;
               c.detailTextLabel.font = [UIFont systemFontOfSize:13]; c.detailTextLabel.textColor = UIColor.secondaryLabelColor;
               if (r.kind == SKSwitch) {
-                  UISwitch *s = [UISwitch new]; BOOL has = uiHas(r.flag); s.on = r.onWhenPresent ? has : !has;
+                  UISwitch *s = [UISwitch new]; BOOL has = uiHas(r.cfgKey); s.on = r.onWhenSet ? has : !has;
                   s.tag = ip.section * 1000 + ip.row; [s addTarget:self action:@selector(flip:) forControlEvents:UIControlEventValueChanged];
                   c.accessoryView = s;
               } else if (r.kind == SKMenu) {
@@ -302,13 +302,13 @@ jobs:
               } else if (r.kind == SKLink) {
                   c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; c.selectionStyle = UITableViewCellSelectionStyleDefault;
               } else if (r.kind == SKButton) {
-                  c.textLabel.textColor = [r.flag isEqualToString:@"caches"] ? UIColor.systemBlueColor : UIColor.systemRedColor; c.textLabel.textAlignment = NSTextAlignmentCenter; c.selectionStyle = UITableViewCellSelectionStyleDefault;
+                  c.textLabel.textColor = [r.cfgKey isEqualToString:@"caches"] ? UIColor.systemBlueColor : UIColor.systemRedColor; c.textLabel.textAlignment = NSTextAlignmentCenter; c.selectionStyle = UITableViewCellSelectionStyleDefault;
               }
               return c;
           }
           - (void)flip:(UISwitch *)s {
               SRow *r = self.rows[s.tag / 1000][s.tag % 1000];
-              uiSet(r.flag, r.onWhenPresent ? s.on : !s.on);
+              uiSet(r.cfgKey, r.onWhenSet ? s.on : !s.on);
           }
           - (void)say:(NSString *)title message:(NSString *)msg {
               UIAlertController *al = [UIAlertController alertControllerWithTitle:title message:msg preferredStyle:UIAlertControllerStyleAlert];
@@ -339,14 +339,14 @@ jobs:
           - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
               SRow *r = self.rows[ip.section][ip.row]; [tv deselectRowAtIndexPath:ip animated:YES];
               if (r.kind == SKLink && self.onLogs) self.onLogs();
-              if (r.kind == SKButton && [r.flag isEqualToString:@"caches"]) { [self askClearCaches]; return; }
+              if (r.kind == SKButton && [r.cfgKey isEqualToString:@"caches"]) { [self askClearCaches]; return; }
               if (r.kind == SKButton) {
                   UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Reset to defaults?" message:@"Removes every switch (p2.cfg line) this screen controls, then turns Skip splash back on and the traces off (their defaults). Your game files and caches are not touched." preferredStyle:UIAlertControllerStyleAlert];
                   [al addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
                   [al addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
                       for (NSArray<SRow *> *sec in self.rows) for (SRow *q in sec) {
-                          if (q.kind == SKSwitch) uiSet(q.flag, NO);
-                          if (q.kind == SKMenu) { for (NSString *f in q.folders) if (f.length) uiSet(f, NO); if (q.prefix.length) for (NSString *f in uiWithPrefix(q.prefix)) uiSet(f, NO); }
+                          if (q.kind == SKSwitch) uiSet(q.cfgKey, NO);
+                          if (q.kind == SKMenu) { for (NSString *f in q.cfgKeys) if (f.length) uiSet(f, NO); if (q.prefix.length) for (NSString *f in uiWithPrefix(q.prefix)) uiSet(f, NO); }
                       }
                       uiSet(@"nosplash", YES);   /* default is ON */
                       uiSet(@"rbtrace_off", YES); uiSet(@"waittrace_off", YES); uiSet(@"textrace_off", YES);   /* traces default to OFF */
@@ -1020,7 +1020,7 @@ jobs:
           - (void)note:(const char *)s { emit(s); if (!gFlags) gFlags = [NSMutableString new]; [gFlags appendFormat:@"%s\n", s]; }
           - (void)startFlags {
               static const struct { const char *n; int pre; const char *m; } K[] = {
-                  {"hz_off",0,"120 Hz lock OFF"}, {"seeded_nosplash",0,"first-run default (skip splash) already applied"}, {"seeded_traces_off",0,"first-run default (traces off) already applied"}, {"rt_render",0,"render thread real-time policy ON (6000 us budget)"}, {"hz_90",0,"display locked to 90 Hz"}, {"hz_60",0,"display locked to 60 Hz"},
+                  {"hz_off",0,"120 Hz lock OFF"}, {"seeded_nosplash",0,"first-run default (skip splash) already applied"}, {"seeded_traces_off",0,"first-run default (traces off) already applied"}, {"seeded_own_layout",0,"first-run default (own controls on) already applied"}, {"rt_render",0,"render thread real-time policy ON (6000 us budget)"}, {"hz_90",0,"display locked to 90 Hz"}, {"hz_60",0,"display locked to 60 Hz"},
                   {"waittrace_off",0,"WAITTRACE recording OFF"}, {"rbtrace_off",0,"RBTRACE (render-thread trace + GPU timing) OFF"}, {"gpuhud_off",0,"GPU % for the dev HUD OFF"}, {"threaddump_on",0,"timed THREADDUMP at 20/45/90 s ON"}, {"gpuhud_est",0,"GPU % estimated from RBTRACE timing (not the Apple counter)"},
                   {"textrace_off",0,"TEXTRACE + UPLOADGAP OFF"}, {"maxlod_",1,"sampler max-LOD cap (maxlod_0 = full-size level only; read at launch)"},
                   {"pcprof_on",0,"PC sampler ON"}, {"futex_off",0,"real futex OFF"}, {"audio_off",0,"audio OFF"}, {"auto_exit",0,"auto exit"},
@@ -1065,7 +1065,7 @@ jobs:
               gHzLink.preferredFrameRateRange = CAFrameRateRangeMake(want, want, want);
               p2_set_tick(1.0 / (double)want);
               [gHzLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
-              [self note:[NSString stringWithFormat:@"HZ: locked display to %.0f Hz (screen max %ld Hz, CADisableMinimumFrameDurationOnPhone set). Folders: hz_off, hz_90, hz_60", want, (long)maxHz].UTF8String]; [self publishFlags];
+              [self note:[NSString stringWithFormat:@"HZ: locked display to %.0f Hz (screen max %ld Hz, CADisableMinimumFrameDurationOnPhone set). p2.cfg lines: hz_off, hz_90, hz_60", want, (long)maxHz].UTF8String]; [self publishFlags];
           }
           - (void)applicationDidReceiveMemoryWarning:(UIApplication *)a { p2_note("iOS: MEMORY WARNING received"); }
           - (void)applicationWillResignActive:(UIApplication *)a { p2_note("iOS: app will resign active (home gesture, control centre or a system overlay)"); p2_set_paused(1); }   /* v102: stop submitting GPU work before iOS takes it away */
@@ -1081,6 +1081,7 @@ jobs:
               gText = [NSMutableString string];
               { cfgReady();   /* nosplash is ON by default and the traces OFF: seed them once. The "seeded" markers live in p2.cfg too (they used to be NSUserDefaults), so a fresh p2.cfg gets the defaults again */
                 if (!p2_cfg_has("seeded_nosplash")) { uiSet(@"nosplash", YES); p2_cfg_set("seeded_nosplash", 1); }
+                if (!p2_cfg_has("seeded_own_layout")) { uiSet(@"own_layout", YES); p2_cfg_set("seeded_own_layout", 1); }   /* own controls are ON by default */
                 if (!p2_cfg_has("seeded_traces_off")) { uiSet(@"rbtrace_off", YES); uiSet(@"waittrace_off", YES); uiSet(@"textrace_off", YES); p2_cfg_set("seeded_traces_off", 1); } }
               self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
               gView = [[UITextView alloc] initWithFrame:CGRectZero];

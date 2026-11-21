@@ -804,7 +804,7 @@ jobs:
           void p2_set_paused(int on);   /* v102: 1 = park every vkQueueSubmit / vkQueuePresent caller and the audio thread (use when the app goes inactive / background), 0 = resume */
           int p2_parked_threads(void);
           void p2_set_emit_live(int on);   /* 1 = L() also forwards log lines to the main thread (live log screen / launcher), 0 = file only */
-          /* p2.cfg (Documents/p2.cfg): the one configuration file. One entry per line, named exactly like the Documents folder that used to carry the flag. */
+          /* p2.cfg (Documents/p2.cfg): the one configuration file. One switch per line (hz_off, imgdelay_6000, ...); a switch is ON while its line is present. */
           void p2_cfg_init(const char *docs);                /* sets the path, creates the file with its header when it is missing; safe to call again */
           const char *p2_cfg_path(void);                      /* full path of p2.cfg ("" before p2_cfg_init) */
           int p2_cfg_has(const char *name);                   /* 1 when the entry is present */
@@ -1269,7 +1269,7 @@ jobs:
               }
               { int rr = clock_gettime(d, ts); int k = __atomic_add_fetch(&gClkN, 1, __ATOMIC_RELAXED); if (k <= 24 && rr == 0) L("CLOCKPROBE #%d clk=%d -> %lld.%09ld tid=%d from elf+0x%lx", k, c, (long long)ts->tv_sec, (long)ts->tv_nsec, p2_tid(), (unsigned long)((uintptr_t)__builtin_return_address(0) - gBase)); return rr; }
           }
-          static int mk_val(const char *prefix);
+          static int sw_val(const char *prefix);
           static long sh_sysconf_raw(int n);
           static long sh_sysconf(int n) {
               long r = sh_sysconf_raw(n); static int c; if (c++ < 40) L("PLAT sysconf(%d) -> %ld (from elf+0x%lx)", n, r, (unsigned long)__builtin_return_address(0) - (unsigned long)gBase); return r;
@@ -1279,7 +1279,7 @@ jobs:
                   case 0x06: return 100;
                   case 0x27: case 0x28: return 16384;
                   case 0x60: case 0x61: {
-                      static int nc = -2; if (nc == -2) { nc = mk_val("ncpu_"); L("ncpu switch: %d (-1 = off)", nc); }
+                      static int nc = -2; if (nc == -2) { nc = sw_val("ncpu_"); L("ncpu switch: %d (-1 = off)", nc); }
                       if (nc >= 1 && nc <= 16) return nc; return sysconf(_SC_NPROCESSORS_ONLN); }
                   case 0x62: return sysconf(_SC_PHYS_PAGES);
                   case 0x63: return sysconf(_SC_PHYS_PAGES) / 2;
@@ -1537,7 +1537,7 @@ jobs:
                   if (f <= 12) L("FUTEXTRACE call #%u: op=0x%lx (cmd %ld) val=%ld uaddr=0x%lx (from elf+0x%lx), real futex %s", f, a2, a2 & 127, a3, a1,
                                  (unsigned long)((uintptr_t)__builtin_return_address(0) - (uintptr_t)gBase), fxr ? "ON" : "off");
               }
-              if (k <= 3) L("SYSCALLTRACE syscall(%ld) #%d%s (from elf+0x%lx)", n, k, n == 178 ? " = gettid" : (n == 98 && fxr) ? " = futex (REAL; folder futex_off disables)" : " NOT SUPPORTED -> -1 ENOSYS",
+              if (k <= 3) L("SYSCALLTRACE syscall(%ld) #%d%s (from elf+0x%lx)", n, k, n == 178 ? " = gettid" : (n == 98 && fxr) ? " = futex (REAL; p2.cfg line futex_off disables)" : " NOT SUPPORTED -> -1 ENOSYS",
                             (unsigned long)((uintptr_t)__builtin_return_address(0) - (uintptr_t)gBase));
               if (n == 178) return sh_gettid();
               if (n == 98 && fxr) {
@@ -1594,19 +1594,19 @@ jobs:
           }
           static volatile int gAlogN;
           static volatile int gOvrSeen;
-          static int mk_has(const char *name);
+          static int sw_has(const char *name);
           static void alog(long prio, uint64_t tag, const char *msg) {
-              if (msg && strstr(msg, "game state: state 5 target 3")) { static int hd; if (!hd) { hd = 1; int h = mk_val("hold_s5_"); if (h > 0 && h <= 5000) { L("HOLD: pausing the state thread for %d ms at state 5 target 3", h); usleep(h * 1000); } } }
+              if (msg && strstr(msg, "game state: state 5 target 3")) { static int hd; if (!hd) { hd = 1; int h = sw_val("hold_s5_"); if (h > 0 && h <= 5000) { L("HOLD: pausing the state thread for %d ms at state 5 target 3", h); usleep(h * 1000); } } }
           if (msg && strstr(msg, "game state: state")) { static int gsn; if (gsn < 14) { gsn++; p2_snap(msg + 12 < msg + strlen(msg) ? msg + 12 : msg); } }
           if (msg && strstr(msg, "game state: state 6 target 3")) {
-              static int g6; if (!g6) { g6 = 1; gS6Seen = 1; L("IMGDELAY: state 6 target 3 reached after %d images, the image delay stops here (folder imgdelay_all keeps it going)", gImgN); int did = 0;
-                  int hs = mk_val("hold_s6_"); if (hs > 0 && hs <= 8000) { L("HOLD6: pausing the state thread for %d ms at state 6 target 3", hs); usleep(hs * 1000); did = 1; }
-                  if (mk_has("settle_s6")) { long long t0 = p2_ms(), lc = t0; int last = gImgN;
+              static int g6; if (!g6) { g6 = 1; gS6Seen = 1; L("IMGDELAY: state 6 target 3 reached after %d images, the image delay stops here (p2.cfg line imgdelay_all keeps it going)", gImgN); int did = 0;
+                  int hs = sw_val("hold_s6_"); if (hs > 0 && hs <= 8000) { L("HOLD6: pausing the state thread for %d ms at state 6 target 3", hs); usleep(hs * 1000); did = 1; }
+                  if (sw_has("settle_s6")) { long long t0 = p2_ms(), lc = t0; int last = gImgN;
                       while (p2_ms() - t0 < 4000) { usleep(10000); if (gImgN != last) { last = gImgN; lc = p2_ms(); } if (p2_ms() - lc >= 150) break; }
                       L("SETTLE6: waited %lld ms for the image creates to go quiet, images=%d", p2_ms() - t0, gImgN); did = 1; }
                   if (did) p2_snap("after the state-6 gate"); } }
-              if (msg && strstr(msg, "VB lock") && strstr(msg, "count 3 size 72") && mk_has("auto_exit")) {
-                  L("BADLAUNCH: 24x3 state-6 vertex buffers seen, quitting so the next launch can be good (folder auto_exit enabled this)");
+              if (msg && strstr(msg, "VB lock") && strstr(msg, "count 3 size 72") && sw_has("auto_exit")) {
+                  L("BADLAUNCH: 24x3 state-6 vertex buffers seen, quitting so the next launch can be good (p2.cfg line auto_exit enabled this)");
                   usleep(400000); _exit(0); }
               { int isvb = msg && strstr(msg, "VB lock") && (strstr(msg, "count 3 size 72") || strstr(msg, "count 4 size 64"));
                 int isdr = msg && strstr(msg, "draw left out");
@@ -1641,13 +1641,15 @@ jobs:
               char d[1200]; snprintf(d, sizeof d, "%s/Logs", gDocs); mkdir(d, 0755);
               snprintf(out, n, "%s/%s", d, name);
           }
-          /* ---- p2.cfg: the single configuration file. Each line is one switch, spelled exactly like the Documents folder that used to carry it
-                (hz_off, imgdelay_6000, setenv_P2RE_VKGPUTIME=1 ...). Present = ON. Blank lines and lines starting with # are comments. ---- */
+          /* ---- p2.cfg: the single configuration file. Each line is one switch (hz_off, imgdelay_6000, setenv_P2RE_VKGPUTIME=1 ...). Present = ON. Blank lines and lines starting with # are comments.
+                CONFIG MODEL: every behaviour change in this loader is a line added to or removed from Documents/p2.cfg (read through p2_cfg_*), and the Android host's own settings live in the separate
+                hidden Documents/.controls.cfg (written by the launcher UI, parsed by the host). Switches are NEVER written as p2.cfg lines. The only things on disk besides those two files are the ones the game/host reads
+                itself: the nosplash marker folder (mirrored from the p2.cfg entry at every start), Documents/.render_scale, .fake_aspect, .waitspin (host-read files written from p2.cfg entries) and the layout files under Documents/layouts/<name>/ (foot = layouts/foot/). ---- */
           static char gCfgPath[1200];
           static pthread_mutex_t gCfgMu = PTHREAD_MUTEX_INITIALIZER;
           static const char kCfgHeader[] =
               "# p2.cfg - the single configuration file of the Prototype 2 loader (Documents/p2.cfg).\n"
-              "# One switch per line, spelled exactly like the Documents folder that used to carry it (hz_off, imgdelay_6000, setenv_P2RE_VKGPUTIME=1, ...).\n"
+              "# One switch per line (hz_off, imgdelay_6000, setenv_P2RE_VKGPUTIME=1, ...).\n"
               "# A switch is ON while its line is present; no line = the default. Blank lines and lines starting with # are ignored.\n"
               "# Edit it while the app is closed, or use the in-app settings. All log files are written to Documents/Logs.\n"
               "# .controls.cfg (the Android host's own settings, hidden) is a separate file and is not touched.\n";
@@ -1861,16 +1863,16 @@ jobs:
           static PFN_pa gRealGipa, gRealGdpa;
           static void *gVkInst, *gVkDev, *gVkPhys;
           typedef struct { char name[256]; unsigned spec; } VkExtP;
-          static int mk_val(const char *prefix) { if (!gDocs[0]) return -1; return p2_cfg_val(prefix); }   /* v103: flags live in p2.cfg, not in Documents folders */
-          static int mk_has(const char *name) { if (!gDocs[0]) return 0; return p2_cfg_has(name); }
+          static int sw_val(const char *prefix) { if (!gDocs[0]) return -1; return p2_cfg_val(prefix); }   /* switches are lines in p2.cfg */
+          static int sw_has(const char *name) { if (!gDocs[0]) return 0; return p2_cfg_has(name); }
           static int fx_mode(void) {
               static int m = -1;
               int v = __atomic_load_n(&m, __ATOMIC_RELAXED);
               if (v >= 0) return v;
               if (!gDocs[0]) return 0;
-              int r = mk_has("futex_off") ? 0 : 1, ex = -1;
+              int r = sw_has("futex_off") ? 0 : 1, ex = -1;
               if (__atomic_compare_exchange_n(&m, &ex, r, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED))
-                  L("FUTEX mode: %s (folder futex_off %s; FUTEXTRACE lines count the calls either way)", r ? "REAL wait/wake (default since v46)" : "off, syscall(98) -> -1 ENOSYS as in v44", r ? "absent" : "present");
+                  L("FUTEX mode: %s (p2.cfg line futex_off %s; FUTEXTRACE lines count the calls either way)", r ? "REAL wait/wake (default since v46)" : "off, syscall(98) -> -1 ENOSYS as in v44", r ? "absent" : "present");
               return __atomic_load_n(&m, __ATOMIC_RELAXED);
           }
           static int qos_mode(void) {
@@ -1878,15 +1880,15 @@ jobs:
               int v = __atomic_load_n(&m, __ATOMIC_RELAXED);
               if (v >= 0) return v;
               if (!gDocs[0]) return 1;
-              int r = mk_has("qos_off") ? 0 : mk_has("qos_initiated") ? 2 : 1, ex = -1;
+              int r = sw_has("qos_off") ? 0 : sw_has("qos_initiated") ? 2 : 1, ex = -1;
               if (__atomic_compare_exchange_n(&m, &ex, r, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED))
-                  L("QOS mode: %s (folders qos_off / qos_initiated; applies to every thread the guest creates)", r == 0 ? "OFF (folder qos_off present), threads stay at default QoS as in v48" : r == 2 ? "USER_INITIATED (folder qos_initiated present)" : "USER_INTERACTIVE (default)");
+                  L("QOS mode: %s (p2.cfg lines qos_off / qos_initiated; applies to every thread the guest creates)", r == 0 ? "OFF (p2.cfg line qos_off present), threads stay at default QoS as in v48" : r == 2 ? "USER_INITIATED (p2.cfg line qos_initiated present)" : "USER_INTERACTIVE (default)");
               return __atomic_load_n(&m, __ATOMIC_RELAXED);
           }
           static void p2_rt_render(int k, uintptr_t entry) {
           #ifdef __APPLE__
               static int done; if (done || entry != 0x59e0da0UL) return;
-              int v = mk_val("rt_render_"); if (v < 0 && !mk_has("rt_render")) return;
+              int v = sw_val("rt_render_"); if (v < 0 && !sw_has("rt_render")) return;
               done = 1;
               int us = v > 0 ? v : 6000; if (us > 12000) us = 12000; if (us < 500) us = 500;
               mach_timebase_info_data_t tb; mach_timebase_info(&tb);
@@ -1895,7 +1897,7 @@ jobs:
               pol.period = (uint32_t)(per_ns * tb.denom / tb.numer); pol.computation = (uint32_t)(comp_ns * tb.denom / tb.numer);
               pol.constraint = (uint32_t)(con_ns * tb.denom / tb.numer); pol.preemptible = 1;
               kern_return_t kr = thread_policy_set(mach_thread_self(), THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&pol, THREAD_TIME_CONSTRAINT_POLICY_COUNT);
-              L("RT_RENDER: render thread #%d entry e+%lx set to time-constraint policy period 16.67 ms, computation %d us, constraint %llu us, preemptible -> kern_return %d (0 = ok). Folders rt_render / rt_render_US; off = no folder", k, (unsigned long)entry, us, (unsigned long long)(con_ns / 1000), (int)kr);
+              L("RT_RENDER: render thread #%d entry e+%lx set to time-constraint policy period 16.67 ms, computation %d us, constraint %llu us, preemptible -> kern_return %d (0 = ok). p2.cfg lines rt_render / rt_render_US; off = no p2.cfg line", k, (unsigned long)entry, us, (unsigned long long)(con_ns / 1000), (int)kr);
           #else
               (void)k; (void)entry;
           #endif
@@ -1910,14 +1912,14 @@ jobs:
               (void)k; (void)entry;
           #endif
           }
-          static void mk_eat(const char *name) { if (!gDocs[0]) return; p2_cfg_set(name, 0); }
+          static void sw_clear(const char *name) { if (!gDocs[0]) return; p2_cfg_set(name, 0); }
           static void mvk_env_setup(void) {
               static int done; if (done) return; done = 1;
               char p[1200], dump[1200] = "";
               { snprintf(p, sizeof p, "%s/P2_SWITCHES.txt", gDocs); FILE *f = fopen(p, "w");
                 if (f) { fputs(
-                  "P2 loader switches. Every switch below is one LINE in the file p2.cfg in this Documents folder (Files app > On My iPhone > Prototype 2; the leading dot makes iOS hide it, the in-app settings write it too). Add a line with the exact name, remove the line to go back to the default. Close the app first. Wherever the text below says 'folder X' or 'create the folder X', read it as 'the line X in p2.cfg'.\n\n"
-                  "mvk_fastmath_on     MoltenVK shader fast-math ON. Since v72 this is the DEFAULT (MoltenVK's own default); v29-v71 had it off for the black-world hunt, which was closed as a texture-timing problem. This folder is still accepted and does nothing new.\n"
+                  "P2 loader switches. Every switch below is one LINE in the file p2.cfg in this Documents folder (Files app > On My iPhone > Prototype 2; the leading dot makes iOS hide it, the in-app settings write it too). Add a line with the exact name, remove the line to go back to the default. Close the app first.\n\n"
+                  "mvk_fastmath_on     MoltenVK shader fast-math ON. Since v72 this is the DEFAULT (MoltenVK's own default); v29-v71 had it off for the black-world hunt, which was closed as a texture-timing problem. This line is still accepted and does nothing new.\n"
                   "mvk_fastmath_off    (v72) turn shader fast-math OFF (the v29-v71 behaviour). Use it only to test a black or flickering shader.\n"
           "mvk_fastmath_auto   fast-math ON except for shaders that ask for strict NaN/Inf handling.\n"
                   "mvk_argbuf_off      do not use Metal argument buffers.\n"
@@ -1927,18 +1929,18 @@ jobs:
                   "mvk_dumpshaders     write every SPIR-V and converted Metal shader to Documents/mvk_shaders (big; only for a short run).\n"
                   "mvk_log_info        MoltenVK logs info messages too (default: errors and warnings only) into mvk_stderr.log.\n"
                   "vk_loadop_fix_off   do NOT rewrite Vulkan LOAD_OP_NONE / STORE_OP_NONE to LOAD / STORE (v29 default rewrites them; see VKTRACE lines).\n"
-                  "vktrace_now         while the game runs: create this folder (switch app, make it, come back). The next frame boundary prints a VKTRACE\n"
-                  "                    dump of that frame's render passes and the loader deletes the folder again, so you can repeat it.\n\n"
-                  "rtdump_ps=<hex id>  (v30) while the game runs: make a folder like rtdump_ps=04000207 (a pixel-shader id from p2.log). The loader hands the game's\n"
-                  "                    own render-target range dump (rtdump) a one-line trigger file once and removes the folder. Results go to p2.log (\"rtdump: ... range r a..b\").\n"
-                  "swapchain_alpha_keep  (v31) the loader now forces the swapchain's compositeAlpha to OPAQUE (the log prints the game's original value). This folder\n"
+                  "vktrace_now         while the game runs: add this line (switch app, make it, come back). The next frame boundary prints a VKTRACE\n"
+                  "                    dump of that frame's render passes and the loader removes the line again, so you can repeat it.\n\n"
+                  "rtdump_ps=<hex id>  (v30) while the game runs: add a line like rtdump_ps=04000207 (a pixel-shader id from p2.log). The loader hands the game's\n"
+                  "                    own render-target range dump (rtdump) a one-line trigger file once and removes the line. Results go to p2.log (\"rtdump: ... range r a..b\").\n"
+                  "swapchain_alpha_keep  (v31) the loader now forces the swapchain's compositeAlpha to OPAQUE (the log prints the game's original value). This line\n"
                   "                    turns that off (pass the game's value through) so the two behaviours can be compared.\n"
-                  "setenv_NAME=VALUE  (v30) a folder named like  setenv_P2RE_VKFLATPS=1  sets the environment variable P2RE_VKFLATPS=1 BEFORE the game starts.\n"
+                  "setenv_NAME=VALUE  (v30) a line named like  setenv_P2RE_VKFLATPS=1  sets the environment variable P2RE_VKFLATPS=1 BEFORE the game starts.\n"
                   "                    Only names starting with P2RE_ are accepted. Without =VALUE the value is 1. These are the dev's own debug switches (names found in\n"
                   "                    libp2re.so; what each does is NOT verified): P2RE_VKFLATPS  P2RE_VKSHOT  P2RE_VKSHOTDIR  P2RE_VKSKIPPLAN  P2RE_VKGPUTIME\n"
-                  "                    P2RE_VKSHADERDUMP  P2RE_NOAUDIO  P2RE_VKDEBUGCLEAR (hex RGB colour, e.g. FF00FF)  P2RE_VKWHITESLOT  P2RE_VKNULLSLOT  P2RE_VKSKIPPS  P2RE_VKSKIPTGT. Create the folder with the app CLOSED, then start the app. The log shows P2RE_ENV lines.\n\n"
-                  "v40 race switches (folder names, number = value):\n"
-                  "imgdelay_US          (v42) sleep US microseconds inside every vkCreateImage until the game logs state 6 target 3. DEFAULT 6000 with no folder (v52, was 5000); imgdelay_0 turns it off.\n"
+                  "                    P2RE_VKSHADERDUMP  P2RE_NOAUDIO  P2RE_VKDEBUGCLEAR (hex RGB colour, e.g. FF00FF)  P2RE_VKWHITESLOT  P2RE_VKNULLSLOT  P2RE_VKSKIPPS  P2RE_VKSKIPTGT. Add the line with the app CLOSED, then start the app. The log shows P2RE_ENV lines.\n\n"
+                  "v40 race switches (line names, number = value):\n"
+                  "imgdelay_US          (v42) sleep US microseconds inside every vkCreateImage until the game logs state 6 target 3. DEFAULT 6000 with no line (v52, was 5000); imgdelay_0 turns it off.\n"
                   "imgdelay_all         (v42) keep the delay going for the first 800 images, as v40 did (the delay no longer stops at state 6 target 3).\n"
                   "pdelay_MS            the presenting (render) thread sleeps MS ms once before its first present.\n"
                   "pthrottle_US         the presenting thread sleeps US microseconds after each of its first 300 presents.\n"
@@ -1946,26 +1948,26 @@ jobs:
                   "settle_s6            at state 6 wait (max 4 s) until no vkCreateImage for 150 ms: forces 'all textures done before the tree' (tests BAD).\n"
                   "futex_off            (v46) turn OFF the real futex (WAIT/WAKE for syscall(98), on by default since v46) and get v44's -1 ENOSYS back; futex_real from v45 is no longer needed.\n"
                   "rt_render            (v58) give the render thread (entry e+59e0da0 on APK 1.0.7) a real-time time-constraint policy (period 16.67 ms, 6000 us budget). rt_render_US sets the budget (500..12000). Off by default; experiment.\n"
-                  "waitspin_US          (v51) the loader writes Documents/waitspin = US so the game spins US microseconds before a blocked wait sleeps (game default 250). DEFAULT 1000 with no folder (v56, was the waitspin_1000 folder); waitspin_250 restores the game default, 0 = never spin. Costs CPU and heat.\n"
-                  "fakeaspect_N         (v67) the loader writes Documents/fake_aspect = N/10000 (17778 = 16:9, 16000 = 16:10, 15000 = 3:2, 13333 = 4:3). The game then sees a screen of that shape, so its resolution list and window follow it. Applies at the next start. Only a file the loader wrote itself is removed when the folder is gone.\n"
-                  "renderscale_N        the loader writes Documents/render_scale = N (30 to 100, % of the panel) for the game to read at launch. 67 is the game's own default; 75 or 80 is sharper but heavier, 100 = full resolution (MetalFX then has nothing to scale). Remove the folder to go back to the default. Applies at the next launch.\n\n"
-                  "metalfx_on           (EXPERIMENT) scale the game picture up to the panel with MetalFX (spatial) instead of letting the display stretch it. Needs iOS 16+ and a render scale below 100 (menu > Render scale) with FSR off. The loader enables VK_EXT_metal_objects, lets the swapchain be read, and on every present scales the low-res image onto its own full-size layer. The HUD is scaled with the picture. Create the folder with the app CLOSED. Log lines start with METALFX. If anything fails it switches itself off and the normal path takes over.\n\n"
+                  "waitspin_US          (v51) the loader writes Documents/waitspin = US so the game spins US microseconds before a blocked wait sleeps (game default 250). DEFAULT 1000 with no line (v56); waitspin_250 restores the game default, 0 = never spin. Costs CPU and heat.\n"
+                  "fakeaspect_N         (v67) the loader writes Documents/fake_aspect = N/10000 (17778 = 16:9, 16000 = 16:10, 15000 = 3:2, 13333 = 4:3). The game then sees a screen of that shape, so its resolution list and window follow it. Applies at the next start. Only a file the loader wrote itself is removed when the line is gone.\n"
+                  "renderscale_N        the loader writes Documents/render_scale = N (30 to 100, % of the panel) for the game to read at launch. 67 is the game's own default; 75 or 80 is sharper but heavier, 100 = full resolution (MetalFX then has nothing to scale). Remove the line to go back to the default. Applies at the next launch.\n\n"
+                  "metalfx_on           (EXPERIMENT) scale the game picture up to the panel with MetalFX (spatial) instead of letting the display stretch it. Needs iOS 16+ and a render scale below 100 (menu > Render scale) with FSR off. The loader enables VK_EXT_metal_objects, lets the swapchain be read, and on every present scales the low-res image onto its own full-size layer. The HUD is scaled with the picture. Add the line with the app CLOSED. Log lines start with METALFX. If anything fails it switches itself off and the normal path takes over.\n\n"
                   "metalfx_sharp        (needs metalfx_on) sharpen the MetalFX picture with a contrast-adaptive pass (the same idea as the FSR sharpening step). Add metalfx_sharp_N (N = 1 to 100) for the strength; without it the strength is 50. The in-game settings cog (Sharpen toggle and slider) writes both lines, and a change shows within about half a second. Log lines start with METALFX SHARP.\n\n"
-                  "pan_smooth_off       (v81) smooth camera panning is ON by default: touch moves are kept with their real timestamps and the game gets one move per frame, interpolated on the finger path a measured few ms back (touch_coalesce is ignored while it is on). This folder gives the old raw behaviour.\n"
+                  "pan_smooth_off       (v81) smooth camera panning is ON by default: touch moves are kept with their real timestamps and the game gets one move per frame, interpolated on the finger path a measured few ms back (touch_coalesce is ignored while it is on). This line gives the old raw behaviour.\n"
                   "pan_lag_N            (v81) smooth panning: use a fixed lag of N ms instead of the measured one (try 8 to 30). Less = more responsive, more = smoother on a bumpy touch feed. The PAN lines in p2.log show the measured lag.\n"
                   "hold_ms_N            (v97) minimum time a key or click stays down after a quick tap, in ms (0 to 200). Default: two measured game frames (33 ms at 60 fps, 20 ms floor, 110 ms ceiling). hold_off = no minimum at all.\n"
                   "pan_clock_off        (v82) turn OFF the steady pan clock: camera steps follow the real time the game thread drains (the v81 way). On by default: steps are whole screen refreshes.\n"
                   "inputtap_on          (v81) one INPUTTAP line per game frame while a finger moves in the right half: raw px, px the loader handed the game, and the game's own mouse entries (1.0.6 offsets).\n"
                   "touch_coalesce       (v69) keep only the newest touch-move position and hand it to the game once per display-link tick instead of on every UIKit move. Needs a display lock (hz_60 / hz_90 / default 120, not hz_off).\n"
-                  "v72 BUILT IN (no folder needed): MoltenVK fast-math ON, P2RE_VKSHADOWMIN=1024 (shadow casters under 1024 triangles are skipped), P2RE_VKSHADOWHALF=1 (half-size shadow maps).\n"
-          "shadowmin_off        (v72) remove the built-in P2RE_VKSHADOWMIN=1024 so every shadow caster is drawn (the game's own behaviour). A setenv_P2RE_VKSHADOWMIN=N folder instead changes the number. P2RE_VKSHADOWHALF is built in and a setenv_ folder for it is ignored.\n"
+                  "v72 BUILT IN (no line needed): MoltenVK fast-math ON, P2RE_VKSHADOWMIN=1024 (shadow casters under 1024 triangles are skipped), P2RE_VKSHADOWHALF=1 (half-size shadow maps).\n"
+          "shadowmin_off        (v72) remove the built-in P2RE_VKSHADOWMIN=1024 so every shadow caster is drawn (the game's own behaviour). A setenv_P2RE_VKSHADOWMIN=N line instead changes the number. P2RE_VKSHADOWHALF is built in and a setenv_ line for it is ignored.\n"
           "passtime_on          (v72) every 5 s log PASSSIG lines: each kind of render pass (size, attachments) with its passes and draws per frame. Create it with the app CLOSED so the numbering is the same for the whole run. Needs the game to record passes with vkCmdBeginRendering (VKTRACE lines say dyn).\n"
-          "passskip_K           (v72, DIAGNOSTIC) while the game runs: a folder like passskip_3 skips every draw of the passes numbered K in the PASSSIG list (the picture breaks; watch fps and the GPU ms). Delete the folder to bring it back. Checked twice a second. Does not touch indirect-count draws.\n"
+          "passskip_K           (v72, DIAGNOSTIC) while the game runs: a line like passskip_3 skips every draw of the passes numbered K in the PASSSIG list (the picture breaks; watch fps and the GPU ms). Remove the line to bring it back. Checked twice a second. Does not touch indirect-count draws.\n"
           "dontcare_auto       (v96, PERF TEST, EXPERIMENT) the loader learns which render passes are plain fullscreen post passes (3 draws or fewer, depth test off, viewport and scissor cover the whole target) and, once a pass slot has looked like that 60 times with no exception, begins it with COLOR LOAD_OP_LOAD -> DONT_CARE (saves the bandwidth of loading the old contents). Only colour attachments; depth is never touched. If it ever sees an exception in a learned slot it switches that slot off and logs DONTCARE: VIOLATED. Needs one thing it cannot check: blending (a blended pass reads the old contents and would go wrong). Create it together with passtime_on with the app CLOSED so the kind numbers match PASSSIG. Compare the vkpddi gpu: ms against a run without it, and look at the picture (fullscreen effects: bloom, fog, glow, UI).\n"
           "dc_K / dcx_K        (v96, PERF TEST) dc_K forces DONT_CARE for the colour loads of EVERY pass of kind K (numbers from PASSSIG, create with the app closed, same run order as passtime_on); dcx_K excludes kind K from dontcare_auto. Use dc_K one kind at a time to find which fullscreen pass saves GPU ms and which one breaks the picture. Checked twice a second.\n"
-          "own_layout   (v76, EXPERIMENT, APK 1.0.7 only) your own controls. The loader keeps touches that start on your buttons, stick or block regions away from the dev's input handler and presses keys itself (PushKey). Layout file: Documents/own_layout/own_layout.txt (created with defaults): stick cx cy r / btn KEYHEX x y w h LABEL / block x y w h, fractions of the screen. Use with ovl_off to hide the dev's own drawing. Applies at the next start.\n"
-          "ovl_trace / ovl_hide / ovl_off   (v75, EXPERIMENT, APK 1.0.7 only) the dev's overlay (settings page, control editor, on-screen buttons, perf HUD, credits) is one vertex list drawn in one extra pass on the swapchain. ovl_trace measures it (OVERLAY lines), ovl_hide builds it but draws nothing and skips that pass, ovl_off does not even build it (the dev's touch controls may stop working). Live; delete the folder to bring it back. Keep a credit for the dev elsewhere.\n"
-          "passtrace_now / drawtrace_now   (v75) create the folder once: the loader makes the dev's trigger file, the dev's renderer logs ONE frame to p2.log (every pass with clear/load per attachment and why it ended; drawtrace = every draw, long).\n"
+          "own_layout   (v76, EXPERIMENT, APK 1.0.7 only) your own controls. The loader keeps touches that start on your buttons, stick or block regions away from the dev's input handler and presses keys itself (PushKey). Layout file: Documents/layouts/foot/own_layout.txt (created with defaults): stick cx cy r / btn KEYHEX x y w h LABEL / block x y w h, fractions of the screen. Use with ovl_off to hide the dev's own drawing. Applies at the next start.\n"
+          "ovl_trace / ovl_hide / ovl_off   (v75, EXPERIMENT, APK 1.0.7 only) the dev's overlay (settings page, control editor, on-screen buttons, perf HUD, credits) is one vertex list drawn in one extra pass on the swapchain. ovl_trace measures it (OVERLAY lines), ovl_hide builds it but draws nothing and skips that pass, ovl_off does not even build it (the dev's touch controls may stop working). Live; remove the line to bring it back. Keep a credit for the dev elsewhere.\n"
+          "passtrace_now / drawtrace_now   (v75) add the line once: the loader makes the dev's trigger file, the dev's renderer logs ONE frame to p2.log (every pass with clear/load per attachment and why it ended; drawtrace = every draw, long).\n"
           "dbgoff_<name>        (v75) the loader writes <Documents>/../debugoff; the dev's renderer switches the named feature off (drawcopyless copyunlocked statecache shadowclear pendclear setkeep setcache rtzero renderthread occlusionquery lightstencil dummycolor drawcopy asyncpipes; substring match). Effects unverified. Applies at the next start.\n"
           "setenv_P2RE_VKGPUTIME   (existing mechanism, v75 note) turns on the GPU pass timer: p2.log gets 'vkpddi gpu:' lines with ms, passes, draws, vertices, pipelines per pass kind. Small overhead.\n"
           "gpuhud_off           (v70) do not serve the game a GPU-busy file (its HUD keeps showing GPU --).\n"
@@ -1988,35 +1990,35 @@ jobs:
                   "Log rotation: only the last two runs are kept. The latest run uses the normal name; the run before it is renamed with _prev (p2_prev.log, p2_loader_log_prev.txt, mvk_stderr_prev.log, ...). Anything older is deleted when a run starts.\n", f); fclose(f); } }
               logp(p, sizeof p, "mvk_stderr.log");
               int fd = open(p, O_WRONLY | O_CREAT | O_TRUNC, 0644); if (fd >= 0) { dup2(fd, 2); close(fd); }
-              int fm = mk_has("mvk_fastmath_off") ? 0 : mk_has("mvk_fastmath_auto") ? 2 : 1;
+              int fm = sw_has("mvk_fastmath_off") ? 0 : sw_has("mvk_fastmath_auto") ? 2 : 1;
               setenv("MVK_CONFIG_FAST_MATH_ENABLED", fm == 1 ? "1" : fm == 2 ? "2" : "0", 1);
-              setenv("MVK_CONFIG_LOG_LEVEL", mk_has("mvk_log_info") ? "3" : "2", 1);
-              int ab = mk_has("mvk_argbuf_off"); if (ab) setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "0", 1);
+              setenv("MVK_CONFIG_LOG_LEVEL", sw_has("mvk_log_info") ? "3" : "2", 1);
+              int ab = sw_has("mvk_argbuf_off"); if (ab) setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "0", 1);
               /* v93 perf tests (MoltenVK Configuration Parameters doc, main branch): argument buffers already default ON, so only mvk_argbuf_off is an A/B. */
-              int pf = mk_val("mvk_prefill_"); if (pf < 0 && mk_has("mvk_prefill_on")) pf = 1; if (pf > 3) pf = 3;   /* 0 none, 1 on vkEnd, 2 immediate+pool per cmd, 3 immediate, app-managed pools */
+              int pf = sw_val("mvk_prefill_"); if (pf < 0 && sw_has("mvk_prefill_on")) pf = 1; if (pf > 3) pf = 3;   /* 0 none, 1 on vkEnd, 2 immediate+pool per cmd, 3 immediate, app-managed pools */
               if (pf >= 0) { char pv[16]; snprintf(pv, sizeof pv, "%d", pf); setenv("MVK_CONFIG_PREFILL_METAL_COMMAND_BUFFERS", pv, 1); }
-              int ss = mk_has("mvk_syncsubmit_off"); if (ss) setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "0", 1);   /* default 1: submit/present run on the calling thread; 0 hands them to a GCD queue */
-              int pl = mk_has("mvk_perf_log"); if (pl) { setenv("MVK_CONFIG_PERFORMANCE_TRACKING", "1", 1); setenv("MVK_CONFIG_PERFORMANCE_LOGGING_FRAME_COUNT", "300", 1); setenv("MVK_CONFIG_LOG_LEVEL", "3", 1); }
-              int ds = mk_has("mvk_dumpshaders"); if (ds) { logp(dump, sizeof dump, "mvk_shaders"); mkdir(dump, 0755); setenv("MVK_CONFIG_SHADER_DUMP_DIR", dump, 1); }
-              L("MVKENV fast_math=%d log_level=%s argbuf_off=%d prefill=%d syncsubmit_off=%d perf_log=%d dumpshaders=%d stderr->mvk_stderr.log (%s)", fm, (pl || mk_has("mvk_log_info")) ? "3" : "2", ab, pf, ss, pl, ds, fd >= 0 ? "ok" : "FAILED"); if (pf == 3) L("MVKENV WARNING: prefill 3 assumes every recording thread has an autorelease pool; the guest render thread probably does not");
+              int ss = sw_has("mvk_syncsubmit_off"); if (ss) setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "0", 1);   /* default 1: submit/present run on the calling thread; 0 hands them to a GCD queue */
+              int pl = sw_has("mvk_perf_log"); if (pl) { setenv("MVK_CONFIG_PERFORMANCE_TRACKING", "1", 1); setenv("MVK_CONFIG_PERFORMANCE_LOGGING_FRAME_COUNT", "300", 1); setenv("MVK_CONFIG_LOG_LEVEL", "3", 1); }
+              int ds = sw_has("mvk_dumpshaders"); if (ds) { logp(dump, sizeof dump, "mvk_shaders"); mkdir(dump, 0755); setenv("MVK_CONFIG_SHADER_DUMP_DIR", dump, 1); }
+              L("MVKENV fast_math=%d log_level=%s argbuf_off=%d prefill=%d syncsubmit_off=%d perf_log=%d dumpshaders=%d stderr->mvk_stderr.log (%s)", fm, (pl || sw_has("mvk_log_info")) ? "3" : "2", ab, pf, ss, pl, ds, fd >= 0 ? "ok" : "FAILED"); if (pf == 3) L("MVKENV WARNING: prefill 3 assumes every recording thread has an autorelease pool; the guest render thread probably does not");
           }
           static void p2re_env_setup(void) {
               if (!gDocs[0]) return;
-              /* v103: nosplash is read by the game itself as a folder in its data folder (Documents/nosplash), so the loader mirrors the p2.cfg entry onto that marker folder at every start */
-              { char nsp[1300]; snprintf(nsp, sizeof nsp, "%s/nosplash", gDocs); if (mk_has("nosplash")) mkdir(nsp, 0755); else rmdir(nsp); }
+              /* nosplash is the one switch the game itself reads as a folder (Documents/nosplash), so the loader mirrors the p2.cfg entry onto that marker folder at every start */
+              { char nsp[1300]; snprintf(nsp, sizeof nsp, "%s/nosplash", gDocs); if (sw_has("nosplash")) mkdir(nsp, 0755); else rmdir(nsp); }
               if (p2_boot_flags) L("BOOT FLAGS (as seen when the app started):\n%s", p2_boot_flags);
-              gRbOff = mk_has("rbtrace_off") ? 1 : 0; gTxOff = mk_has("textrace_off") ? 1 : 0; L("TEXTRACE: %s (folder textrace_off disables; needs RBTRACE on for the submit / done checks%s)", gTxOff ? "OFF" : "on", gRbOff ? "; RBTRACE IS OFF so only record-time facts are logged" : ""); L("RBTRACE: %s (folder rbtrace_off disables)", gRbOff ? "OFF" : "on"); gMaxLod = mk_val("maxlod_"); L("MAXLOD: %s", gMaxLod >= 0 ? "ON, every sampler the game creates gets maxLod capped at that value (folder maxlod_<N>; maxlod_0 = sample only the full-size mip level, so no mip data is ever read)" : "off (folder maxlod_0 pins every sampler to the full-size level; maxlod_<N> caps at level N; read at launch only)"); L("UPLOADGAP: %s (texture-like images older than 5 s whose mip levels were never written; reported in the TEXTRACE window; folder textrace_off disables)", gTxOff ? "OFF" : "on"); gSleepCap = mk_val("sleepcap_"); L("SLEEPCAP: %s", gSleepCap >= 0 ? "ON, guest sleeps of 2000..20000 us are shortened (folder sleepcap_<us>)" : "off (folder sleepcap_<us> shortens frame-sized guest sleeps to <us>; experiment)"); gWtOff = mk_has("waittrace_off") ? 1 : 0; L("WAITTRACE: %s (folder waittrace_off disables)", gWtOff ? "OFF" : "on"); gpuhud_start();
-              { int ws = mk_val("waitspin_"); int wsDef = 0; if (ws < 0) { ws = 1000; wsDef = 1; } char wp[1200], wa[1200]; snprintf(wp, sizeof wp, "%s/.waitspin", gDocs); snprintf(wa, sizeof wa, "%s/.waitspin.p2auto", gDocs);
-                if (ws >= 0) { FILE *wf = fopen(wp, "w"); if (wf) { fprintf(wf, "%d\n", ws); fclose(wf); FILE *wm = fopen(wa, "w"); if (wm) fclose(wm); L("WAITSPIN: %s -> wrote Documents/waitspin = %d (game default 250 us; check the game's 'waits: spin N us' line)", wsDef ? "no waitspin_ folder, built-in default (v56)" : "folder override", ws); } else L("WAITSPIN: could not write Documents/waitspin"); }
+              gRbOff = sw_has("rbtrace_off") ? 1 : 0; gTxOff = sw_has("textrace_off") ? 1 : 0; L("TEXTRACE: %s (p2.cfg line textrace_off disables; needs RBTRACE on for the submit / done checks%s)", gTxOff ? "OFF" : "on", gRbOff ? "; RBTRACE IS OFF so only record-time facts are logged" : ""); L("RBTRACE: %s (p2.cfg line rbtrace_off disables)", gRbOff ? "OFF" : "on"); gMaxLod = sw_val("maxlod_"); L("MAXLOD: %s", gMaxLod >= 0 ? "ON, every sampler the game creates gets maxLod capped at that value (p2.cfg line maxlod_<N>; maxlod_0 = sample only the full-size mip level, so no mip data is ever read)" : "off (p2.cfg line maxlod_0 pins every sampler to the full-size level; maxlod_<N> caps at level N; read at launch only)"); L("UPLOADGAP: %s (texture-like images older than 5 s whose mip levels were never written; reported in the TEXTRACE window; p2.cfg line textrace_off disables)", gTxOff ? "OFF" : "on"); gSleepCap = sw_val("sleepcap_"); L("SLEEPCAP: %s", gSleepCap >= 0 ? "ON, guest sleeps of 2000..20000 us are shortened (p2.cfg line sleepcap_<us>)" : "off (p2.cfg line sleepcap_<us> shortens frame-sized guest sleeps to <us>; experiment)"); gWtOff = sw_has("waittrace_off") ? 1 : 0; L("WAITTRACE: %s (p2.cfg line waittrace_off disables)", gWtOff ? "OFF" : "on"); gpuhud_start();
+              { int ws = sw_val("waitspin_"); int wsDef = 0; if (ws < 0) { ws = 1000; wsDef = 1; } char wp[1200], wa[1200]; snprintf(wp, sizeof wp, "%s/.waitspin", gDocs); snprintf(wa, sizeof wa, "%s/.waitspin.p2auto", gDocs);
+                if (ws >= 0) { FILE *wf = fopen(wp, "w"); if (wf) { fprintf(wf, "%d\n", ws); fclose(wf); FILE *wm = fopen(wa, "w"); if (wm) fclose(wm); L("WAITSPIN: %s -> wrote Documents/waitspin = %d (game default 250 us; check the game's 'waits: spin N us' line)", wsDef ? "no waitspin_ p2.cfg line, built-in default (v56)" : "p2.cfg line override", ws); } else L("WAITSPIN: could not write Documents/waitspin"); }
                 }
-              { int fa = mk_val("fakeaspect_"); char fp[1200], fm[1200]; snprintf(fp, sizeof fp, "%s/.fake_aspect", gDocs); snprintf(fm, sizeof fm, "%s/.fake_aspect.p2auto", gDocs);
-                if (fa > 5000 && fa < 40000) { FILE *ff = fopen(fp, "w"); if (ff) { fprintf(ff, "%d.%04d\n", fa / 10000, fa % 10000); fclose(ff); FILE *fq = fopen(fm, "w"); if (fq) fclose(fq); L("FAKE_ASPECT: folder fakeaspect_%d -> wrote Documents/fake_aspect = %d.%04d (the game's own 'test switch fake_aspect' log line shows whether it was read)", fa, fa / 10000, fa % 10000); } else L("FAKE_ASPECT: could not write Documents/fake_aspect"); }
-                else if (fa >= 0) L("FAKE_ASPECT: folder fakeaspect_%d ignored (the ratio x 10000 must be between 5001 and 39999)", fa);
+              { int fa = sw_val("fakeaspect_"); char fp[1200], fm[1200]; snprintf(fp, sizeof fp, "%s/.fake_aspect", gDocs); snprintf(fm, sizeof fm, "%s/.fake_aspect.p2auto", gDocs);
+                if (fa > 5000 && fa < 40000) { FILE *ff = fopen(fp, "w"); if (ff) { fprintf(ff, "%d.%04d\n", fa / 10000, fa % 10000); fclose(ff); FILE *fq = fopen(fm, "w"); if (fq) fclose(fq); L("FAKE_ASPECT: p2.cfg line fakeaspect_%d -> wrote Documents/fake_aspect = %d.%04d (the game's own 'test switch fake_aspect' log line shows whether it was read)", fa, fa / 10000, fa % 10000); } else L("FAKE_ASPECT: could not write Documents/fake_aspect"); }
+                else if (fa >= 0) L("FAKE_ASPECT: p2.cfg line fakeaspect_%d ignored (the ratio x 10000 must be between 5001 and 39999)", fa);
                 else if (access(fm, F_OK) == 0) { unlink(fp); unlink(fm); L("FAKE_ASPECT: no fakeaspect_ entry in p2.cfg, removed the Documents/fake_aspect the loader wrote earlier (v104: the marker is a FILE next to it, the old check looked for a p2.cfg line and never fired, so 4:3 stayed forever)"); }
                 else if (access(fp, F_OK) == 0) L("FAKE_ASPECT: no fakeaspect_ entry; Documents/.fake_aspect exists WITHOUT the loader marker (made by hand, or by a build before v103) and is left alone: delete it if the game is stuck on a wrong aspect"); }
-              { int rs = mk_val("renderscale_"); char rp[1200], rm[1200]; snprintf(rp, sizeof rp, "%s/.render_scale", gDocs); snprintf(rm, sizeof rm, "%s/.render_scale.p2auto", gDocs);   /* the host reads Documents/render_scale at launch (30..100, % of the panel) */
-                if (rs >= 30 && rs <= 100) { FILE *rf = fopen(rp, "w"); if (rf) { fprintf(rf, "%d\n", rs); fclose(rf); FILE *rq = fopen(rm, "w"); if (rq) fclose(rq); L("RENDER_SCALE: folder renderscale_%d -> wrote Documents/render_scale = %d", rs, rs); } else L("RENDER_SCALE: could not write Documents/render_scale"); }
-                else if (rs >= 0) L("RENDER_SCALE: folder renderscale_%d ignored (the host accepts 30 to 100)", rs);
+              { int rs = sw_val("renderscale_"); char rp[1200], rm[1200]; snprintf(rp, sizeof rp, "%s/.render_scale", gDocs); snprintf(rm, sizeof rm, "%s/.render_scale.p2auto", gDocs);   /* the host reads Documents/render_scale at launch (30..100, % of the panel) */
+                if (rs >= 30 && rs <= 100) { FILE *rf = fopen(rp, "w"); if (rf) { fprintf(rf, "%d\n", rs); fclose(rf); FILE *rq = fopen(rm, "w"); if (rq) fclose(rq); L("RENDER_SCALE: p2.cfg line renderscale_%d -> wrote Documents/render_scale = %d", rs, rs); } else L("RENDER_SCALE: could not write Documents/render_scale"); }
+                else if (rs >= 0) L("RENDER_SCALE: p2.cfg line renderscale_%d ignored (the host accepts 30 to 100)", rs);
                 else if (access(rm, F_OK) == 0) { unlink(rp); unlink(rm); L("RENDER_SCALE: no renderscale_ entry in p2.cfg, removed the Documents/.render_scale the loader wrote earlier (a .render_scale the launcher menu wrote has no marker and is kept)"); }
                 else { char cur[16] = {0}; FILE *cf = fopen(rp, "r"); if (cf) { if (!fgets(cur, sizeof cur, cf)) cur[0] = 0; fclose(cf); } L("RENDER_SCALE: using Documents/.render_scale = %s", cur[0] ? cur : "(none, the game default)"); } }
               { char dp[1300], dm[1300], txt[260] = {0}; int nn = 0; snprintf(dp, sizeof dp, "%s/../debugoff", gDocs); snprintf(dm, sizeof dm, "%s/../debugoff.p2auto", gDocs);
@@ -2024,8 +2026,8 @@ jobs:
                     size_t l = strlen(txt); if (okc && l + strlen(n + 7) + 2 < sizeof txt - 1) { snprintf(txt + l, sizeof txt - l, "%s%s", l ? " " : "", n + 7); nn++; } } }
                 if (nn) { FILE *f = fopen(dp, "w"); if (f) { fprintf(f, "%s", txt); fclose(f); FILE *m = fopen(dm, "w"); if (m) fclose(m); L("DEBUGOFF: wrote %s = \"%s\" (the dev's own log line \"debugoff: ...\" in p2.log confirms it was read)", dp, txt); } else L("DEBUGOFF: cannot write %s", dp); }
                 else if (access(dm, F_OK) == 0) { unlink(dp); unlink(dm); L("DEBUGOFF: no dbgoff_ entries in p2.cfg, removed the debugoff file the loader wrote earlier"); } }
-          if (!mk_has("shadowmin_off")) { setenv("P2RE_VKSHADOWMIN", "1024", 1); L("P2RE_ENV built-in P2RE_VKSHADOWMIN=1024 (folder shadowmin_off removes it; a setenv_P2RE_VKSHADOWMIN=N folder overrides it)"); }
-          else L("P2RE_ENV folder shadowmin_off: no built-in P2RE_VKSHADOWMIN, every shadow caster is drawn");
+          if (!sw_has("shadowmin_off")) { setenv("P2RE_VKSHADOWMIN", "1024", 1); L("P2RE_ENV built-in P2RE_VKSHADOWMIN=1024 (p2.cfg line shadowmin_off removes it; a setenv_P2RE_VKSHADOWMIN=N p2.cfg line overrides it)"); }
+          else L("P2RE_ENV p2.cfg line shadowmin_off: no built-in P2RE_VKSHADOWMIN, every shadow caster is drawn");
           setenv("P2RE_VKSHADOWHALF", "1", 1); L("P2RE_ENV built-in P2RE_VKSHADOWHALF=1 (half-size shadow maps)");
           if (!p2_cfg_path()[0]) { L("P2RE_ENV: p2.cfg is not available"); return; }
               int n = 0; char en[300]; int eit = 0;
@@ -2045,7 +2047,7 @@ jobs:
                   L("P2RE_ENV P2RE_VKSHOTDIR not given: set to %s (files named vkshot_<number>.bmp are expected there)", sd);
               }
               L("P2RE_ENV: %d switch(es) applied before the game starts; Documents/env %s, Documents/vkshot %s", n,
-                mk_has("env") ? "EXISTS" : "absent", mk_has("vkshot") ? "EXISTS" : "absent");
+                sw_has("env") ? "EXISTS" : "absent", sw_has("vkshot") ? "EXISTS" : "absent");
           }
           static char *sh_getenv(const char *name) {
               static char seen[64][48]; static int ns; static int lk;
@@ -2127,11 +2129,11 @@ jobs:
           static void rs_key(int down) { ((void (*)(unsigned char, unsigned char))(gBase + 0x5a86040))(0x2A, (unsigned char)down); }
           static void rs_poll(unsigned fr) {
               if (fr != 1 && fr % 30) return;
-              int v = 0, it = mk_has("inputtap_on");
-              if (v > 0 && !gRsOn) L("RINGSPRINT: ON, ring radius %d per mille of the screen height (folder ringsprint_%d). To find where the dev's own forward ring is, use ringsprint_900 once (ours never triggers) and push straight forward until the game sprints: the log prints that displacement; then set N to it.", v, v);
+              int v = 0, it = sw_has("inputtap_on");
+              if (v > 0 && !gRsOn) L("RINGSPRINT: ON, ring radius %d per mille of the screen height (p2.cfg line ringsprint_%d). To find where the dev's own forward ring is, use ringsprint_900 once (ours never triggers) and push straight forward until the game sprints: the log prints that displacement; then set N to it.", v, v);
               if (v <= 0 && gRsOn) L("RINGSPRINT: off");
               gRsR = v > 0 ? (float)v / 1000.0f : 0.0f; gRsOn = v > 0;
-              if (it != gItOn) { gItOn = it; L("INPUTTAP: %s (folder inputtap_on)", it ? "ON, one INPUTTAP line per game frame while fingers move (cap 6000 lines)" : "off"); }
+              if (it != gItOn) { gItOn = it; L("INPUTTAP: %s (p2.cfg line inputtap_on)", it ? "ON, one INPUTTAP line per game frame while fingers move (cap 6000 lines)" : "off"); }
           }
           static void rs_tick(void) {
               static long long lastLog; static float maxd;
@@ -2197,7 +2199,7 @@ jobs:
               if (r->dcap) { gDcViol++; if (gDcViol <= 20) L("DONTCARE: VIOLATED in kind %d slot %d (%ux%u, %u draws, depth test %d): that pass ran with DONT_CARE and was NOT a plain fullscreen pass; the slot is switched off. If the picture glitched for a frame, this is why.", r->sig, r->ord, r->w, r->h, r->draws, p->dt); }
           }
           static void dc_scan(void) {
-              unsigned long long f = 0, x = 0; int a = mk_has("dontcare_auto");
+              unsigned long long f = 0, x = 0; int a = sw_has("dontcare_auto");
               if (gDocs[0]) { char cn[300]; int cit = 0;
                   while (p2_cfg_next(&cit, cn, sizeof cn)) {
                       int n;
@@ -2213,7 +2215,7 @@ jobs:
                   unsigned el = 0, bd = 0, sn = 0;
                   for (int o = 0; o < DC_ORD; o++) { const DcSlot *sl = &gDcSl[k][o]; if (sl->seen) sn++; if (sl->bad) bd++; if (sl->seen >= DC_LEARN && !sl->bad) el++; }
                   nel += el; nbad += bd;
-                  if (el || bd || gDcApplied[k] || ((gDcForce >> k) & 1)) L("DONTCARE #%u %ux%u: slots eligible %u, with exceptions %u (of %u seen), DONT_CARE applied to %u passes so far%s", k, gSig[k].w, gSig[k].hh, el, bd, sn, gDcApplied[k], ((gDcForce >> k) & 1) ? " [forced by folder dc_K]" : "");
+                  if (el || bd || gDcApplied[k] || ((gDcForce >> k) & 1)) L("DONTCARE #%u %ux%u: slots eligible %u, with exceptions %u (of %u seen), DONT_CARE applied to %u passes so far%s", k, gSig[k].w, gSig[k].hh, el, bd, sn, gDcApplied[k], ((gDcForce >> k) & 1) ? " [forced by p2.cfg line dc_K]" : "");
               }
               L("DONTCARE: total %u passes started with DONT_CARE colour loads; eligible slots %u, slots with exceptions %u, violations on applied passes %u", gDcAppliedTot, nel, nbad, gDcViol);
           }
@@ -2244,10 +2246,10 @@ jobs:
           }
           static void sig_poll(unsigned fr) {
               if (fr != 1 && fr % 30) return;
-              int on = mk_has("passtime_on"), sk = mk_val("passskip_");
-              if (on != gSigStats) { gSigStats = on; L("PASSTIME: %s (folder passtime_on)", on ? "ON" : "off"); }
+              int on = sw_has("passtime_on"), sk = sw_val("passskip_");
+              if (on != gSigStats) { gSigStats = on; L("PASSTIME: %s (p2.cfg line passtime_on)", on ? "ON" : "off"); }
               if (sk != gSkipSig) { gSkipSig = sk; L("PASSSKIP: %s", sk >= 0 ? "skipping the draws of pass kind (see PASSSIG numbers)" : "off"); if (sk >= 0) L("PASSSKIP: kind %d", sk); }
-              if (fr == 1 || fr % 300 == 0 || gDcOn) dc_scan();   /* v96b: a directory read on the render thread; once per 300 frames unless a DONT_CARE folder is already active */
+              if (fr == 1 || fr % 300 == 0 || gDcOn) dc_scan();   /* v96b: a p2.cfg scan on the render thread; once per 300 frames unless a DONT_CARE line is already active */
               if ((gSigStats || gDcOn) && fr % 300 == 0) sig_report(fr);
           }
           static int pr_draw(void) {
@@ -2281,7 +2283,7 @@ jobs:
                       if (r->d.used) { int l = r->d.load, st = r->d.store; __sync_fetch_and_add(&gSigDLd[k][l >= 0 && l < 3 ? l : 3], 1); __sync_fetch_and_add(&gSigDSt[k][st >= 0 && st < 2 ? st : 2], 1); }
                   }
               }
-              if (gLoadFix < 0) { gLoadFix = mk_has("vk_loadop_fix_off") ? 0 : 1; L("VKTRACE LOAD_OP_NONE/STORE_OP_NONE -> LOAD/STORE rewrite: %s", gLoadFix ? "ON (folder vk_loadop_fix_off turns it off)" : "off"); }
+              if (gLoadFix < 0) { gLoadFix = sw_has("vk_loadop_fix_off") ? 0 : 1; L("VKTRACE LOAD_OP_NONE/STORE_OP_NONE -> LOAD/STORE rewrite: %s", gLoadFix ? "ON (p2.cfg line vk_loadop_fix_off turns it off)" : "off"); }
               {
                   int dc = dc_decide(r);
                   if ((gLoadFix || dc) && ri->nColor <= 8) {
@@ -2335,8 +2337,8 @@ jobs:
                   if (fr[0] <= fp) break; fp = fr[0]; }
           }
           static int w_cimg(void *dev, const VkICI2 *ci, const void *al, uint64_t *pi) {
-              { static int dl = -2, all = 0; if (dl == -2) { dl = mk_val("imgdelay_"); if (dl < 0) dl = 6000; all = mk_has("imgdelay_all");
-                    L("imgdelay: %d us per vkCreateImage, %s (default 6000 since v52; folder imgdelay_0 = off; imgdelay_<number> = other value)", dl, all ? "kept for the first 800 images (imgdelay_all)" : "stops at state 6 target 3"); }
+              { static int dl = -2, all = 0; if (dl == -2) { dl = sw_val("imgdelay_"); if (dl < 0) dl = 6000; all = sw_has("imgdelay_all");
+                    L("imgdelay: %d us per vkCreateImage, %s (default 6000 since v52; p2.cfg line imgdelay_0 = off; imgdelay_<number> = other value)", dl, all ? "kept for the first 800 images (imgdelay_all)" : "stops at state 6 target 3"); }
                 if (dl > 0 && gImgN < 800 && (all || !gS6Seen)) usleep((useconds_t)(dl > 100000 ? 100000 : dl)); }
               int r = gR_cimg(dev, ci, al, pi);
               if (r == 0) { p2_img_note(); if (gImgN <= 3 || gImgN == 50 || gImgN == 150) { char cb[420]; p2_chain(cb, sizeof cb); L("IMGCHAIN #%d tid=%d %ux%u fmt=%d:%s", gImgN, p2_tid(), ci->w, ci->h, ci->format, cb); } }
@@ -2405,7 +2407,7 @@ jobs:
               tx_unlock(); return ok;
           }
           static int gSnWant = -1;
-          static int sn_want(void) { if (gSnWant < 0) gSnWant = mk_has("snapshot_off") ? 0 : 1; return gSnWant; }
+          static int sn_want(void) { if (gSnWant < 0) gSnWant = sw_has("snapshot_off") ? 0 : 1; return gSnWant; }
           #define tx_trk() (!gTxOff || sn_want())
           typedef struct { int sType; const void *pNext; unsigned flags; uint64_t size; unsigned usage; } VkBCI;
           static int (*gR_cbuf)(void *, const VkBCI *, const void *, uint64_t *);
@@ -2466,7 +2468,7 @@ jobs:
           }
           /* v94: STAGING SNAPSHOT FIX. The game records vkCmdCopyBufferToImage but its staging memory is rewritten before vkQueueSubmit
              (TEXTRACE CHANGED BEFORE SUBMIT). At record time the source bytes are copied into a loader-owned host-visible ring buffer
-             and the copy is redirected to that snapshot. ON by default; folder snapshot_off disables it. */
+             and the copy is redirected to that snapshot. ON by default; p2.cfg line snapshot_off disables it. */
           #define SN_MAXSPAN (16u << 20)
           typedef struct { int sType; const void *pNext; unsigned flags; uint64_t size; unsigned usage, sharing, nq; const unsigned *pq; } VkBCIf;
           typedef struct { int sType; const void *pNext; uint64_t size; unsigned type; } VkMAIf;
@@ -2482,7 +2484,7 @@ jobs:
               sn_lock();
               if (gSnState < 0) {
                   int ok = 0;
-                  if (!sn_want()) L("SNAPSHOT: OFF (folder snapshot_off present)");
+                  if (!sn_want()) L("SNAPSHOT: OFF (p2.cfg line snapshot_off present)");
                   else {
                       int (*cb)(void *, const VkBCIf *, const void *, uint64_t *) = (int (*)(void *, const VkBCIf *, const void *, uint64_t *))gRealGdpa(gVkDev, "vkCreateBuffer");
                       void (*gmr)(void *, uint64_t, VkMRf *) = (void (*)(void *, uint64_t, VkMRf *))gRealGdpa(gVkDev, "vkGetBufferMemoryRequirements");
@@ -2503,7 +2505,7 @@ jobs:
                               VkMAIf mai; memset(&mai, 0, sizeof mai); mai.sType = 5; mai.size = rq.size > sizes[k] ? rq.size : sizes[k]; mai.type = (unsigned)ti;
                               if (am(gVkDev, &mai, NULL, &mem) == 0 && mem && bb(gVkDev, buf, mem, 0) == 0 && mm(gVkDev, mem, 0, ~0ULL, 0, &ptr) == 0 && ptr) {
                                   gSnBuf = buf; gSnPtr = (unsigned char *)ptr; gSnSize = sizes[k]; ok = 1;
-                                  L("SNAPSHOT: ON, ring %u MB host-visible (memory type %d), buffer %llx. Copies are redirected to a record-time snapshot of the staging bytes. Folder snapshot_off disables.", (unsigned)(sizes[k] >> 20), ti, (unsigned long long)buf);
+                                  L("SNAPSHOT: ON, ring %u MB host-visible (memory type %d), buffer %llx. Copies are redirected to a record-time snapshot of the staging bytes. p2.cfg line snapshot_off disables.", (unsigned)(sizes[k] >> 20), ti, (unsigned long long)buf);
                               } else L("SNAPSHOT: ring allocation of %u MB failed", (unsigned)(sizes[k] >> 20));
                           }
                           if (!ok) L("SNAPSHOT: could not create the ring, fix not active");
@@ -2862,8 +2864,8 @@ jobs:
           static void gpuhud_start(void) {
               static int once; if (__atomic_exchange_n(&once, 1, __ATOMIC_RELAXED)) return;
               if (!gDocs[0]) return;
-              if (mk_has("gpuhud_off")) { L("GPUHUD: OFF (folder gpuhud_off)"); return; }
-              gHudForceEst = mk_has("gpuhud_est");
+              if (sw_has("gpuhud_off")) { L("GPUHUD: OFF (p2.cfg line gpuhud_off)"); return; }
+              gHudForceEst = sw_has("gpuhud_est");
               const char *t = getenv("TMPDIR"); snprintf(gHudPath, sizeof gHudPath, "%s/p2_kgsl_gpubusy", (t && *t) ? t : gDocs);
               pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
               if (pthread_create(&th, &at, hud_thread, NULL) == 0) L("GPUHUD: thread started, serving the game's kgsl gpubusy read from %s (%s)", gHudPath, gHudForceEst ? "estimate only (gpuhud_est)" : "Apple counter first, RBTRACE estimate as fallback");
@@ -2945,13 +2947,13 @@ jobs:
                 fr, gOvlMode == 2 ? "off" : gOvlMode == 1 ? "hide" : "trace", c, (double)gOvlVerts / c, gOvlVMax, (double)gOvlNs / c / 1000.0, gOvlNsMax / 1000.0, gOvlEmptied);
               gOvlCalls = gOvlVerts = gOvlNs = gOvlVMax = gOvlNsMax = gOvlEmptied = 0;
           }
-          static void dev_trig(const char *folder, const char *devfile, const char *what) {
-              if (!mk_has(folder)) return;
+          static void dev_trig(const char *key, const char *devfile, const char *what) {
+              if (!sw_has(key)) return;
               char base[200] = {0}, p[1400]; uintptr_t host = 0;
               if (gBase && safe_rd(gBase + OVL_SLOT, &host, 8) && host) safe_rd(host + 8, base, sizeof base - 1);
               const char *b = base[0] ? base : gDocs; snprintf(p, sizeof p, "%s/../%s", b, devfile);
-              FILE *f = fopen(p, "w"); int ok = f != NULL; if (f) fclose(f); mk_eat(folder);
-              L("DEVTRACE: folder %s -> created %s (%s). The dev's renderer checks every 15th frame, deletes it and logs %s to p2.log", folder, p, ok ? "ok" : "FAILED", what);
+              FILE *f = fopen(p, "w"); int ok = f != NULL; if (f) fclose(f); sw_clear(key);
+              L("DEVTRACE: p2.cfg line %s -> created %s (%s). The dev's renderer checks every 15th frame, deletes it and logs %s to p2.log", key, p, ok ? "ok" : "FAILED", what);
           }
           #define DEV_BTN_VECS 0x5e43440UL
           static void dev_btn_clear(void) {
@@ -2971,12 +2973,12 @@ jobs:
           }
           static void ovl_poll(unsigned fr) {
               static int last = -2, ownOn;
-              if (fr <= 20 || fr % 30 == 0) ownOn = mk_has("own_layout");
+              if (fr <= 20 || fr % 30 == 0) ownOn = sw_has("own_layout");
               if (gBase && ownOn) dev_btn_clear();
               if (fr > 20 && fr % 30) return;
               dev_trig("passtrace_now", "passtrace", "one frame of passes (size, clear/load per attachment, why each ended)");
               dev_trig("drawtrace_now", "drawtrace", "one frame of draws (long)");
-              int want = mk_has("ovl_off") ? 2 : mk_has("ovl_hide") ? 1 : mk_has("ovl_trace") ? 0 : -1;
+              int want = sw_has("ovl_off") ? 2 : sw_has("ovl_hide") ? 1 : sw_has("ovl_trace") ? 0 : -1;
               if (!gBase || (want < 0 && !gOvlInstalled)) return;
               uintptr_t host = 0, cur = 0, orig = gBase + OVL_BUILDER, mine = (uintptr_t)ovl_wrap;
               if (!safe_rd(gBase + OVL_SLOT, &host, sizeof host) || !host) { if (want != last) { last = want; L("OVERLAY: ngfx::g_host not set yet"); } return; }
@@ -2984,19 +2986,19 @@ jobs:
               if (want != last) {
                   uintptr_t atlas = 0, dims = 0; char path[96]; memset(path, 0, sizeof path);
                   safe_rd(host + 0x210, &atlas, 8); safe_rd(host + 0x218, &dims, 8); safe_rd(host + 8, path, 95); last = want;
-                  L("OVERLAY: folder state -> mode %d (-1 untouched, 0 trace, 1 hide, 2 off). g_host %p: +0x208 = %p (1.0.7 builder %p, ours %p), +0x210 = %p, +0x218 = 0x%llx, +8 path = \"%s\"", want, (void *)host, (void *)cur, (void *)orig, (void *)mine, (void *)atlas, (unsigned long long)dims, path);
+                  L("OVERLAY: p2.cfg state -> mode %d (-1 untouched, 0 trace, 1 hide, 2 off). g_host %p: +0x208 = %p (1.0.7 builder %p, ours %p), +0x210 = %p, +0x218 = 0x%llx, +8 path = \"%s\"", want, (void *)host, (void *)cur, (void *)orig, (void *)mine, (void *)atlas, (unsigned long long)dims, path);
               }
               if (want >= 0) {
                   gOvlMode = want;
                   if (cur == orig) { gOvlOrig = (void (*)(void *, unsigned, unsigned))orig; *(volatile uintptr_t *)(host + 0x208) = mine; gOvlInstalled = 1; L("OVERLAY: wrapper installed over the dev's builder"); }
                   else if (cur != mine && cur != 0) { static int w; if (!w) { w = 1; L("OVERLAY: g_host+0x208 holds %p, not the 1.0.7 builder %p: not the APK these offsets are for, nothing changed", (void *)cur, (void *)orig); } }
                   if (fr % 300 == 0) ovl_report(fr);
-              } else if (cur == mine) { *(volatile uintptr_t *)(host + 0x208) = orig; gOvlInstalled = 0; gOvlMode = -1; L("OVERLAY: folder removed, the dev's UI is back"); }
+              } else if (cur == mine) { *(volatile uintptr_t *)(host + 0x208) = orig; gOvlInstalled = 0; gOvlMode = -1; L("OVERLAY: p2.cfg line removed, the dev's UI is back"); }
           }
           /* v81: NO FLASH. ovl_poll only runs after vkQueuePresentKHR, so the dev's overlay (on-screen controls, joystick) was drawn by the first frame(s) before the wrapper went in, and the
              dev's button vectors were emptied just as late. This runs from the pass-begin and blit hooks, i.e. on the render thread before the dev's DrawOverlay of the same frame, as soon as g_host+0x208
              (the builder) is set. It installs the wrapper for ovl_off / ovl_hide / ovl_trace and empties the dev's buttons for own_layout. Afterwards it only re-checks every 32nd call (the dev
-             re-running InstallTouchOverlay would put its builder back) and re-reads the folders every 256th. ovl_poll keeps handling live changes. */
+             re-running InstallTouchOverlay would put its builder back) and re-reads the p2.cfg lines every 256th. ovl_poll keeps handling live changes. */
           static void ovl_early(void) {
               static volatile int busy; static volatile unsigned calls; static int want = -2, own;
               if (!gBase || !gDocs[0]) return;
@@ -3005,7 +3007,7 @@ jobs:
               if (!__sync_bool_compare_and_swap(&busy, 0, 1)) return;
               uintptr_t host = 0, cur = 0;
               if (safe_rd(gBase + OVL_SLOT, &host, sizeof host) && host && safe_rd(host + 0x208, &cur, sizeof cur) && cur) {
-                  if (want == -2 || !(c & 255)) { want = mk_has("ovl_off") ? 2 : mk_has("ovl_hide") ? 1 : mk_has("ovl_trace") ? 0 : -1; own = mk_has("own_layout"); }
+                  if (want == -2 || !(c & 255)) { want = sw_has("ovl_off") ? 2 : sw_has("ovl_hide") ? 1 : sw_has("ovl_trace") ? 0 : -1; own = sw_has("own_layout"); }
                   if (want >= 0 && cur == gBase + OVL_BUILDER) {
                       gOvlMode = want; gOvlOrig = (void (*)(void *, unsigned, unsigned))cur; __sync_synchronize();
                       *(volatile uintptr_t *)(host + 0x208) = (uintptr_t)ovl_wrap; gOvlInstalled = 1;
@@ -3017,11 +3019,11 @@ jobs:
           }
           /* v95: MINIMUM HOLD. The loader used to send a key or click down and up the instant your finger touched and left. At a low clock the game draws a frame every 30-40 ms, so a quick tap could go down and up
              between two of its frames and the game never saw it (a missed jump or attack). Now a press stays down for at least about two game frames (v97: never under 20 ms, never over 110 ms): if the finger lifts sooner,
-             the release is sent later. A new press during that wait just keeps the key down. gFrameMs is the measured time between presented frames. Folder hold_off = the old instant release. */
+             the release is sent later. A new press during that wait just keeps the key down. gFrameMs is the measured time between presented frames. p2.cfg line hold_off = the old instant release. */
           static volatile double gFrameMs = 16.7;
           double p2_frame_ms(void) { return gFrameMs; }
-          double p2_hold_ms(void) {   /* v97: exactly two measured game frames (no 45 ms floor: at 60 fps that is 33 ms instead of 45 ms), never under 20 ms, never over 110 ms. Folder hold_ms_N = a fixed N ms (0-200). The folder is read once, not per press. */
-              static int off = -1, fixed = -1; if (off < 0 && gDocs[0]) { off = mk_has("hold_off") ? 1 : 0; fixed = mk_val("hold_ms_"); }
+          double p2_hold_ms(void) {   /* v97: exactly two measured game frames (no 45 ms floor: at 60 fps that is 33 ms instead of 45 ms), never under 20 ms, never over 110 ms. p2.cfg line hold_ms_N = a fixed N ms (0-200). The p2.cfg line is read once, not per press. */
+              static int off = -1, fixed = -1; if (off < 0 && gDocs[0]) { off = sw_has("hold_off") ? 1 : 0; fixed = sw_val("hold_ms_"); }
               if (off > 0) return 0.0; if (fixed >= 0) return fixed > 200 ? 200.0 : (double)fixed;
               double h = gFrameMs * 2.0; return h < 20.0 ? 20.0 : h > 110.0 ? 110.0 : h; }
           static void p2_key_now(int dik, int down);
@@ -3066,7 +3068,7 @@ jobs:
               { static long long lastNs; long long nn = fx_now_ns(CLOCK_UPTIME_RAW); if (lastNs) { double d = (double)(nn - lastNs) / 1e6; if (d > 2.0 && d < 250.0) gFrameMs += (d - gFrameMs) * 0.1; } lastNs = nn; }   /* v95: frame time for the minimum hold */
               static int dumps; unsigned fr = __sync_add_and_fetch(&gFrame, 1); rb_report(fr); sig_poll(fr); rs_poll(fr); it_frame(fr); inq_rearm(); ovl_poll(fr);
               if (fr % 900 == 0 && dumps < 20) { dumps++; trace_dump(fr, "automatic, every 15 s"); }
-              else if (fr % 30 == 0 && mk_has("vktrace_now")) { mk_eat("vktrace_now"); trace_dump(fr, "vktrace_now folder"); }
+              else if (fr % 30 == 0 && sw_has("vktrace_now")) { sw_clear("vktrace_now"); trace_dump(fr, "vktrace_now p2.cfg line"); }
           }
           static int mvk_open(void) {
               if (gMvk) return 1;
@@ -3128,7 +3130,7 @@ jobs:
                   const char *e = ci->ppExt[i]; int ok = 0; for (unsigned k = 0; k < ns; k++) if (!strcmp(sup[k].name, e)) ok = 1;
                   if (ok) ex[n++] = e; else L("    device extension dropped (MoltenVK lacks it): %s", e);
               }
-              if (mk_has("metalfx_on") && n < 79) for (unsigned k = 0; k < ns; k++) if (!strcmp(sup[k].name, "VK_EXT_metal_objects")) { ex[n++] = "VK_EXT_metal_objects"; gMfxExt = 1; L("METALFX: VK_EXT_metal_objects enabled on the device"); break; }
+              if (sw_has("metalfx_on") && n < 79) for (unsigned k = 0; k < ns; k++) if (!strcmp(sup[k].name, "VK_EXT_metal_objects")) { ex[n++] = "VK_EXT_metal_objects"; gMfxExt = 1; L("METALFX: VK_EXT_metal_objects enabled on the device"); break; }
               free(sup); c.nLayers = 0; c.ppLayers = NULL; c.nExt = n; c.ppExt = ex;
               int (*f)(void *, const VkDCI *, const void *, void **) = (int (*)(void *, const VkDCI *, const void *, void **))gRealGipa(gVkInst, "vkCreateDevice");
               gVkPhys = phys; int r = f(phys, &c, alloc, pDev); L("PLAT vkCreateDevice -> %d (%u extensions passed)", r, n); if (r == 0) gVkDev = *pDev; return r;
@@ -3138,21 +3140,21 @@ jobs:
               int (*f)(void *, const VkSCCI *, const void *, void *) = (int (*)(void *, const VkSCCI *, const void *, void *))gRealGdpa(dev, "vkCreateSwapchainKHR");
               unsigned char b[104]; memcpy(b, ci, sizeof b);
               unsigned pre = *(unsigned *)(b + 80), ca = *(unsigned *)(b + 84), pm = *(unsigned *)(b + 88);
-              int keep = mk_has("swapchain_alpha_keep");
+              int keep = sw_has("swapchain_alpha_keep");
               if (!keep && ca != 1) *(unsigned *)(b + 84) = 1;
-              if (mk_has("metalfx_on")) { *(unsigned *)(b + 56) |= 0x5u; L("METALFX: swapchain usage |= TRANSFER_SRC | SAMPLED so the picture can be read (now 0x%x)", *(unsigned *)(b + 56)); }
+              if (sw_has("metalfx_on")) { *(unsigned *)(b + 56) |= 0x5u; L("METALFX: swapchain usage |= TRANSFER_SRC | SAMPLED so the picture can be read (now 0x%x)", *(unsigned *)(b + 56)); }
               int r = f(dev, (const VkSCCI *)b, alloc, pSw);
               L("PLAT vkCreateSwapchainKHR %ux%u format=%d images=%u usage=0x%x preTransform=0x%x compositeAlpha=%u presentMode=%u -> compositeAlpha now %u (%s) -> %d",
-                ci->w, ci->h, ci->fmt, ci->minImg, ci->usage, pre, ca, pm, *(unsigned *)(b + 84), keep ? "swapchain_alpha_keep folder: unchanged" : "forced OPAQUE", r);
+                ci->w, ci->h, ci->fmt, ci->minImg, ci->usage, pre, ca, pm, *(unsigned *)(b + 84), keep ? "swapchain_alpha_keep p2.cfg line: unchanged" : "forced OPAQUE", r);
               return r;
           }
           static int w_present(void *q, const void *pi) {
               pause_gate();   /* v102 */
               static int n, bad; int (*f)(void *, const void *) = (int (*)(void *, const void *))gRealGdpa(gVkDev, "vkQueuePresentKHR");
-              { static int pd = -2, pt = -2; if (pd == -2) { pd = mk_val("pdelay_"); pt = mk_val("pthrottle_"); L("present switches: pdelay %d ms (first present), pthrottle %d us (first 300 presents), -1 = off", pd, pt); }
+              { static int pd = -2, pt = -2; if (pd == -2) { pd = sw_val("pdelay_"); pt = sw_val("pthrottle_"); L("present switches: pdelay %d ms (first present), pthrottle %d us (first 300 presents), -1 = off", pd, pt); }
                 if (n == 0 && pd > 0 && pd <= 8000) { L("PDELAY: pausing the presenting thread %d ms before its first present", pd); usleep(pd * 1000); }
                 if (pt > 0 && n < 300) usleep((useconds_t)(pt > 100000 ? 100000 : pt)); }
-              { static int mfxCap = -2, mfxOn = 0, sk = 0, seen = 0, wasOpen = 0; if (mfxCap == -2) mfxCap = gMfxExt; if (mfxCap > 0) { int op = p2_settings_open; if (!seen || op != wasOpen || (op && (sk++ & 31) == 0)) { seen = 1; wasOpen = op; int on = mk_has("metalfx_on"); if (on != mfxOn) { mfxOn = on; L("METALFX: %s from the settings panel", on ? "switched on" : "switched off, the game layer is shown again"); if (!on) p2_mfx_frame(gVkDev, q, NULL, (void *(*)(void *, const char *))gRealGdpa); } int sv = 0; if (mfxOn && mk_has("metalfx_sharp")) { sv = mk_val("metalfx_sharp_"); if (sv < 0) sv = 50; if (sv > 100) sv = 100; } if (sv != p2_mfx_sharp) { p2_mfx_sharp = sv; L("METALFX SHARP: strength %d (0 = off)", sv); } } if (mfxOn) p2_mfx_frame(gVkDev, q, pi, (void *(*)(void *, const char *))gRealGdpa); } }   /* METALFX: runs before the real present, on the same Metal queue; p2.cfg (metalfx_on, metalfx_sharp, metalfx_sharp_N) is read once at the first present, once when the settings panel opens, once when it closes, and every 32 presents only while it is open, so the switch and the slider are live without polling during play. The pass can only be switched ON live when this launch started with metalfx_on (the device extension and the swapchain usage are fixed at creation); OFF always works */
+              { static int mfxCap = -2, mfxOn = 0, sk = 0, seen = 0, wasOpen = 0; if (mfxCap == -2) mfxCap = gMfxExt; if (mfxCap > 0) { int op = p2_settings_open; if (!seen || op != wasOpen || (op && (sk++ & 31) == 0)) { seen = 1; wasOpen = op; int on = sw_has("metalfx_on"); if (on != mfxOn) { mfxOn = on; L("METALFX: %s from the settings panel", on ? "switched on" : "switched off, the game layer is shown again"); if (!on) p2_mfx_frame(gVkDev, q, NULL, (void *(*)(void *, const char *))gRealGdpa); } int sv = 0; if (mfxOn && sw_has("metalfx_sharp")) { sv = sw_val("metalfx_sharp_"); if (sv < 0) sv = 50; if (sv > 100) sv = 100; } if (sv != p2_mfx_sharp) { p2_mfx_sharp = sv; L("METALFX SHARP: strength %d (0 = off)", sv); } } if (mfxOn) p2_mfx_frame(gVkDev, q, pi, (void *(*)(void *, const char *))gRealGdpa); } }   /* METALFX: runs before the real present, on the same Metal queue; p2.cfg (metalfx_on, metalfx_sharp, metalfx_sharp_N) is read once at the first present, once when the settings panel opens, once when it closes, and every 32 presents only while it is open, so the switch and the slider are live without polling during play. The pass can only be switched ON live when this launch started with metalfx_on (the device extension and the swapchain usage are fixed at creation); OFF always works */
               int r = f(q, pi); n++; __atomic_add_fetch(&gPresN, 1, __ATOMIC_RELAXED); if (n <= 3 || (r != 0 && bad++ < 8)) L("PLAT vkQueuePresentKHR #%d tid=%d -> %d", n, p2_tid(), r); trace_present(); return r;
           }
           static void *w_gipa(void *inst, const char *name);
@@ -3368,7 +3370,7 @@ jobs:
               int (*cb)(void *, void *, void *, int) = (int (*)(void *, void *, void *, int))gAaCb;
               int hz = gAaHz > 0 ? gAaHz : 48000, ch = gAaCh > 0 && gAaCh <= 8 ? gAaCh : 2, fmt = gAaFmt;
               size_t bpf = (size_t)ch * (fmt == 2 ? 4 : 2), chunk = 480 * bpf;
-              if (mk_has("audio_off")) L("AUDIO folder audio_off present: output stays silent");
+              if (sw_has("audio_off")) L("AUDIO p2.cfg line audio_off present: output stays silent");
               else {
                   int r = p2_au_start(hz, ch, fmt);
                   if (r == 0) { gAuOn = 1; L("AUDIO output started: %d Hz, %d ch, %s, ring target %d ms", hz, ch, fmt == 2 ? "float32" : "int16", AU_TARGET_MS); }
@@ -4056,8 +4058,8 @@ jobs:
           }
           static void pf_start(void) {
               static int done; if (done || !gDocs[0]) return; done = 1;
-              if (!mk_has("pcprof_on")) { L("PCPROF sampler: off (default since v52; folder pcprof_on starts it)"); return; }
-              pthread_t t; if (pthread_create(&t, NULL, pf_thread, NULL) == 0) { pthread_detach(t); L("PCPROF sampler: on (folder pcprof_on present; ~100 Hz on the busiest threads)"); }
+              if (!sw_has("pcprof_on")) { L("PCPROF sampler: off (default since v52; p2.cfg line pcprof_on starts it)"); return; }
+              pthread_t t; if (pthread_create(&t, NULL, pf_thread, NULL) == 0) { pthread_detach(t); L("PCPROF sampler: on (p2.cfg line pcprof_on present; ~100 Hz on the busiest threads)"); }
           }
           static void wt_report(void) {
               static unsigned long long pn[WT_THR][WT_E], pns[WT_THR][WT_E], t0; static int pp, have; static unsigned win, tot_w;
@@ -4112,7 +4114,7 @@ jobs:
               }
               (void)tot_w;
           }
-          static int dm_on(void) { static int v = -1; if (v < 0) v = mk_has("dropmon_on") ? 1 : 0; return v; }   /* PERF: DROPMON is an old diagnostic, off unless p2.cfg has dropmon_on */
+          static int dm_on(void) { static int v = -1; if (v < 0) v = sw_has("dropmon_on") ? 1 : 0; return v; }   /* PERF: DROPMON is an old diagnostic, off unless p2.cfg has dropmon_on */
           static void *mem_thread(void *p) {
               (void)p;
               for (;;) {
@@ -4187,7 +4189,7 @@ jobs:
               for (;;) {
                   sleep(1); t++;
                   int pc = gPollCalls; if (pc == lastpoll) still++; else { still = 0; fired = 0; } lastpoll = pc;
-                  if ((t == 20 || t == 45 || t == 90) && mk_has("threaddump_on")) dump_threads("timed");
+                  if ((t == 20 || t == 45 || t == 90) && sw_has("threaddump_on")) dump_threads("timed");
                   else if (still >= 5 && !fired) { fired = 1; dump_threads("no looper poll for 5 s"); }
                   if (t >= 180) break;
               }
@@ -4381,7 +4383,7 @@ jobs:
           #import <objc/message.h>
           #include "p2core.h"
 
-          /* v103: the flags that used to be folders in Documents live in Documents/p2.cfg; every piece below reads and writes them through p2_cfg_* (p2core.c). */
+          /* every switch below is a line in Documents/p2.cfg, read and written through p2_cfg_* (p2core.c). */
           static void cfgReady(void) {
               static dispatch_once_t once;
               dispatch_once(&once, ^{ p2_cfg_init([NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] fileSystemRepresentation]); });
@@ -4400,7 +4402,7 @@ jobs:
               cfgReady();
               gTcCoalesce = p2_cfg_has("touch_coalesce");
               gTcTrace = p2_cfg_has("touch_trace");
-              p2_note([NSString stringWithFormat:@"TOUCH: move coalescing %s (folder touch_coalesce), touch trace %s (folder touch_trace)", gTcCoalesce ? "ON" : "off", gTcTrace ? "ON" : "off"].UTF8String);
+              p2_note([NSString stringWithFormat:@"TOUCH: move coalescing %s (p2.cfg line touch_coalesce), touch trace %s (p2.cfg line touch_trace)", gTcCoalesce ? "ON" : "off", gTcTrace ? "ON" : "off"].UTF8String);
           }
           static uint64_t tcNs(uint64_t t) { static mach_timebase_info_data_t tb; if (!tb.denom) mach_timebase_info(&tb); return t * tb.numer / tb.denom; }
           static void tcSend(int s, CGPoint p) {   /* one move event to the game; timed when the trace is on */
@@ -4447,7 +4449,7 @@ jobs:
           #import <QuartzCore/QuartzCore.h>
           #import <MetalFX/MetalFX.h>
 
-          /* METALFX (EXPERIMENT, folder metalfx_on). Called from the present hook in the loader, before MoltenVK's own present.
+          /* METALFX (EXPERIMENT, p2.cfg line metalfx_on). Called from the present hook in the loader, before MoltenVK's own present.
              It takes the game's low-res swapchain image as an MTLTexture (VK_EXT_metal_objects), runs a MetalFX spatial scaler on the SAME MTLCommandQueue (so it is ordered after the
              game's rendering) into a full-size CAMetalLayer of its own that sits on top of the game layer, and presents that. Any failure switches it off for the run. */
           extern void *p2_metal_layer;
