@@ -440,9 +440,9 @@ jobs:
           }
           - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)section {
               section = hsL(section);
-              if (section == 0) return @"Host settings are written to the host's own controls.cfg and parsed by Android main on the next full app launch. Metal frame generation is intentionally not exposed here.";
+              if (section == 0) return @"Metal frame generation is intentionally not exposed here.";
               if (section == 2 && self.mods.count == 0) return @"No mod folders found in Documents/Mods. Add one folder per mod; its folder name is used by the host's mod directive.";
-              if (section == 3) return @"Edit touch layout & buttons closes this panel so you can arrange the controls on the game screen. Camera sensitivity is saved to the host controls.cfg for the next full app launch.";
+              if (section == 3) return @"Edit touch layout & buttons closes this panel so you can arrange the controls on the game screen.";
               return nil;
           }
           - (NSString *)titleForRow:(NSIndexPath *)ip {
@@ -483,6 +483,7 @@ jobs:
                   sw.accessibilityIdentifier = (ip.section == 2 && ip.row > 0) ? [@"mod:" stringByAppendingString:self.mods[(NSUInteger)ip.row - 1]] : [self keyForRow:ip];
                   [sw addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged]; c.accessoryView = sw;
                   c.selectionStyle = UITableViewCellSelectionStyleNone;
+                  if ((ip.section == 0 && (ip.row == 0 || ip.row == 5)) || (ip.section == 2 && ip.row == 0)) c.detailTextLabel.text = @"loaded at next launch";   /* FSR, MetalFX Upscaling, Mod loader */
               } else if (ip.section == 0 && ip.row == 4) {
                   int sv = p2_cfg_val("metalfx_sharp_"); if (sv < 1) sv = 50; if (sv > 100) sv = 100;
                   c.detailTextLabel.text = [NSString stringWithFormat:@"%d%% · live", sv];
@@ -492,11 +493,11 @@ jobs:
                   [sl addTarget:self action:@selector(sharpSaved:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
                   c.accessoryView = sl; c.selectionStyle = UITableViewCellSelectionStyleNone;
               } else if (ip.section == 0 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@ FPS · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
-              else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@%%", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@%% · loaded at next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 1 && ip.row == 0) { NSString *v = [self valueForRow:ip]; c.detailTextLabel.text = [v isEqualToString:@"-1"] ? @"Quality fallback · loaded next launch" : [NSString stringWithFormat:@"Preset %@ · loaded next launch", v]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 1 && ip.row == 3) { c.detailTextLabel.text = @"Fallback quality · used when preset is set to Quality fallback"; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 2 && ip.row > 0 && !self.mods.count) { c.detailTextLabel.text = @"Create folders inside Documents/Mods"; c.selectionStyle = UITableViewCellSelectionStyleNone; }
-              else if (ip.section == 3 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@×", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 3 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@× · loaded at next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else { c.detailTextLabel.text = ip.section == 3 ? @"Add, move, resize or delete buttons" : @""; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               return c;
           }
@@ -532,7 +533,7 @@ jobs:
               if (!ok) { sw.on = !sw.isOn; UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Could not save setting" message:@"The host controls.cfg file could not be written." preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]]; [self presentViewController:a animated:YES completion:nil]; }
           }
           - (void)choose:(NSIndexPath *)ip title:(NSString *)title choices:(NSArray<NSString *> *)choices values:(NSArray<NSString *> *)values key:(NSString *)key {
-              UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:@"Saved to the Android host configuration. Takes effect next launch." preferredStyle:UIAlertControllerStyleActionSheet];
+              UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:nil preferredStyle:UIAlertControllerStyleActionSheet];
               for (NSUInteger i = 0; i < choices.count; i++) { NSString *v = values[i]; [a addAction:[UIAlertAction actionWithTitle:choices[i] style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) { if ([key isEqualToString:@"screen"]) hostScreenSet(v); else if ([v isEqualToString:@"<remove>"]) hostCfgRemove(key); else hostCfgSet(key, v); [self.tableView reloadRowsAtIndexPaths:@[ip] withRowAnimation:UITableViewRowAnimationNone]; }]]; }
               [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
               if (a.popoverPresentationController) { UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:ip]; a.popoverPresentationController.sourceView = cell; a.popoverPresentationController.sourceRect = cell.bounds; }
