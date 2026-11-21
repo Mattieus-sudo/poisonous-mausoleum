@@ -87,7 +87,7 @@ jobs:
           }
           /* v83: the Android host reads these exact controls.cfg directives in android_main.
              Keep the file as the source of truth; the host parses these settings at next launch. */
-          static NSString *hostCfgPath(void) { return [uiDocs() stringByAppendingPathComponent:@"controls.cfg"]; }
+          static NSString *hostCfgPath(void) { return [uiDocs() stringByAppendingPathComponent:@".controls.cfg"]; }
           static NSArray<NSString *> *hostCfgLines(void) {
               NSString *raw = [NSString stringWithContentsOfFile:hostCfgPath() encoding:NSUTF8StringEncoding error:nil];
               return raw.length ? [raw componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] : @[];
@@ -117,7 +117,7 @@ jobs:
           }
           /* Render scale: the host's RenderScalePercent never reads the controls.cfg "screen" line, it reads Documents/render_scale (30..100) at launch. Write both. */
           static BOOL hostScreenSet(NSString *v) {
-              NSString *f = [uiDocs() stringByAppendingPathComponent:@"render_scale"];
+              NSString *f = [uiDocs() stringByAppendingPathComponent:@".render_scale"];
               [[v stringByAppendingString:@"\n"] writeToFile:f atomically:NO encoding:NSUTF8StringEncoding error:nil];
               return hostCfgSet(@"screen", v);
           }

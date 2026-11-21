@@ -1649,7 +1649,7 @@ jobs:
               "# One switch per line, spelled exactly like the Documents folder that used to carry it (hz_off, imgdelay_6000, setenv_P2RE_VKGPUTIME=1, ...).\n"
               "# A switch is ON while its line is present; no line = the default. Blank lines and lines starting with # are ignored.\n"
               "# Edit it while the app is closed, or use the in-app settings. All log files are written to Documents/Logs.\n"
-              "# controls.cfg (the Android host's own settings) is a separate file and is not touched.\n";
+              "# .controls.cfg (the Android host's own settings, hidden) is a separate file and is not touched.\n";
           static int cfg_line(FILE *f, char *b, size_t n) {
               while (fgets(b, (int)n, f)) {
                   size_t l = strlen(b); while (l && (b[l - 1] == '\n' || b[l - 1] == '\r' || b[l - 1] == ' ' || b[l - 1] == '\t')) b[--l] = 0;
@@ -1705,11 +1705,21 @@ jobs:
               if (fclose(o) != 0) { unlink(tmp); return 0; }
               { int ok_ = rename(tmp, gCfgPath) == 0; if (ok_) cfg_load_locked(); return ok_; }
           }
+          /* one-time: the loader-written files and controls.cfg are hidden (leading dot) now; move the old visible ones over */
+          static void cfg_hide_legacy(const char *docs) {
+              static const char *const nm[] = {"controls.cfg", "render_scale", "fake_aspect", "waitspin", "render_scale.p2auto", "fake_aspect.p2auto", "waitspin.p2auto"};
+              for (unsigned i = 0; i < sizeof nm / sizeof nm[0]; i++) {
+                  char a[1300], b[1300]; struct stat st; snprintf(a, sizeof a, "%s/%s", docs, nm[i]); snprintf(b, sizeof b, "%s/.%s", docs, nm[i]);
+                  if (stat(a, &st) != 0 || !S_ISREG(st.st_mode)) continue;
+                  if (stat(b, &st) != 0) rename(a, b); else if (i != 0) unlink(a);   /* both exist: keep the hidden one; only controls.cfg (user data) is never deleted */
+              }
+          }
           void p2_cfg_init(const char *docs) {
               if (!docs || !*docs) return;
               pthread_mutex_lock(&gCfgMu);
               if (!gCfgPath[0]) {
                   char legacy[1200]; struct stat st;
+                  cfg_hide_legacy(docs);
                   snprintf(gCfgPath, sizeof gCfgPath, "%s/p2.cfg", docs);
                   snprintf(legacy, sizeof legacy, "%s/.p2.cfg", docs);
                   /* One-time migration: preserve existing switches from the old hidden filename. */
@@ -1765,7 +1775,9 @@ jobs:
               /* the game's own log (p2.log in its data folder) goes to Documents/Logs */
               { size_t dl = strlen(gDocs); const char *rest = NULL;
                 if (!strncmp(res, gDocs, dl) && res[dl] == '/') rest = res + dl + 1; else if (!strcmp(res, "p2.log")) rest = res;
-                if (rest && !strcmp(rest, "p2.log")) { logp(out, n, "p2.log"); return out; } }
+                if (rest && !strcmp(rest, "p2.log")) { logp(out, n, "p2.log"); return out; }
+              /* hidden files: the game asks for Documents/<name>, the file on disk is Documents/.<name> */
+              if (rest) { static const char *const hid[] = {"controls.cfg", "render_scale", "fake_aspect", "waitspin"}; for (unsigned hi_ = 0; hi_ < sizeof hid / sizeof hid[0]; hi_++) if (!strcmp(rest, hid[hi_])) { char t_[64]; snprintf(t_, sizeof t_, ".%s", rest); snprintf(out, n, "%s/%s", gDocs, t_); return out; } } }
               return res;
           }
           static int bio_oflags(int f);
@@ -1992,15 +2004,15 @@ jobs:
               { char nsp[1300]; snprintf(nsp, sizeof nsp, "%s/nosplash", gDocs); if (mk_has("nosplash")) mkdir(nsp, 0755); else rmdir(nsp); }
               if (p2_boot_flags) L("BOOT FLAGS (as seen when the app started):\n%s", p2_boot_flags);
               gRbOff = mk_has("rbtrace_off") ? 1 : 0; gTxOff = mk_has("textrace_off") ? 1 : 0; L("TEXTRACE: %s (folder textrace_off disables; needs RBTRACE on for the submit / done checks%s)", gTxOff ? "OFF" : "on", gRbOff ? "; RBTRACE IS OFF so only record-time facts are logged" : ""); L("RBTRACE: %s (folder rbtrace_off disables)", gRbOff ? "OFF" : "on"); gMaxLod = mk_val("maxlod_"); L("MAXLOD: %s", gMaxLod >= 0 ? "ON, every sampler the game creates gets maxLod capped at that value (folder maxlod_<N>; maxlod_0 = sample only the full-size mip level, so no mip data is ever read)" : "off (folder maxlod_0 pins every sampler to the full-size level; maxlod_<N> caps at level N; read at launch only)"); L("UPLOADGAP: %s (texture-like images older than 5 s whose mip levels were never written; reported in the TEXTRACE window; folder textrace_off disables)", gTxOff ? "OFF" : "on"); gSleepCap = mk_val("sleepcap_"); L("SLEEPCAP: %s", gSleepCap >= 0 ? "ON, guest sleeps of 2000..20000 us are shortened (folder sleepcap_<us>)" : "off (folder sleepcap_<us> shortens frame-sized guest sleeps to <us>; experiment)"); gWtOff = mk_has("waittrace_off") ? 1 : 0; L("WAITTRACE: %s (folder waittrace_off disables)", gWtOff ? "OFF" : "on"); gpuhud_start();
-              { int ws = mk_val("waitspin_"); int wsDef = 0; if (ws < 0) { ws = 1000; wsDef = 1; } char wp[1200], wa[1200]; snprintf(wp, sizeof wp, "%s/waitspin", gDocs); snprintf(wa, sizeof wa, "%s/waitspin.p2auto", gDocs);
+              { int ws = mk_val("waitspin_"); int wsDef = 0; if (ws < 0) { ws = 1000; wsDef = 1; } char wp[1200], wa[1200]; snprintf(wp, sizeof wp, "%s/.waitspin", gDocs); snprintf(wa, sizeof wa, "%s/.waitspin.p2auto", gDocs);
                 if (ws >= 0) { FILE *wf = fopen(wp, "w"); if (wf) { fprintf(wf, "%d\n", ws); fclose(wf); FILE *wm = fopen(wa, "w"); if (wm) fclose(wm); L("WAITSPIN: %s -> wrote Documents/waitspin = %d (game default 250 us; check the game's 'waits: spin N us' line)", wsDef ? "no waitspin_ folder, built-in default (v56)" : "folder override", ws); } else L("WAITSPIN: could not write Documents/waitspin"); }
                 }
-              { int fa = mk_val("fakeaspect_"); char fp[1200], fm[1200]; snprintf(fp, sizeof fp, "%s/fake_aspect", gDocs); snprintf(fm, sizeof fm, "%s/fake_aspect.p2auto", gDocs);
+              { int fa = mk_val("fakeaspect_"); char fp[1200], fm[1200]; snprintf(fp, sizeof fp, "%s/.fake_aspect", gDocs); snprintf(fm, sizeof fm, "%s/.fake_aspect.p2auto", gDocs);
                 if (fa > 5000 && fa < 40000) { FILE *ff = fopen(fp, "w"); if (ff) { fprintf(ff, "%d.%04d\n", fa / 10000, fa % 10000); fclose(ff); FILE *fq = fopen(fm, "w"); if (fq) fclose(fq); L("FAKE_ASPECT: folder fakeaspect_%d -> wrote Documents/fake_aspect = %d.%04d (the game's own 'test switch fake_aspect' log line shows whether it was read)", fa, fa / 10000, fa % 10000); } else L("FAKE_ASPECT: could not write Documents/fake_aspect"); }
                 else if (fa >= 0) L("FAKE_ASPECT: folder fakeaspect_%d ignored (the ratio x 10000 must be between 5001 and 39999)", fa);
                 else if (mk_has("fake_aspect.p2auto")) { unlink(fp); unlink(fm); L("FAKE_ASPECT: no fakeaspect_ folder, removed the Documents/fake_aspect the loader wrote earlier"); }
                 else if (mk_has("fake_aspect")) L("FAKE_ASPECT: no fakeaspect_ folder; Documents/fake_aspect exists (made by hand) and is left alone"); }
-              { int rs = mk_val("renderscale_"); char rp[1200], rm[1200]; snprintf(rp, sizeof rp, "%s/render_scale", gDocs); snprintf(rm, sizeof rm, "%s/render_scale.p2auto", gDocs);   /* the host reads Documents/render_scale at launch (30..100, % of the panel) */
+              { int rs = mk_val("renderscale_"); char rp[1200], rm[1200]; snprintf(rp, sizeof rp, "%s/.render_scale", gDocs); snprintf(rm, sizeof rm, "%s/.render_scale.p2auto", gDocs);   /* the host reads Documents/render_scale at launch (30..100, % of the panel) */
                 if (rs >= 30 && rs <= 100) { FILE *rf = fopen(rp, "w"); if (rf) { fprintf(rf, "%d\n", rs); fclose(rf); FILE *rq = fopen(rm, "w"); if (rq) fclose(rq); L("RENDER_SCALE: folder renderscale_%d -> wrote Documents/render_scale = %d", rs, rs); } else L("RENDER_SCALE: could not write Documents/render_scale"); }
                 else if (rs >= 0) L("RENDER_SCALE: folder renderscale_%d ignored (the host accepts 30 to 100)", rs);
                 else if (mk_has("render_scale.p2auto")) { unlink(rp); unlink(rm); L("RENDER_SCALE: no renderscale_ folder, removed the Documents/render_scale the loader wrote earlier"); } }
@@ -2950,7 +2962,7 @@ jobs:
               }
               if ((cleared || !said) && logs++ < 20) { said = 1; L("OWNLAYOUT: emptied %u dev touch buttons (%u seen across the 6 layouts)", cleared, total); }
               if (!cfgd && cfgtry++ < 300) {
-                  char p[1300]; snprintf(p, sizeof p, "%s/controls.cfg", gDocs); FILE *f = fopen(p, "r");
+                  char p[1300]; snprintf(p, sizeof p, "%s/.controls.cfg", gDocs); FILE *f = fopen(p, "r");
                   if (f) { cfgd = 1; char ln[200]; while (fgets(ln, sizeof ln, f)) if (!strncmp(ln, "joystick", 8) || !strncmp(ln, "joyscale", 8) || !strncmp(ln, "layout ", 7) || !strncmp(ln, "sprintdist", 10)) { ln[strcspn(ln, "\r\n")] = 0; L("OWNLAYOUT: dev controls.cfg: %s", ln); } fclose(f); }
               }
           }
