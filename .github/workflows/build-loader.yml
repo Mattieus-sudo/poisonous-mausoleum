@@ -804,9 +804,9 @@ jobs:
           void p2_set_paused(int on);   /* v102: 1 = park every vkQueueSubmit / vkQueuePresent caller and the audio thread (use when the app goes inactive / background), 0 = resume */
           int p2_parked_threads(void);
           void p2_set_emit_live(int on);   /* 1 = L() also forwards log lines to the main thread (live log screen / launcher), 0 = file only */
-          /* .p2.cfg (Documents/.p2.cfg): the one configuration file. One entry per line, named exactly like the Documents folder that used to carry the flag. */
+          /* p2.cfg (Documents/p2.cfg): the one configuration file. One entry per line, named exactly like the Documents folder that used to carry the flag. */
           void p2_cfg_init(const char *docs);                /* sets the path, creates the file with its header when it is missing; safe to call again */
-          const char *p2_cfg_path(void);                      /* full path of .p2.cfg ("" before p2_cfg_init) */
+          const char *p2_cfg_path(void);                      /* full path of p2.cfg ("" before p2_cfg_init) */
           int p2_cfg_has(const char *name);                   /* 1 when the entry is present */
           int p2_cfg_val(const char *prefix);                 /* number after prefix in the first entry like prefix123, else -1 */
           int p2_cfg_set(const char *name, int on);           /* add (on) or remove (off) one entry; 1 = file written / nothing to do */
@@ -1639,12 +1639,12 @@ jobs:
               char d[1200]; snprintf(d, sizeof d, "%s/Logs", gDocs); mkdir(d, 0755);
               snprintf(out, n, "%s/%s", d, name);
           }
-          /* ---- .p2.cfg: the single configuration file. Each line is one switch, spelled exactly like the Documents folder that used to carry it
+          /* ---- p2.cfg: the single configuration file. Each line is one switch, spelled exactly like the Documents folder that used to carry it
                 (hz_off, imgdelay_6000, setenv_P2RE_VKGPUTIME=1 ...). Present = ON. Blank lines and lines starting with # are comments. ---- */
           static char gCfgPath[1200];
           static pthread_mutex_t gCfgMu = PTHREAD_MUTEX_INITIALIZER;
           static const char kCfgHeader[] =
-              "# .p2.cfg - the single configuration file of the Prototype 2 loader (Documents/.p2.cfg).\n"
+              "# p2.cfg - the single configuration file of the Prototype 2 loader (Documents/p2.cfg).\n"
               "# One switch per line, spelled exactly like the Documents folder that used to carry it (hz_off, imgdelay_6000, setenv_P2RE_VKGPUTIME=1, ...).\n"
               "# A switch is ON while its line is present; no line = the default. Blank lines and lines starting with # are ignored.\n"
               "# Edit it while the app is closed, or use the in-app settings. All log files are written to Documents/Logs.\n"
@@ -1676,7 +1676,22 @@ jobs:
           void p2_cfg_init(const char *docs) {
               if (!docs || !*docs) return;
               pthread_mutex_lock(&gCfgMu);
-              if (!gCfgPath[0]) snprintf(gCfgPath, sizeof gCfgPath, "%s/.p2.cfg", docs);
+              if (!gCfgPath[0]) {
+                  char legacy[1200]; struct stat st;
+                  snprintf(gCfgPath, sizeof gCfgPath, "%s/p2.cfg", docs);
+                  snprintf(legacy, sizeof legacy, "%s/.p2.cfg", docs);
+                  /* One-time migration: preserve existing switches from the old hidden filename. */
+                  if (stat(gCfgPath, &st) != 0 && stat(legacy, &st) == 0) {
+                      if (rename(legacy, gCfgPath) != 0) {
+                          FILE *src = fopen(legacy, "r");
+                          if (src) {
+                              FILE *dst = fopen(gCfgPath, "w");
+                              if (dst) { char b[2048]; size_t n; while ((n = fread(b, 1, sizeof b, src)) > 0) fwrite(b, 1, n, dst); fclose(dst); }
+                              fclose(src);
+                          }
+                      }
+                  }
+              }
               struct stat st; if (stat(gCfgPath, &st) != 0) cfg_write(NULL, NULL);
               pthread_mutex_unlock(&gCfgMu);
           }
@@ -1755,7 +1770,7 @@ jobs:
               for (const char *c = hex; *c; c++) if (!((*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f') || (*c >= 'A' && *c <= 'F'))) { L("RTDUMP trigger ignored (not a hex number): %s", nm); return NULL; }
               char fp[1200]; snprintf(fp, sizeof fp, "%s/rtdump_trigger.txt", gDocs);
               FILE *w = fopen(fp, "w"); if (!w) return NULL; fprintf(w, "%s\n", hex); fclose(w);
-              L("RTDUMP trigger served to the game: ps %s (.p2.cfg entry %s removed)", hex, nm);
+              L("RTDUMP trigger served to the game: ps %s (p2.cfg entry %s removed)", hex, nm);
               return fopen(fp, "r");
           }
           static void *sh_fopen(const char *p, const char *m) {
@@ -1804,7 +1819,7 @@ jobs:
           static PFN_pa gRealGipa, gRealGdpa;
           static void *gVkInst, *gVkDev, *gVkPhys;
           typedef struct { char name[256]; unsigned spec; } VkExtP;
-          static int mk_val(const char *prefix) { if (!gDocs[0]) return -1; return p2_cfg_val(prefix); }   /* v103: flags live in .p2.cfg, not in Documents folders */
+          static int mk_val(const char *prefix) { if (!gDocs[0]) return -1; return p2_cfg_val(prefix); }   /* v103: flags live in p2.cfg, not in Documents folders */
           static int mk_has(const char *name) { if (!gDocs[0]) return 0; return p2_cfg_has(name); }
           static int fx_mode(void) {
               static int m = -1;
@@ -1859,7 +1874,7 @@ jobs:
               char p[1200], dump[1200] = "";
               { snprintf(p, sizeof p, "%s/P2_SWITCHES.txt", gDocs); FILE *f = fopen(p, "w");
                 if (f) { fputs(
-                  "P2 loader switches. Every switch below is one LINE in the file .p2.cfg in this Documents folder (Files app > On My iPhone > Prototype 2; the leading dot makes iOS hide it, the in-app settings write it too). Add a line with the exact name, remove the line to go back to the default. Close the app first. Wherever the text below says 'folder X' or 'create the folder X', read it as 'the line X in .p2.cfg'.\n\n"
+                  "P2 loader switches. Every switch below is one LINE in the file p2.cfg in this Documents folder (Files app > On My iPhone > Prototype 2; the leading dot makes iOS hide it, the in-app settings write it too). Add a line with the exact name, remove the line to go back to the default. Close the app first. Wherever the text below says 'folder X' or 'create the folder X', read it as 'the line X in p2.cfg'.\n\n"
                   "mvk_fastmath_on     MoltenVK shader fast-math ON. Since v72 this is the DEFAULT (MoltenVK's own default); v29-v71 had it off for the black-world hunt, which was closed as a texture-timing problem. This folder is still accepted and does nothing new.\n"
                   "mvk_fastmath_off    (v72) turn shader fast-math OFF (the v29-v71 behaviour). Use it only to test a black or flickering shader.\n"
           "mvk_fastmath_auto   fast-math ON except for shaders that ask for strict NaN/Inf handling.\n"
@@ -1944,7 +1959,7 @@ jobs:
           }
           static void p2re_env_setup(void) {
               if (!gDocs[0]) return;
-              /* v103: nosplash is read by the game itself as a folder in its data folder (Documents/nosplash), so the loader mirrors the .p2.cfg entry onto that marker folder at every start */
+              /* v103: nosplash is read by the game itself as a folder in its data folder (Documents/nosplash), so the loader mirrors the p2.cfg entry onto that marker folder at every start */
               { char nsp[1300]; snprintf(nsp, sizeof nsp, "%s/nosplash", gDocs); if (mk_has("nosplash")) mkdir(nsp, 0755); else rmdir(nsp); }
               if (p2_boot_flags) L("BOOT FLAGS (as seen when the app started):\n%s", p2_boot_flags);
               gRbOff = mk_has("rbtrace_off") ? 1 : 0; gTxOff = mk_has("textrace_off") ? 1 : 0; L("TEXTRACE: %s (folder textrace_off disables; needs RBTRACE on for the submit / done checks%s)", gTxOff ? "OFF" : "on", gRbOff ? "; RBTRACE IS OFF so only record-time facts are logged" : ""); L("RBTRACE: %s (folder rbtrace_off disables)", gRbOff ? "OFF" : "on"); gMaxLod = mk_val("maxlod_"); L("MAXLOD: %s", gMaxLod >= 0 ? "ON, every sampler the game creates gets maxLod capped at that value (folder maxlod_<N>; maxlod_0 = sample only the full-size mip level, so no mip data is ever read)" : "off (folder maxlod_0 pins every sampler to the full-size level; maxlod_<N> caps at level N; read at launch only)"); L("UPLOADGAP: %s (texture-like images older than 5 s whose mip levels were never written; reported in the TEXTRACE window; folder textrace_off disables)", gTxOff ? "OFF" : "on"); gSleepCap = mk_val("sleepcap_"); L("SLEEPCAP: %s", gSleepCap >= 0 ? "ON, guest sleeps of 2000..20000 us are shortened (folder sleepcap_<us>)" : "off (folder sleepcap_<us> shortens frame-sized guest sleeps to <us>; experiment)"); gWtOff = mk_has("waittrace_off") ? 1 : 0; L("WAITTRACE: %s (folder waittrace_off disables)", gWtOff ? "OFF" : "on"); gpuhud_start();
@@ -1964,11 +1979,11 @@ jobs:
                 { char cn[300]; int cit = 0; while (p2_cfg_next(&cit, cn, sizeof cn)) { const char *n = cn; if (strncmp(n, "dbgoff_", 7) || !n[7]) continue; int okc = 1; for (const char *q = n + 7; *q; q++) if (!((*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9'))) okc = 0;
                     size_t l = strlen(txt); if (okc && l + strlen(n + 7) + 2 < sizeof txt - 1) { snprintf(txt + l, sizeof txt - l, "%s%s", l ? " " : "", n + 7); nn++; } } }
                 if (nn) { FILE *f = fopen(dp, "w"); if (f) { fprintf(f, "%s", txt); fclose(f); FILE *m = fopen(dm, "w"); if (m) fclose(m); L("DEBUGOFF: wrote %s = \"%s\" (the dev's own log line \"debugoff: ...\" in p2.log confirms it was read)", dp, txt); } else L("DEBUGOFF: cannot write %s", dp); }
-                else if (access(dm, F_OK) == 0) { unlink(dp); unlink(dm); L("DEBUGOFF: no dbgoff_ entries in .p2.cfg, removed the debugoff file the loader wrote earlier"); } }
+                else if (access(dm, F_OK) == 0) { unlink(dp); unlink(dm); L("DEBUGOFF: no dbgoff_ entries in p2.cfg, removed the debugoff file the loader wrote earlier"); } }
           if (!mk_has("shadowmin_off")) { setenv("P2RE_VKSHADOWMIN", "1024", 1); L("P2RE_ENV built-in P2RE_VKSHADOWMIN=1024 (folder shadowmin_off removes it; a setenv_P2RE_VKSHADOWMIN=N folder overrides it)"); }
           else L("P2RE_ENV folder shadowmin_off: no built-in P2RE_VKSHADOWMIN, every shadow caster is drawn");
           setenv("P2RE_VKSHADOWHALF", "1", 1); L("P2RE_ENV built-in P2RE_VKSHADOWHALF=1 (half-size shadow maps)");
-          if (!p2_cfg_path()[0]) { L("P2RE_ENV: .p2.cfg is not available"); return; }
+          if (!p2_cfg_path()[0]) { L("P2RE_ENV: p2.cfg is not available"); return; }
               int n = 0; char en[300]; int eit = 0;
               while (p2_cfg_next(&eit, en, sizeof en)) {
                   if (strncmp(en, "setenv_", 7)) continue;
@@ -2145,7 +2160,7 @@ jobs:
                       if (!strncmp(cn, "dc_", 3) && cn[3] >= '0' && cn[3] <= '9') { n = atoi(cn + 3); if (n >= 0 && n < SIG_N) f |= 1ULL << n; }
                       else if (!strncmp(cn, "dcx_", 4) && cn[4] >= '0' && cn[4] <= '9') { n = atoi(cn + 4); if (n >= 0 && n < SIG_N) x |= 1ULL << n; }
                   } }
-              if (a != gDcAuto || f != gDcForce || x != gDcExcl) L("DONTCARE: auto %s, forced kinds mask 0x%llx (.p2.cfg entries dc_K), excluded kinds mask 0x%llx (.p2.cfg entries dcx_K). Kind numbers are the PASSSIG numbers of THIS run.", a ? "ON" : "off", f, x);
+              if (a != gDcAuto || f != gDcForce || x != gDcExcl) L("DONTCARE: auto %s, forced kinds mask 0x%llx (p2.cfg entries dc_K), excluded kinds mask 0x%llx (p2.cfg entries dcx_K). Kind numbers are the PASSSIG numbers of THIS run.", a ? "ON" : "off", f, x);
               gDcAuto = a; gDcForce = f; gDcExcl = x; gDcOn = a || f != 0;
           }
           static void dc_report(void) {
@@ -4318,7 +4333,7 @@ jobs:
           #import <objc/message.h>
           #include "p2core.h"
 
-          /* v103: the flags that used to be folders in Documents live in Documents/.p2.cfg; every piece below reads and writes them through p2_cfg_* (p2core.c). */
+          /* v103: the flags that used to be folders in Documents live in Documents/p2.cfg; every piece below reads and writes them through p2_cfg_* (p2core.c). */
           static void cfgReady(void) {
               static dispatch_once_t once;
               dispatch_once(&once, ^{ p2_cfg_init([NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] fileSystemRepresentation]); });

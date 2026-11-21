@@ -27,7 +27,7 @@ jobs:
           }
 
           /* ================= v66 settings UI (UIKit, no storyboard) =================
-             A flag is one line in Documents/.p2.cfg (v103; it used to be a folder in Documents). Every control below only adds or removes such lines. */
+             A flag is one line in Documents/p2.cfg (v103; it used to be a folder in Documents). Every control below only adds or removes such lines. */
           static NSString *uiDocs(void) { cfgReady(); return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
           static BOOL uiHas(NSString *n) { cfgReady(); return p2_cfg_has(n.UTF8String) != 0; }
           static void uiSet(NSString *n, BOOL on) {
@@ -332,7 +332,7 @@ jobs:
               if (r.kind == SKLink && self.onLogs) self.onLogs();
               if (r.kind == SKButton && [r.flag isEqualToString:@"caches"]) { [self askClearCaches]; return; }
               if (r.kind == SKButton) {
-                  UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Reset to defaults?" message:@"Removes every switch (.p2.cfg line) this screen controls, then turns Skip splash back on and the traces off (their defaults). Your game files and caches are not touched." preferredStyle:UIAlertControllerStyleAlert];
+                  UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Reset to defaults?" message:@"Removes every switch (p2.cfg line) this screen controls, then turns Skip splash back on and the traces off (their defaults). Your game files and caches are not touched." preferredStyle:UIAlertControllerStyleAlert];
                   [al addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
                   [al addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
                       for (NSArray<SRow *> *sec in self.rows) for (SRow *q in sec) {
@@ -987,7 +987,7 @@ jobs:
               { char cb[300]; int cit = 0; while (p2_cfg_next(&cit, cb, sizeof cb)) { NSString *e = [NSString stringWithUTF8String:cb]; if (e) [names addObject:e]; } }
               [names sortUsingSelector:@selector(compare:)];
               int n = 0;
-              [self note:"FLAGS (entries in Documents/.p2.cfg when the app started):"];
+              [self note:"FLAGS (entries in Documents/p2.cfg when the app started):"];
               for (NSString *nm in names) {
                   const char *c = nm.UTF8String, *meaning = NULL;
                   for (size_t i = 0; i < sizeof K / sizeof K[0]; i++)
@@ -1027,7 +1027,7 @@ jobs:
           - (void)applyHz { gTcLink = NO; tcFlush(); [gHzLink invalidate]; gHzLink = nil; [self startHz]; }
           - (BOOL)application:(UIApplication *)a didFinishLaunchingWithOptions:(NSDictionary *)o {
               gText = [NSMutableString string];
-              { cfgReady();   /* nosplash is ON by default and the traces OFF: seed them once. The "seeded" markers live in .p2.cfg too (they used to be NSUserDefaults), so a fresh .p2.cfg gets the defaults again */
+              { cfgReady();   /* nosplash is ON by default and the traces OFF: seed them once. The "seeded" markers live in p2.cfg too (they used to be NSUserDefaults), so a fresh p2.cfg gets the defaults again */
                 if (!p2_cfg_has("seeded_nosplash")) { uiSet(@"nosplash", YES); p2_cfg_set("seeded_nosplash", 1); }
                 if (!p2_cfg_has("seeded_traces_off")) { uiSet(@"rbtrace_off", YES); uiSet(@"waittrace_off", YES); uiSet(@"textrace_off", YES); p2_cfg_set("seeded_traces_off", 1); } }
               self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];

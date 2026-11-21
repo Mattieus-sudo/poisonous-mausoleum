@@ -616,7 +616,7 @@ jobs:
           static void ownLoad(void) {
               if (gOwnLoaded) return; gOwnLoaded = 1;
               NSString *d = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
-              cfgReady();   /* v103: the own_layout and swipe_classic flags are lines in .p2.cfg; the own_layout folder still holds own_layout.txt */
+              cfgReady();   /* v103: the own_layout and swipe_classic flags are lines in p2.cfg; the own_layout folder still holds own_layout.txt */
               gOwnOn = p2_cfg_has("own_layout") != 0;
               gSwClassic = p2_cfg_has("swipe_classic") != 0;
               { NSString *camRoot = [d stringByAppendingPathComponent:@"camera.txt"];
