@@ -123,15 +123,28 @@ jobs:
              no p2.cfg entry. A leftover renderscale_N line in p2.cfg would make the loader overwrite this file at the next start, and the loader's .render_scale.p2auto marker would make it delete
              the file, so both are cleared here. */
           static NSString *hostScreenPath(void) { return [uiDocs() stringByAppendingPathComponent:@".render_scale"]; }
+          static NSString *hostScreenMarker(void) { return [uiDocs() stringByAppendingPathComponent:@".render_scale.p2auto"]; }
+          /* iPhone model preset (v106, replaces the Android "gfx" presets): the loader writes .render_scale + the .p2auto marker at every start unless the person picked a value. */
+          static BOOL hostScreenIsAuto(void) {
+              if (uiWithPrefix(@"renderscale_").count) return NO;   /* an explicit p2.cfg line wins */
+              return ![NSFileManager.defaultManager fileExistsAtPath:hostScreenPath()] || [NSFileManager.defaultManager fileExistsAtPath:hostScreenMarker()];
+          }
+          static NSString *hostDeviceName(void) { char nm[64] = {0}; int sc = 0, sh = 0; p2_device_preset(&sc, &sh, nm, sizeof nm); return [NSString stringWithUTF8String:nm]; }
+          static int hostDeviceScale(void) { int sc = 67, sh = 1024; p2_device_preset(&sc, &sh, NULL, 0); return sc; }
           static NSString *hostScreenValue(void) {
               NSString *raw = [NSString stringWithContentsOfFile:hostScreenPath() encoding:NSUTF8StringEncoding error:nil];
               NSString *t = [raw stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-              return t.length ? t : @"67";   /* no file = the game's own default */
+              return t.length ? t : [NSString stringWithFormat:@"%d", hostDeviceScale()];   /* no file yet = what the loader will write for this model at the next start */
           }
           static BOOL hostScreenSet(NSString *v) {
               cfgReady();
               for (NSString *f in uiWithPrefix(@"renderscale_")) uiSet(f, NO);
-              [NSFileManager.defaultManager removeItemAtPath:[uiDocs() stringByAppendingPathComponent:@".render_scale.p2auto"] error:nil];
+              if ([v isEqualToString:@"auto"]) {   /* back to the iPhone model preset: drop the file and the marker, the loader writes both again at the next start */
+                  [NSFileManager.defaultManager removeItemAtPath:hostScreenPath() error:nil];
+                  [NSFileManager.defaultManager removeItemAtPath:hostScreenMarker() error:nil];
+                  return YES;
+              }
+              [NSFileManager.defaultManager removeItemAtPath:hostScreenMarker() error:nil];
               return [[v stringByAppendingString:@"\n"] writeToFile:hostScreenPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
           }
           static NSArray<NSString *> *hostModNames(void) {
@@ -235,9 +248,9 @@ jobs:
                            @[@"250 us (default)", @"1000 us", @"2000 us", @"4000 us"], @[@"", @"waitspin_1000", @"waitspin_2000", @"waitspin_4000"], @"waitspin_"),
                      sMenu(@"Thread priority", @"Tells iOS how urgent the game's threads are. The default is the highest class.",
                            @[@"Highest (default)", @"High", @"iOS default"], @[@"", @"qos_initiated", @"qos_off"], nil),
-                     sMenu(@"Shadow casters", @"Which size objects cast shadows. Higher numbers skip smaller objects for better performance.",
-                   @[@"Skip under 1024 triangles (default)", @"Skip under 256", @"Skip under 64 (low preset)", @"Skip all shadow casters", @"Cast all"],
-                   @[@"", @"setenv_P2RE_VKSHADOWMIN=256", @"setenv_P2RE_VKSHADOWMIN=64", @"setenv_P2RE_VKSHADOWMIN=40000000", @"shadowmin_off"], @"setenv_P2RE_VKSHADOWMIN=") ],
+                     sMenu(@"Shadow casters", @"Which size objects cast shadows. Auto picks a number for your iPhone model. Higher numbers skip smaller objects for better performance.",
+                   @[@"Auto (iPhone model preset)", @"Skip under 4096", @"Skip under 1024", @"Skip under 512", @"Skip under 256", @"Skip under 64", @"Skip all shadow casters", @"Cast all"],
+                   @[@"", @"setenv_P2RE_VKSHADOWMIN=4096", @"setenv_P2RE_VKSHADOWMIN=1024", @"setenv_P2RE_VKSHADOWMIN=512", @"setenv_P2RE_VKSHADOWMIN=256", @"setenv_P2RE_VKSHADOWMIN=64", @"setenv_P2RE_VKSHADOWMIN=40000000", @"shadowmin_off"], @"setenv_P2RE_VKSHADOWMIN=") ],
                   @[ sSwitch(@"Render thread trace", @"Records what the render thread waits for. Measurement only, may cost a little speed. Turn on when sending logs.", @"rbtrace_on", YES),
                      sSwitch(@"Wait trace", @"Records how long each game thread is blocked. Measurement only.", @"waittrace_on", YES),
                      sSwitch(@"Texture trace", @"Hashes texture uploads to catch broken textures. Probably the costliest trace.", @"textrace_on", YES),
@@ -473,7 +486,7 @@ jobs:
           - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 5; }
           - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section {
               section = hsL(section);
-              if (section == 0) return uiHas(@"metalfx_on") ? 6 : 4; if (section == 1) return 3; if (section == 2) return MAX(2, (NSInteger)self.mods.count + 1); if (section == 3) return 2; return 1;
+              if (section == 0) return uiHas(@"metalfx_on") ? 6 : 4; if (section == 1) return 1; if (section == 2) return MAX(2, (NSInteger)self.mods.count + 1); if (section == 3) return 2; return 1;
           }
           - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)section {
               return @[@"PERFORMANCE", @"GRAPHICS", @"MODS", @"CONTROLS", @"SYSTEM"][hsL(section)];
@@ -487,24 +500,23 @@ jobs:
           }
           - (NSString *)titleForRow:(NSIndexPath *)ip {
               if (ip.section == 0) return @[@"FSR upscaling", @"FPS limit", @"Render scale", @"MetalFX sharpen", @"Sharpen strength", @"MetalFX Upscaling"][ip.row];
-              if (ip.section == 1) return @[@"Graphics preset", @"Manual graphics", @"Potato graphics"][ip.row];
+              if (ip.section == 1) return @"Potato graphics";   /* v106: the Graphics preset / Manual graphics rows are gone, the iPhone model sets render scale + shadow casters */
               if (ip.section == 2) return ip.row == 0 ? @"Mod loader" : (self.mods.count ? self.mods[(NSUInteger)ip.row - 1] : @"No installed mods");
               if (ip.section == 3) return @[@"Edit touch layout & buttons", @"Camera sensitivity"][ip.row];
               return @"Open live log";
           }
           - (NSString *)keyForRow:(NSIndexPath *)ip {
               if (ip.section == 0) return @[@"upscale", @"", @"", @"p2:metalfx_sharp", @"", @"p2:metalfx_on"][ip.row];   /* v104: row 2 (render scale) reads Documents/.render_scale, not controls.cfg */
-              if (ip.section == 1) return @[@"gfx", @"gfxmanual", @"potato"][ip.row];
+              if (ip.section == 1) return @"potato";
               if (ip.section == 2 && ip.row == 0) return @"modloader";
               return nil;
           }
-          - (BOOL)isSwitchRow:(NSIndexPath *)ip { return (ip.section == 0 && (ip.row == 0 || ip.row == 3 || ip.row == 5)) || (ip.section == 1 && (ip.row == 1 || ip.row == 2)) || (ip.section == 2 && ip.row == 0); }
+          - (BOOL)isSwitchRow:(NSIndexPath *)ip { return (ip.section == 0 && (ip.row == 0 || ip.row == 3 || ip.row == 5)) || (ip.section == 1 && ip.row == 0) || (ip.section == 2 && ip.row == 0); }
           - (NSString *)valueForRow:(NSIndexPath *)ip {
               NSString *key = [self keyForRow:ip]; if ([key hasPrefix:@"p2:"]) return uiHas([key substringFromIndex:3]) ? @"1" : @"0";   /* p2.cfg switch */
               if (key.length) return hostCfgValue(key, [key isEqualToString:@"modloader"] ? @"1" : @"0");   /* v105: the mod loader defaults to ON */
               if (ip.section == 0 && ip.row == 1) return hostCfgValue(@"fpscap", @"60");
               if (ip.section == 3 && ip.row == 1) return hostCfgValue(@"camera", @"1.0");
-              if (ip.section == 1 && ip.row == 0) return hostCfgValue(@"gfx", @"-1");
               if (ip.section == 0 && ip.row == 2) return hostScreenValue();
               return @"";
           }
@@ -513,7 +525,7 @@ jobs:
               UITableViewCell *c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
               c.backgroundColor = [UIColor colorWithWhite:1 alpha:0.035]; c.textLabel.textColor = UIColor.labelColor; c.detailTextLabel.textColor = UIColor.secondaryLabelColor;
               c.textLabel.text = [self titleForRow:ip]; c.detailTextLabel.numberOfLines = 2;
-              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right", @"wand.and.stars", @"slider.horizontal.below.rectangle", @"arrow.up.right.square"], @[@"slider.horizontal.3", @"wrench.and.screwdriver", @"leaf"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
+              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right", @"wand.and.stars", @"slider.horizontal.below.rectangle", @"arrow.up.right.square"], @[@"leaf"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
               c.imageView.image = [UIImage systemImageNamed:icons[ip.section][MIN((NSUInteger)ip.row, [icons[ip.section] count] - 1)]]; c.imageView.tintColor = [UIColor colorWithRed:0.35 green:0.68 blue:1 alpha:1];
               if ([self isSwitchRow:ip] || (ip.section == 2 && ip.row > 0 && self.mods.count)) {
                   UISwitch *sw = [UISwitch new];
@@ -532,8 +544,7 @@ jobs:
                   [sl addTarget:self action:@selector(sharpSaved:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
                   c.accessoryView = sl; c.selectionStyle = UITableViewCellSelectionStyleNone;
               } else if (ip.section == 0 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@ FPS · Loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
-              else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@%% · Loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
-              else if (ip.section == 1 && ip.row == 0) { NSString *v = [self valueForRow:ip]; c.detailTextLabel.text = [v isEqualToString:@"-1"] ? @"Quality fallback · Loaded next launch" : [NSString stringWithFormat:@"Preset %@ · Loaded next launch", v]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = hostScreenIsAuto() ? [NSString stringWithFormat:@"Auto (%@) · %@%% · Loaded next launch", hostDeviceName(), [self valueForRow:ip]] : [NSString stringWithFormat:@"%@%% · Loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 2 && ip.row > 0 && !self.mods.count) { c.detailTextLabel.text = @"Create folders inside Documents/Mods"; c.selectionStyle = UITableViewCellSelectionStyleNone; }
               else if (ip.section == 3 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@× · Loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else { c.detailTextLabel.text = ip.section == 3 ? @"Add, move, resize or delete buttons" : @""; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
@@ -582,8 +593,7 @@ jobs:
               NSIndexPath *dip = ip;   /* v86: the displayed row, used to reload it and anchor the sheet */
               ip = [NSIndexPath indexPathForRow:(hsL(ip.section) == 0 ? hsRow0(ip.row) : ip.row) inSection:hsL(ip.section)];
               if (ip.section == 0 && ip.row == 1) [self choose:dip title:@"FPS limit" choices:@[@"30 FPS", @"45 FPS", @"60 FPS", @"90 FPS", @"120 FPS", @"144 FPS", @"165 FPS", @"180 FPS", @"240 FPS"] values:@[@"30", @"45", @"60", @"90", @"120", @"144", @"165", @"180", @"240"] key:@"fpscap"];
-              else if (ip.section == 0 && ip.row == 2) [self choose:dip title:@"Render scale" choices:@[@"50%", @"60%", @"75%", @"80%", @"100%"] values:@[@"50", @"60", @"75", @"80", @"100"] key:@"screen"];
-              else if (ip.section == 1 && ip.row == 0) [self choose:dip title:@"Graphics preset" choices:@[@"Very Low", @"Low", @"Medium", @"High"] values:@[@"0", @"1", @"2", @"3"] key:@"gfx"];
+              else if (ip.section == 0 && ip.row == 2) [self choose:dip title:@"Render scale" choices:@[@"Auto (iPhone model)", @"50%", @"60%", @"67%", @"75%", @"80%", @"100%"] values:@[@"auto", @"50", @"60", @"67", @"75", @"80", @"100"] key:@"screen"];
               else if (ip.section == 3 && ip.row == 0) { if (self.onEdit) self.onEdit(); }
               else if (ip.section == 3 && ip.row == 1) [self choose:dip title:@"Camera sensitivity" choices:@[@"0.5×", @"0.75×", @"1.0× (default)", @"1.5×", @"2.0×", @"3.0×", @"4.0×", @"5.0×", @"6.0×"] values:@[@"0.5", @"0.75", @"1.0", @"1.5", @"2.0", @"3.0", @"4.0", @"5.0", @"6.0"] key:@"camera"];
               else if (ip.section == 4 && ip.row == 0) [self.navigationController pushViewController:[LogVC new] animated:YES];

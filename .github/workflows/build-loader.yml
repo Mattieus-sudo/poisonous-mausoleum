@@ -819,6 +819,7 @@ jobs:
           int p2_cfg_val(const char *prefix);                 /* number after prefix in the first entry like prefix123, else -1 */
           int p2_cfg_set(const char *name, int on);           /* add (on) or remove (off) one entry; 1 = file written / nothing to do */
           int p2_cfg_next(int *it, char *out, size_t n);      /* walk the entries: start with *it = 0, returns 0 at the end */
+          int p2_device_preset(int *res_scale, int *shadow_min, char *name, size_t n);   /* iPhone model preset: render scale (% of the panel) + P2RE_VKSHADOWMIN triangle threshold. 1 = model recognised, 0 = fallback values */
           extern volatile int p2_settings_open;               /* v105: 1 while the settings panel behind the cog is open (set by the UI); the present hook only re-reads p2.cfg then */
           #endif
           EOF_P2CORE_H
@@ -848,6 +849,7 @@ jobs:
           #include <dirent.h>
           #include <sys/stat.h>
           #include <sys/types.h>
+          #include <sys/sysctl.h>
           #ifdef __APPLE__
           #include <dispatch/dispatch.h>
           #include <mach/mach.h>
@@ -1969,13 +1971,13 @@ jobs:
                   "rt_render            (v58) give the render thread (entry e+59e0da0 on APK 1.0.7) a real-time time-constraint policy (period 16.67 ms, 6000 us budget). rt_render_US sets the budget (500..12000). Off by default; experiment.\n"
                   "waitspin_US          (v51) the loader writes Documents/waitspin = US so the game spins US microseconds before a blocked wait sleeps (game default 250). DEFAULT 250 with no line (the game default). Costs CPU and heat.\n"
                   "fakeaspect_N         (v67) the loader writes Documents/fake_aspect = N/10000 (17778 = 16:9, 16000 = 16:10, 15000 = 3:2, 13333 = 4:3). The game then sees a screen of that shape, so its resolution list and window follow it. Applies at the next start. Only a file the loader wrote itself is removed when the line is gone.\n"
-                  "renderscale_N        the loader writes Documents/render_scale = N (30 to 100, % of the panel) for the game to read at launch. 67 is the game's own default; 75 or 80 is sharper but heavier, 100 = full resolution (MetalFX then has nothing to scale). Remove the line to go back to the default. Applies at the next launch.\n\n"
+                  "renderscale_N        the loader writes Documents/render_scale = N (30 to 100, % of the panel) for the game to read at launch. With no line the loader picks a default from the iPhone model (50 to 80, see DEVICE PRESET in the log); 75 or 80 is sharper but heavier, 100 = full resolution (MetalFX then has nothing to scale). Remove the line to go back to the model default. Applies at the next launch.\n\n"
                   "metalfx_on           (EXPERIMENT) scale the game picture up to the panel with MetalFX (spatial) instead of letting the display stretch it. Needs iOS 16+ and a render scale below 100 (menu > Render scale) with FSR off. The loader enables VK_EXT_metal_objects, lets the swapchain be read, and on every present scales the low-res image onto its own full-size layer. The HUD is scaled with the picture. Add the line with the app CLOSED. Log lines start with METALFX. If anything fails it switches itself off and the normal path takes over.\n\n"
                   "metalfx_sharp        (needs metalfx_on) sharpen the MetalFX picture with a contrast-adaptive pass (the same idea as the FSR sharpening step). Add metalfx_sharp_N (N = 1 to 100) for the strength; without it the strength is 50. The in-game settings cog (Sharpen toggle and slider) writes both lines, and a change shows within about half a second. Log lines start with METALFX SHARP.\n\n"
                   "inputtap_on          (v81) one INPUTTAP line per game frame while a finger moves in the right half: raw px, px the loader handed the game, and the game's own mouse entries (1.0.6 offsets).\n"
                   "touch_coalesce       (v69) keep only the newest touch-move position and hand it to the game once per display-link tick instead of on every UIKit move. Needs a display lock (hz_60 / hz_90 / default 120, not hz_off).\n"
-                  "v72 BUILT IN (no line needed): MoltenVK fast-math ON, P2RE_VKSHADOWMIN=1024 (shadow casters under 1024 triangles are skipped), P2RE_VKSHADOWHALF=1 (half-size shadow maps).\n"
-          "shadowmin_off        (v72) remove the built-in P2RE_VKSHADOWMIN=1024 so every shadow caster is drawn (the game's own behaviour). A setenv_P2RE_VKSHADOWMIN=N line instead changes the number. P2RE_VKSHADOWHALF is built in and a setenv_ line for it is ignored.\n"
+                  "v72 BUILT IN (no line needed): MoltenVK fast-math ON, P2RE_VKSHADOWMIN = the iPhone model preset (256 to 4096; shadow casters under that many triangles are skipped), P2RE_VKSHADOWHALF=1 (half-size shadow maps).\n"
+          "shadowmin_off        (v72) remove the model-preset P2RE_VKSHADOWMIN so every shadow caster is drawn (the game's own behaviour). A setenv_P2RE_VKSHADOWMIN=N line instead changes the number. P2RE_VKSHADOWHALF is built in and a setenv_ line for it is ignored.\n"
           "passtime_on          (v72) every 5 s log PASSSIG lines: each kind of render pass (size, attachments) with its passes and draws per frame. Create it with the app CLOSED so the numbering is the same for the whole run. Needs the game to record passes with vkCmdBeginRendering (VKTRACE lines say dyn).\n"
           "passskip_K           (v72, DIAGNOSTIC) while the game runs: a line like passskip_3 skips every draw of the passes numbered K in the PASSSIG list (the picture breaks; watch fps and the GPU ms). Remove the line to bring it back. Checked twice a second. Does not touch indirect-count draws.\n"
           "dontcare_auto       (v96, PERF TEST, EXPERIMENT) the loader learns which render passes are plain fullscreen post passes (3 draws or fewer, depth test off, viewport and scissor cover the whole target) and, once a pass slot has looked like that 60 times with no exception, begins it with COLOR LOAD_OP_LOAD -> DONT_CARE (saves the bandwidth of loading the old contents). Only colour attachments; depth is never touched. If it ever sees an exception in a learned slot it switches that slot off and logs DONTCARE: VIOLATED. Needs one thing it cannot check: blending (a blended pass reads the old contents and would go wrong). Create it together with passtime_on with the app CLOSED so the kind numbers match PASSSIG. Compare the vkpddi gpu: ms against a run without it, and look at the picture (fullscreen effects: bloom, fog, glow, UI).\n"
@@ -2016,12 +2018,84 @@ jobs:
               int ds = sw_has("mvk_dumpshaders"); if (ds) { logp(dump, sizeof dump, "mvk_shaders"); mkdir(dump, 0755); setenv("MVK_CONFIG_SHADER_DUMP_DIR", dump, 1); }
               L("MVKENV fast_math=%d log_level=%s argbuf_off=%d prefill=%d syncsubmit_off=%d perf_log=%d dumpshaders=%d stderr->mvk_stderr.log (%s)", fm, (pl || sw_has("mvk_log_info")) ? "3" : "2", ab, pf, ss, pl, ds, fd >= 0 ? "ok" : "FAILED"); if (pf == 3) L("MVKENV WARNING: prefill 3 assumes every recording thread has an autorelease pool; the guest render thread probably does not");
           }
+          /* ---- iPhone model presets (replaces the Android host's "gfx" graphics presets) ----
+             The default render scale and shadow-caster threshold come from the hardware model (hw.machine, e.g. "iPhone16,1"). Edit the table to tune a model.
+             scale  = % of the panel (30..100, what Documents/.render_scale holds); shadow = P2RE_VKSHADOWMIN (casters under this many triangles are skipped; bigger = fewer shadows = faster).
+             Override order: p2.cfg renderscale_N / a render scale picked in the settings menu, and a setenv_P2RE_VKSHADOWMIN=N / shadowmin_off p2.cfg line, always win over this table. */
+          typedef struct { const char *id; const char *name; int scale; int shadow; } P2DevPreset;
+          #define P2T1 50, 4096   /* A12 / A13 */
+          #define P2T2 60, 2048   /* A14, A15 4-core GPU */
+          #define P2T3 67, 1024   /* A15 5-core, A15 Pro, A16 (the old built-in default) */
+          #define P2T4 75, 512    /* A18 / A19 non-Pro (+ iPhone Air) */
+          #define P2T5 80, 256    /* A17 Pro and newer Pro models */
+          static const P2DevPreset kP2DevPresets[] = {
+              {"iPhone11,2", "iPhone XS", P2T1}, {"iPhone11,4", "iPhone XS Max", P2T1}, {"iPhone11,6", "iPhone XS Max", P2T1}, {"iPhone11,8", "iPhone XR", P2T1},
+              {"iPhone12,1", "iPhone 11", P2T1}, {"iPhone12,3", "iPhone 11 Pro", P2T1}, {"iPhone12,5", "iPhone 11 Pro Max", P2T1}, {"iPhone12,8", "iPhone SE (2nd gen)", P2T1},
+              {"iPhone13,1", "iPhone 12 mini", P2T2}, {"iPhone13,2", "iPhone 12", P2T2}, {"iPhone13,3", "iPhone 12 Pro", P2T2}, {"iPhone13,4", "iPhone 12 Pro Max", P2T2},
+              {"iPhone14,4", "iPhone 13 mini", P2T2}, {"iPhone14,5", "iPhone 13", P2T2}, {"iPhone14,6", "iPhone SE (3rd gen)", P2T2},
+              {"iPhone14,2", "iPhone 13 Pro", P2T3}, {"iPhone14,3", "iPhone 13 Pro Max", P2T3}, {"iPhone14,7", "iPhone 14", P2T3}, {"iPhone14,8", "iPhone 14 Plus", P2T3},
+              {"iPhone15,2", "iPhone 14 Pro", P2T3}, {"iPhone15,3", "iPhone 14 Pro Max", P2T3}, {"iPhone15,4", "iPhone 15", P2T3}, {"iPhone15,5", "iPhone 15 Plus", P2T3},
+              {"iPhone16,1", "iPhone 15 Pro", P2T5}, {"iPhone16,2", "iPhone 15 Pro Max", P2T5},
+              {"iPhone17,1", "iPhone 16 Pro", P2T5}, {"iPhone17,2", "iPhone 16 Pro Max", P2T5},
+              {"iPhone17,3", "iPhone 16", P2T4}, {"iPhone17,4", "iPhone 16 Plus", P2T4}, {"iPhone17,5", "iPhone 16e", P2T4},
+              {"iPhone18,1", "iPhone 17 Pro", P2T5}, {"iPhone18,2", "iPhone 17 Pro Max", P2T5},
+              {"iPhone18,3", "iPhone 17", P2T4}, {"iPhone18,4", "iPhone Air", P2T4}, {"iPhone18,5", "iPhone 17e", P2T4},
+          };
+          int p2_device_preset(int *res_scale, int *shadow_min, char *name, size_t n) {
+              char mach[64] = {0}; size_t ml = sizeof mach - 1;
+              if (sysctlbyname("hw.machine", mach, &ml, NULL, 0) != 0) mach[0] = 0;
+              if (strncmp(mach, "iPhone", 6)) { const char *sim = getenv("SIMULATOR_MODEL_IDENTIFIER"); if (sim && *sim) snprintf(mach, sizeof mach, "%s", sim); }   /* simulator reports arm64 / x86_64 */
+              for (unsigned i = 0; i < sizeof kP2DevPresets / sizeof kP2DevPresets[0]; i++) if (!strcmp(mach, kP2DevPresets[i].id)) {
+                  if (res_scale) *res_scale = kP2DevPresets[i].scale;
+                  if (shadow_min) *shadow_min = kP2DevPresets[i].shadow;
+                  if (name && n) snprintf(name, n, "%s", kP2DevPresets[i].name);
+                  return 1; }
+              /* not in the table: a newer iPhone (assume at least the non-Pro tier of the newest listed generation) or a pre-A12 one (lowest tier) */
+              int major = 0; if (!strncmp(mach, "iPhone", 6)) major = atoi(mach + 6);
+              int sc = 75, sh = 512; if (major && major < 11) { sc = 45; sh = 8192; } else if (!major) { sc = 67; sh = 1024; }
+              if (res_scale) *res_scale = sc;
+              if (shadow_min) *shadow_min = sh;
+              if (name && n) snprintf(name, n, "%s", mach[0] ? mach : "unknown device");
+              return 0;
+          }
+          /* .controls.cfg fixup for the Android host, every start:
+             1. drop the old "gfx <preset>" line (it would make the host apply its own preset underneath the iPhone model presets above);
+             2. force "gfxmanual 1", so that if the host only honours Documents/.render_scale and P2RE_VKSHADOWMIN while manual graphics is on, the model defaults and every override still take effect.
+             The Manual graphics row is gone from the settings, so nothing else touches that line. Other lines are kept as they are. */
+          static void p2_fix_host_gfx(void) {
+              char p[1300]; snprintf(p, sizeof p, "%s/.controls.cfg", gDocs);
+              char *buf = NULL; size_t cap = 0, len = 0; char ln[512]; int dropped = 0, hadManual1 = 0, otherManual = 0;
+              FILE *f = fopen(p, "r");
+              if (f) {
+                  while (fgets(ln, sizeof ln, f)) {
+                      int isGfx = !strncmp(ln, "gfx", 3) && (ln[3] == ' ' || ln[3] == '\t' || ln[3] == '\r' || ln[3] == '\n' || ln[3] == 0);
+                      int isMan = !strncmp(ln, "gfxmanual", 9) && (ln[9] == ' ' || ln[9] == '\t' || ln[9] == '\r' || ln[9] == '\n' || ln[9] == 0);
+                      if (isGfx) { dropped++; continue; }
+                      if (isMan) { char *v = ln + 9; while (*v == ' ' || *v == '\t') v++; if (*v == '1' && !hadManual1) hadManual1 = 1; else otherManual++; continue; }   /* re-added once below */
+                      size_t l = strlen(ln); if (len + l + 2 > cap) { cap = (len + l + 2) * 2; char *nb = realloc(buf, cap); if (!nb) { free(buf); fclose(f); return; } buf = nb; }
+                      memcpy(buf + len, ln, l); len += l; buf[len] = 0;
+                  }
+                  fclose(f);
+              }
+              if (len && buf[len - 1] != '\n') { buf[len++] = '\n'; buf[len] = 0; }
+              if (dropped == 0 && hadManual1 && otherManual == 0) { free(buf); return; }   /* already in the wanted state: leave the file untouched */
+              const char *man = "gfxmanual 1\n"; size_t ml = strlen(man);
+              if (len + ml + 1 > cap) { char *nb = realloc(buf, len + ml + 1); if (!nb) { free(buf); return; } buf = nb; }
+              memcpy(buf + len, man, ml); len += ml; buf[len] = 0;
+              FILE *w = fopen(p, "w");
+              if (w) { fwrite(buf, 1, len, w); fclose(w); L("GFX PRESET: .controls.cfg fixed up (removed %d old \"gfx\" line(s), gfxmanual forced to 1) so the iPhone model preset and the menu overrides apply", dropped); }
+              else L("GFX PRESET: could not write .controls.cfg");
+              free(buf);
+          }
           static void p2re_env_setup(void) {
               if (!gDocs[0]) return;
               /* nosplash is only a p2.cfg line now (fixp answers the game's folder check from it). Remove the marker folders older builds left in Documents. */
               { char o1[1300], o2[1300]; snprintf(o1, sizeof o1, "%s/nosplash", gDocs); snprintf(o2, sizeof o2, "%s/.nosplash", gDocs); rmdir(o1); rmdir(o2); }
               if (p2_boot_flags) L("BOOT FLAGS (as seen when the app started):\n%s", p2_boot_flags);
               gRbOff = flg()->rbtrace ? 0 : 1; gTxOff = flg()->textrace ? 0 : 1; L("TEXTRACE: %s (p2.cfg line textrace_on enables it; needs RBTRACE on for the submit / done checks%s)", gTxOff ? "OFF" : "on", gRbOff ? "; RBTRACE IS OFF so only record-time facts are logged" : ""); L("RBTRACE: %s (opt-in: p2.cfg line rbtrace_on)", gRbOff ? "OFF" : "on"); gMaxLod = sw_val("maxlod_"); L("MAXLOD: %s", gMaxLod >= 0 ? "ON, every sampler the game creates gets maxLod capped at that value (p2.cfg line maxlod_<N>; maxlod_0 = sample only the full-size mip level, so no mip data is ever read)" : "off (p2.cfg line maxlod_0 pins every sampler to the full-size level; maxlod_<N> caps at level N; read at launch only)"); L("UPLOADGAP: %s (texture-like images older than 5 s whose mip levels were never written; reported in the TEXTRACE window; p2.cfg line textrace_on enables it)", gTxOff ? "OFF" : "on"); gSleepCap = sw_val("sleepcap_"); L("SLEEPCAP: %s", gSleepCap >= 0 ? "ON, guest sleeps of 2000..20000 us are shortened (p2.cfg line sleepcap_<us>)" : "off (p2.cfg line sleepcap_<us> shortens frame-sized guest sleeps to <us>; experiment)"); gWtOff = flg()->waittrace ? 0 : 1; L("WAITTRACE: %s (opt-in: p2.cfg line waittrace_on)", gWtOff ? "OFF" : "on"); gpuhud_start();
+              int dvScale = 67, dvShadow = 1024; char dvName[64] = {0}; int dvKnown = p2_device_preset(&dvScale, &dvShadow, dvName, sizeof dvName);
+              L("DEVICE PRESET: %s%s -> render scale %d%%, shadow casters skipped under %d triangles (used unless a p2.cfg line or a menu choice overrides it)", dvName, dvKnown ? "" : " (model not in the table, fallback tier)", dvScale, dvShadow);
+              p2_fix_host_gfx();
               { int ws = sw_val("waitspin_"); int wsDef = 0; if (ws < 0) { ws = 250; wsDef = 1; } char wp[1200], wa[1200]; snprintf(wp, sizeof wp, "%s/.waitspin", gDocs); snprintf(wa, sizeof wa, "%s/.waitspin.p2auto", gDocs);
                 if (ws >= 0) { FILE *wf = fopen(wp, "w"); if (wf) { fprintf(wf, "%d\n", ws); fclose(wf); FILE *wm = fopen(wa, "w"); if (wm) fclose(wm); L("WAITSPIN: %s -> wrote Documents/waitspin = %d (game default 250 us; check the game's 'waits: spin N us' line)", wsDef ? "no waitspin_ p2.cfg line, built-in default (250)" : "p2.cfg line override", ws); } else L("WAITSPIN: could not write Documents/waitspin"); }
                 }
@@ -2032,15 +2106,18 @@ jobs:
                 else if (access(fp, F_OK) == 0) L("FAKE_ASPECT: no fakeaspect_ entry; Documents/.fake_aspect exists WITHOUT the loader marker (made by hand, or by a build before v103) and is left alone: delete it if the game is stuck on a wrong aspect"); }
               { int rs = sw_val("renderscale_"); char rp[1200], rm[1200]; snprintf(rp, sizeof rp, "%s/.render_scale", gDocs); snprintf(rm, sizeof rm, "%s/.render_scale.p2auto", gDocs);   /* the host reads Documents/render_scale at launch (30..100, % of the panel) */
                 if (rs >= 30 && rs <= 100) { FILE *rf = fopen(rp, "w"); if (rf) { fprintf(rf, "%d\n", rs); fclose(rf); FILE *rq = fopen(rm, "w"); if (rq) fclose(rq); L("RENDER_SCALE: p2.cfg line renderscale_%d -> wrote Documents/render_scale = %d", rs, rs); } else L("RENDER_SCALE: could not write Documents/render_scale"); }
-                else if (rs >= 0) L("RENDER_SCALE: p2.cfg line renderscale_%d ignored (the host accepts 30 to 100)", rs);
-                else if (access(rm, F_OK) == 0) { unlink(rp); unlink(rm); L("RENDER_SCALE: no renderscale_ entry in p2.cfg, removed the Documents/.render_scale the loader wrote earlier (a .render_scale the launcher menu wrote has no marker and is kept)"); }
-                else { char cur[16] = {0}; FILE *cf = fopen(rp, "r"); if (cf) { if (!fgets(cur, sizeof cur, cf)) cur[0] = 0; fclose(cf); } L("RENDER_SCALE: using Documents/.render_scale = %s", cur[0] ? cur : "(none, the game default)"); } }
+                else {
+                  if (rs >= 0) L("RENDER_SCALE: p2.cfg line renderscale_%d ignored (the host accepts 30 to 100)", rs);
+                  if (access(rp, F_OK) != 0 || access(rm, F_OK) == 0) {   /* no file, or one the loader wrote itself (marker present): (re)write the iPhone model default */
+                    FILE *rf = fopen(rp, "w"); if (rf) { fprintf(rf, "%d\n", dvScale); fclose(rf); FILE *rq = fopen(rm, "w"); if (rq) fclose(rq); L("RENDER_SCALE: auto, %s preset -> wrote Documents/.render_scale = %d", dvName, dvScale); } else L("RENDER_SCALE: could not write Documents/.render_scale");
+                  } else { char cur[16] = {0}; FILE *cf = fopen(rp, "r"); if (cf) { if (!fgets(cur, sizeof cur, cf)) cur[0] = 0; fclose(cf); } L("RENDER_SCALE: using the Documents/.render_scale picked in the menu = %s (menu > Render scale > Auto goes back to the %s preset)", cur[0] ? cur : "(none)", dvName); }
+                } }
               { char dp[1300], dm[1300], txt[260] = {0}; int nn = 0; snprintf(dp, sizeof dp, "%s/../debugoff", gDocs); snprintf(dm, sizeof dm, "%s/../debugoff.p2auto", gDocs);
                 { char cn[300]; int cit = 0; while (p2_cfg_next(&cit, cn, sizeof cn)) { const char *n = cn; if (strncmp(n, "dbgoff_", 7) || !n[7]) continue; int okc = 1; for (const char *q = n + 7; *q; q++) if (!((*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9'))) okc = 0;
                     size_t l = strlen(txt); if (okc && l + strlen(n + 7) + 2 < sizeof txt - 1) { snprintf(txt + l, sizeof txt - l, "%s%s", l ? " " : "", n + 7); nn++; } } }
                 if (nn) { FILE *f = fopen(dp, "w"); if (f) { fprintf(f, "%s", txt); fclose(f); FILE *m = fopen(dm, "w"); if (m) fclose(m); L("DEBUGOFF: wrote %s = \"%s\" (the dev's own log line \"debugoff: ...\" in p2.log confirms it was read)", dp, txt); } else L("DEBUGOFF: cannot write %s", dp); }
                 else if (access(dm, F_OK) == 0) { unlink(dp); unlink(dm); L("DEBUGOFF: no dbgoff_ entries in p2.cfg, removed the debugoff file the loader wrote earlier"); } }
-          if (!sw_has("shadowmin_off")) { setenv("P2RE_VKSHADOWMIN", "1024", 1); L("P2RE_ENV built-in P2RE_VKSHADOWMIN=1024 (p2.cfg line shadowmin_off removes it; a setenv_P2RE_VKSHADOWMIN=N p2.cfg line overrides it)"); }
+          if (!sw_has("shadowmin_off")) { char sv[24]; snprintf(sv, sizeof sv, "%d", dvShadow); setenv("P2RE_VKSHADOWMIN", sv, 1); L("P2RE_ENV iPhone preset (%s) P2RE_VKSHADOWMIN=%d (p2.cfg line shadowmin_off removes it; a setenv_P2RE_VKSHADOWMIN=N p2.cfg line overrides it)", dvName, dvShadow); }
           else L("P2RE_ENV p2.cfg line shadowmin_off: no built-in P2RE_VKSHADOWMIN, every shadow caster is drawn");
           setenv("P2RE_VKSHADOWHALF", "1", 1); L("P2RE_ENV built-in P2RE_VKSHADOWHALF=1 (half-size shadow maps)");
           if (!p2_cfg_path()[0]) { L("P2RE_ENV: p2.cfg is not available"); return; }
