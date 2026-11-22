@@ -99,7 +99,7 @@ jobs:
                   }
               }
               gIq[gIqT % IQ_MAX] = traced; gIqT++;
-              if (TT_ON() && (traced.action & 0xff) != 2 && gTouchTraceLines < 600) {
+              if (TT_ON() && (traced.action & 0xff) != 2 && gTouchTraceLines < 20000) {
                   gTouchTraceLines++;
                   L("TOUCHTRACE: ENQ seq=%llu action=0x%x touch=%d n=%d ui_age_at_enq=%.2fms q=%u", (unsigned long long)traced.trace_seq, traced.action, traced.touch_id, traced.n, traced.ui_ts > 0.0 ? (pan_now() - traced.ui_ts) * 1000.0 : -1.0, gIqT - gIqH);
               }
@@ -471,7 +471,7 @@ jobs:
           void p2_touch_ts(int phase, int tid, float x, float y, double ts) {   /* ts = UITouch.timestamp (seconds, same clock as CLOCK_UPTIME_RAW), 0 = now */
               if (!gInAttached) return;
               int pan = p2_pan_smooth(); double t = ts > 0.0 ? ts : pan_now();
-              if (phase != 1 && TT_ON()) L_N(600, "TOUCHTRACE: UI phase=%d touch=%d ui_ts=%.9f arrival_age=%.2fms xy=%.0f,%.0f", phase, tid, t, (pan_now() - t) * 1000.0, x, y);
+              if (phase != 1 && TT_ON()) L_N(20000, "TOUCHTRACE: UI phase=%d touch=%d ui_ts=%.9f arrival_age=%.2fms xy=%.0f,%.0f", phase, tid, t, (pan_now() - t) * 1000.0, x, y);
               pthread_mutex_lock(&gInMu);
               if (menu_touch_locked(phase, tid, x, y)) goto out;   /* v90: menu mode, the finger drives the game's cursor */
               if (pan && gMvPend && phase != 1) pan_flush_locked();
@@ -528,7 +528,7 @@ jobs:
           }
           typedef struct { int ch, down; uint64_t seq; double requested_at; } BtnTraceDispatch;   /* seq 0 = not traced */
           static uint64_t gBtnTraceSeq; static unsigned gBtnTraceLines;
-          #define BTN_TRACE(...) do { if (gBtnTraceLines < 600 && __atomic_fetch_add(&gBtnTraceLines, 1, __ATOMIC_RELAXED) < 600) L(__VA_ARGS__); } while (0)
+          #define BTN_TRACE(...) do { if (gBtnTraceLines < 20000 && __atomic_fetch_add(&gBtnTraceLines, 1, __ATOMIC_RELAXED) < 20000) L(__VA_ARGS__); } while (0)
           static void btn_edge_f(void *ctx) {
               BtnTraceDispatch *d = (BtnTraceDispatch *)ctx;
               if (d->seq) {
@@ -574,7 +574,7 @@ jobs:
               __atomic_fetch_add(&gItEv, 1, __ATOMIC_RELAXED);
               pthread_mutex_unlock(&gInMu);
               InEv *e = ev_alloc(); *e = ev;
-              if (TT_ON() && (e->action & 0xff) != 2 && gTouchTraceLines < 600) {
+              if (TT_ON() && (e->action & 0xff) != 2 && gTouchTraceLines < 20000) {
                   __atomic_fetch_add(&gTouchTraceLines, 1, __ATOMIC_RELAXED);
                   L("TOUCHTRACE: DEQ seq=%llu action=0x%x touch=%d ui_to_deq=%.2fms queue=%.2fms", (unsigned long long)e->trace_seq, e->action, e->touch_id, e->ui_ts > 0.0 ? ((double)e->deq_ns / 1e6 - e->ui_ts * 1000.0) : -1.0, e->enq_ns ? (double)(e->deq_ns - e->enq_ns) / 1e6 : -1.0);
               }
@@ -583,7 +583,7 @@ jobs:
           }
           static void sh_inq_finish(void *q, void *ev, int handled) {
               (void)q; (void)handled; InEv *e = (InEv *)ev;
-              if (e && TT_ON() && (e->action & 0xff) != 2 && gTouchTraceLines < 600) {
+              if (e && TT_ON() && (e->action & 0xff) != 2 && gTouchTraceLines < 20000) {
                   __atomic_fetch_add(&gTouchTraceLines, 1, __ATOMIC_RELAXED);
                   uint64_t now = (uint64_t)(pan_now() * 1000000000.0);
                   L("TOUCHTRACE: FIN seq=%llu action=0x%x touch=%d callback=%.2fms total_ui_to_fin=%.2fms", (unsigned long long)e->trace_seq, e->action, e->touch_id, e->deq_ns ? (double)(now - e->deq_ns) / 1e6 : -1.0, e->ui_ts > 0.0 ? ((double)now / 1e6 - e->ui_ts * 1000.0) : -1.0);
@@ -910,7 +910,7 @@ jobs:
               if (ph >= 2) gSlot[s] = NULL; continue;
           }
                   gFeedTs = t.timestamp;
-                  if (ownAny()) { static unsigned ownTrace; if (ph != 1 && gTcTrace && ownTrace++ < 600) NSLog(@"BTNTRACE: UI phase=%d slot=%d ui_ts=%.9f arrival_age=%.2fms xy=%.0f,%.0f", ph, s, gFeedTs, (CACurrentMediaTime() - gFeedTs) * 1000.0, p.x, p.y); }
+                  if (ownAny()) { static unsigned ownTrace; if (ph != 1 && gTcTrace && ownTrace++ < 20000) NSLog(@"BTNTRACE: UI phase=%d slot=%d ui_ts=%.9f arrival_age=%.2fms xy=%.0f,%.0f", ph, s, gFeedTs, (CACurrentMediaTime() - gFeedTs) * 1000.0, p.x, p.y); }
                   if (ownAny() && ownFeed(ph, s, p, self.bounds.size)) { if (ph >= 2) gSlot[s] = NULL; continue; }   /* v76: our own element, the dev never sees this touch */
                   if (ph == 1) {
                       gTcUiMoves++;
