@@ -1812,6 +1812,10 @@ jobs:
               { size_t dl = strlen(gDocs); const char *rest = NULL;
                 if (!strncmp(res, gDocs, dl) && res[dl] == '/') rest = res + dl + 1; else if (!strcmp(res, "p2.log")) rest = res;
                 if (rest && !strcmp(rest, "p2.log")) { logp(out, n, "p2.log"); return out; }
+              /* mods: the host looks for <game folder>/Mods/<mod>/<files> (the game folder is Documents/Prototype2/game, or Documents/Prototype2 when the files sit there). The mod folder the person fills is
+                 Files app > On My iPhone > Prototype 2 > Mods (= Documents/Mods, the one the settings UI lists), so those host paths land there. Every shim below goes through fixp, so list / stat / open / mkdir all agree. */
+              if (rest) { static const char *const mg_[] = {"Prototype2/game/Mods", "Prototype2/Mods"};
+                  for (unsigned mi_ = 0; mi_ < 2; mi_++) { size_t ml_ = strlen(mg_[mi_]); if (!strncasecmp(rest, mg_[mi_], ml_) && (rest[ml_] == 0 || rest[ml_] == '/')) { snprintf(out, n, "%s/Mods%s", gDocs, rest + ml_); return out; } } }
               /* hidden files: the game asks for Documents/<name>, the file on disk is Documents/.<name> */
               if (rest) { static const char *const hid[] = {"controls.cfg", "render_scale", "fake_aspect", "waitspin"}; for (unsigned hi_ = 0; hi_ < sizeof hid / sizeof hid[0]; hi_++) if (!strcmp(rest, hid[hi_])) { char t_[64]; snprintf(t_, sizeof t_, ".%s", rest); snprintf(out, n, "%s/%s", gDocs, t_); return out; } } }
               return res;
