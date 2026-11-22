@@ -45,7 +45,7 @@ jobs:
              Where the PNG comes from (first hit wins):
                1. Documents/button_icons/key_XX.png        one picture for one exact key (XX = scancode in hex, 101 = Left Click, 102 = Right Click)
                2. Documents/button_icons/<name>.png        <name> = the action id (attack2, jump, grab ...) or what icon_map.txt says; Files-app drops win over the build
-               3. <app>/icons/<name>.png                   the p2-icons folder of the repo, packed in by p2-icons.yml
+               3. <app>/icons/<name>.png                   the p2-icons folder of the repo, packed in by p2-icons.yml; v106: also copied into Documents/button_icons on launch (see icoSeed), so 1 and 2 normally hit those copies
              icon_map.txt (Documents/button_icons/, written the first time) lines:  map KEY name | map KEY none | bind ACTION KEY | caption KEY text | caption KEY none | captions 0/1 | picture inside/alone
              picture inside (default) = the picture sits inside the circle of the button. picture alone = no circle behind it; in Move mode the yellow ring comes back so the button can be found and dragged. A pressed button is drawn a little smaller and dimmer.
              Everything is read once at launch, so relaunch after changing a file. ---- */
@@ -70,10 +70,52 @@ jobs:
                   if ([f.pathExtension caseInsensitiveCompare:@"png"] == NSOrderedSame && [f.stringByDeletingPathExtension caseInsensitiveCompare:name] == NSOrderedSame) return [dir stringByAppendingPathComponent:f];
               return nil;
           }
+          /* ---- v106: SEED button_icons. Every PNG the build ships (<app>/icons) is also copied into Documents/button_icons so the player sees the exact file names in the Files app and can replace them.
+             .shipped remembers a fingerprint of each copy: a file still identical to what we copied is refreshed when a new build ships a new picture; a file the player replaced or edited is never overwritten;
+             a file the player deleted stays deleted (the bundled picture still draws, see icoLoadDisk). README.txt is rewritten at every launch from the action table. ---- */
+          static uint64_t icoHash(NSData *d) { uint64_t h = 1469598103934665603ULL; const uint8_t *b = (const uint8_t *)d.bytes; for (NSUInteger i = 0; i < d.length; i++) { h ^= b[i]; h *= 1099511628211ULL; } return h; }
+          static BOOL gIcoSeeded;
+          static void icoSeed(void) {
+              if (gIcoSeeded) return; gIcoSeeded = YES;
+              NSFileManager *fm = NSFileManager.defaultManager; NSString *d = icoDir(), *src = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"icons"];
+              [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:nil];
+              NSString *rec = [d stringByAppendingPathComponent:@".shipped"];
+              NSMutableDictionary<NSString *, NSString *> *old = [NSMutableDictionary new], *now = [NSMutableDictionary new];   /* name.png (lowercase) -> fingerprint */
+              for (NSString *ln in [[NSString stringWithContentsOfFile:rec encoding:NSUTF8StringEncoding error:nil] componentsSeparatedByString:@"\n"]) { NSArray<NSString *> *w = [ln componentsSeparatedByString:@" "]; if (w.count == 2) old[w[0]] = w[1]; }
+              NSMutableSet<NSString *> *inBuild = [NSMutableSet new];
+              for (NSString *f in [fm contentsOfDirectoryAtPath:src error:nil]) {
+                  if ([f.pathExtension caseInsensitiveCompare:@"png"] != NSOrderedSame) continue;
+                  NSData *nd = [NSData dataWithContentsOfFile:[src stringByAppendingPathComponent:f]]; if (!nd) continue;
+                  NSString *key = f.lowercaseString, *nh = [NSString stringWithFormat:@"%016llx", (unsigned long long)icoHash(nd)], *oh = old[key];
+                  [inBuild addObject:key];
+                  NSString *have = icoFindCI(d, f.stringByDeletingPathExtension);   /* any capitalisation of the same name */
+                  if (!have) {
+                      if (oh) now[key] = oh;   /* we copied it before and the player deleted it: leave it deleted */
+                      else if ([nd writeToFile:[d stringByAppendingPathComponent:f] atomically:YES]) now[key] = nh;   /* first launch: copy */
+                  } else {
+                      NSData *hd = [NSData dataWithContentsOfFile:have]; NSString *eh = hd ? [NSString stringWithFormat:@"%016llx", (unsigned long long)icoHash(hd)] : nil;
+                      if (eh && [eh isEqualToString:nh]) now[key] = nh;   /* identical to the shipped one: ours */
+                      else if (eh && oh && [eh isEqualToString:oh]) { if ([nd writeToFile:have atomically:YES]) now[key] = nh; else now[key] = oh; }   /* untouched since we copied it, the build has a new picture: refresh */
+                      else if (oh) now[key] = oh;   /* the player's own version of a shipped name: keep it, do not touch it */
+                  }
+              }
+              for (NSString *key in old) if (![inBuild containsObject:key]) {   /* the build dropped this picture: remove our untouched copy, keep anything the player changed */
+                  NSString *have = icoFindCI(d, key.stringByDeletingPathExtension); NSData *hd = have ? [NSData dataWithContentsOfFile:have] : nil;
+                  if (hd && [[NSString stringWithFormat:@"%016llx", (unsigned long long)icoHash(hd)] isEqualToString:old[key]]) [fm removeItemAtPath:have error:nil];
+              }
+              NSMutableString *rs = [NSMutableString new];
+              for (NSString *k in [now.allKeys sortedArrayUsingSelector:@selector(compare:)]) [rs appendFormat:@"%@ %@\n", k, now[k]];
+              [rs writeToFile:rec atomically:YES encoding:NSUTF8StringEncoding error:nil];
+              NSMutableString *rd = [NSMutableString stringWithString:@"BUTTON ICONS - how to replace them\n\nThe PNG files in this folder are the pictures drawn on your touch buttons. Replace any of them with your own and relaunch the game.\n\n1) Keep the file name exactly (capitals do not matter). The name decides which button gets the picture:\n"];
+              for (int i = 0; i < ICO_NACT; i++) { const char *cx = kAct[i].ctx; NSString *where = !cx ? @"" : cx[0] == '!' ? [NSString stringWithFormat:@", every layout except %s", cx + 1] : [NSString stringWithFormat:@", %s layout only", cx]; [rd appendFormat:@"     %-16s %s  (default key %X%@)\n", [[NSString stringWithFormat:@"%s.png", kAct[i].id] UTF8String], kAct[i].name, kAct[i].dik, where]; }
+              [rd appendString:@"\n   Overlays: border.png = ring drawn around every button picture; Lstick.png = left-stick sprint border; Rstick.png = right-stick knob.\n\n2) One picture for ONE exact key, whatever the action: key_XX.png where XX is the DirectInput scancode in hex (key_101.png = Left Click, key_102.png = Right Click, key_39.png = Space).\n   Only in one layout: key_XX_LAYOUT.png, e.g. key_32_video.png (layouts: foot, vehicle, menu, video ...).\n\n3) Any other name works too (letters, digits and _ only) once icon_map.txt points a key at it:  map 2A mything  uses mything.png for key 2A. See the comments at the top of icon_map.txt for bind / map / caption / captions / picture.\n\nTips: square PNG with a transparent background, about 256x256 px (bigger is shrunk). Delete a file here to go back to the built-in picture. Files you replace or edit are never overwritten by app updates; files you leave alone are refreshed when an update ships a new picture.\n"];
+              [rd writeToFile:[d stringByAppendingPathComponent:@"README.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+          }
           static NSMutableDictionary<NSString *, id> *gIcoLoadCache;   /* name -> UIImage, or NSNull for "no such picture". icoLoad used to hit the disk (up to 4 file lookups and 2 directory listings, plus a PNG decode) on every call, and ownRefresh calls it several times for every touch event on the main thread: that stalled UIKit and delayed touchesEnded (a released stick kept turning the camera). Pictures are read once per launch ("Relaunch after a change"). */
           static UIImage *icoLoadDisk(NSString *name);
           static UIImage *icoLoad(NSString *name) {
               if (!name) return nil;
+              icoSeed();   /* v106: the bundled pictures are copied into Documents/button_icons before the first lookup */
               if (!gIcoLoadCache) gIcoLoadCache = [NSMutableDictionary new];
               id c = gIcoLoadCache[name]; if (c) return c == NSNull.null ? nil : c;
               UIImage *im = icoLoadDisk(name); gIcoLoadCache[name] = im ? (id)im : (id)NSNull.null; return im;
@@ -95,6 +137,7 @@ jobs:
           static NSString *icoCK(int dik) { return [NSString stringWithFormat:@"%@:%d", icoCtx().lowercaseString, dik]; }
           static void icoInit(void) {
               if (gIcoInit) return; gIcoInit = YES;
+              icoSeed();
               gIcoMap = [NSMutableDictionary new]; gIcoCap = [NSMutableDictionary new]; gIcoCache = [NSMutableDictionary new]; gIcoMapC = [NSMutableDictionary new]; gIcoCapC = [NSMutableDictionary new];
               NSFileManager *fm = NSFileManager.defaultManager; NSString *d = icoDir(), *f = [d stringByAppendingPathComponent:@"icon_map.txt"];
               [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:nil];   /* so the folder shows up in the Files app */
