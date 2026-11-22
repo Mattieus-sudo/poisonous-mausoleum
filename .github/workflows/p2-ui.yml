@@ -167,6 +167,21 @@ jobs:
               NSString *out = lines.count ? [[lines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] : @"";
               return [out writeToFile:hostCfgPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
           }
+          /* v105: mods that ship inside the app (repo folder p2-mods/ -> <app>/bundled-mods). Each item (a mod folder, or a file such as the how-to text) is copied into Documents/Mods
+             ONLY if nothing with that name is there yet: an existing copy, including one the person edited, is never overwritten, and mods the person added themselves are never touched. */
+          static void hostSeedBundledMods(void) {
+              NSFileManager *fm = NSFileManager.defaultManager;
+              NSString *src = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"bundled-mods"];
+              NSArray *items = [fm contentsOfDirectoryAtPath:src error:nil]; if (!items.count) return;
+              NSString *dst = [uiDocs() stringByAppendingPathComponent:@"Mods"];
+              [fm createDirectoryAtPath:dst withIntermediateDirectories:YES attributes:nil error:nil];
+              for (NSString *name in items) {
+                  if ([name hasPrefix:@"."]) continue;
+                  NSString *to = [dst stringByAppendingPathComponent:name];
+                  if ([fm fileExistsAtPath:to]) continue;
+                  [fm copyItemAtPath:[src stringByAppendingPathComponent:name] toPath:to error:nil];
+              }
+          }
           /* v105: the mod loader is ON by default. No "modloader" line yet (first launch) = write "modloader 1"; once the line exists (the Mod loader switch in the game settings writes 1 or 0) it is never touched here. */
           static void hostSeedModLoader(void) {
               for (NSString *line in hostCfgLines()) if ([line hasPrefix:@"modloader "]) return;
@@ -1118,7 +1133,7 @@ jobs:
               RootVC *vc = [RootVC new]; vc.game = gGame;
               vc.onPlay = ^{ [self run]; };
               vc.onHz = ^{ [self applyHz]; };
-              self.window.rootViewController = vc; [self.window makeKeyAndVisible]; hostSeedModLoader(); [self startFlags]; [self startHz]; padStart(); return YES;
+              self.window.rootViewController = vc; [self.window makeKeyAndVisible]; hostSeedBundledMods(); hostSeedModLoader(); [self startFlags]; [self startHz]; padStart(); return YES;
           }
           - (void)run {
               if (gRan) { emit("(already ran in this launch: close the app from the app switcher and open it again to repeat)"); return; }

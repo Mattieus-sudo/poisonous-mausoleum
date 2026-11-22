@@ -727,6 +727,11 @@ jobs:
           pattern: p2-src-*
           path: parts
           merge-multiple: false
+      - name: Check out the repo files that ship inside the app (p2-mods)
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.inspect_only }}
+        uses: actions/checkout@v4
+        with:
+          path: repo_files
       - name: Build test app and IPA
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.inspect_only }}
         env:
@@ -4547,6 +4552,7 @@ jobs:
           cp p2data.bin p2relocs.bin p2names.bin p2tls.bin p2phdr.bin $APP/
           unzip -q -o ../game.apk 'assets/*' -d $APP/ && du -sh $APP/assets || echo 'no assets in apk'
           mkdir -p $APP/icons && cp "$P/icons/icons/"*.png $APP/icons/ 2>/dev/null && echo "button icons: $(ls $APP/icons | wc -l) PNGs in the app" || echo 'button icons: none in p2-icons/, buttons keep their text labels'
+          mkdir -p $APP/bundled-mods && cp -R "$GITHUB_WORKSPACE/repo_files/p2-mods/." $APP/bundled-mods/ 2>/dev/null && echo "bundled mods: $(ls $APP/bundled-mods | wc -l) item(s) in the app" || echo 'bundled mods: none in p2-mods/'
           cat > $APP/Frameworks/P2Code.framework/Info.plist <<'EOF_FWPLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <plist version="1.0"><dict>
