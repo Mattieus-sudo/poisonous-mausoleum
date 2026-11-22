@@ -1,0 +1,2 @@
+# camera. rstick cx cy r = the right stick of THIS layout (centre, radius as a fraction of the screen HEIGHT); camsens H V (global) = percent of the default turn speed, left/right and up/down.
+camsens 70 70

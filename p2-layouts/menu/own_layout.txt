@@ -1,0 +1,1 @@
+# own layout (v79). Fractions of the screen. stick cx cy r (radius as a fraction of the screen HEIGHT); btn KEY x y w h LABEL (a circle inside the box, the key name is drawn in the middle); block x y w h.

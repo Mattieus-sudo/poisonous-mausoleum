@@ -1,0 +1,3 @@
+# custom buttons (v79). btn KEY x y w h LABEL. KEY = DirectInput scancode in hex, x y w h are fractions of the screen.
+btn 01 0.0136 0.0174 0.0650 0.1382 Esc H=0 B=0
+btn 1C 0.8538 0.7566 0.1016 0.2159 Enter H=0 B=0
