@@ -525,7 +525,7 @@ jobs:
               UITableViewCell *c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
               c.backgroundColor = [UIColor colorWithWhite:1 alpha:0.035]; c.textLabel.textColor = UIColor.labelColor; c.detailTextLabel.textColor = UIColor.secondaryLabelColor;
               c.textLabel.text = [self titleForRow:ip]; c.detailTextLabel.numberOfLines = 2;
-              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right", @"wand.and.stars", @"slider.horizontal.below.rectangle", @"arrow.up.right.square"], @[@"leaf"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
+              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right", @"wand.and.stars", @"slider.horizontal.below.rectangle", @"sparkles"], @[@"leaf"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
               c.imageView.image = [UIImage systemImageNamed:icons[ip.section][MIN((NSUInteger)ip.row, [icons[ip.section] count] - 1)]]; c.imageView.tintColor = [UIColor colorWithRed:0.35 green:0.68 blue:1 alpha:1];
               if ([self isSwitchRow:ip] || (ip.section == 2 && ip.row > 0 && self.mods.count)) {
                   UISwitch *sw = [UISwitch new];

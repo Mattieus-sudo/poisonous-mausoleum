@@ -1976,7 +1976,7 @@ jobs:
                   "metalfx_sharp        (needs metalfx_on) sharpen the MetalFX picture with a contrast-adaptive pass (the same idea as the FSR sharpening step). Add metalfx_sharp_N (N = 1 to 100) for the strength; without it the strength is 50. The in-game settings cog (Sharpen toggle and slider) writes both lines, and a change shows within about half a second. Log lines start with METALFX SHARP.\n\n"
                   "inputtap_on          (v81) one INPUTTAP line per game frame while a finger moves in the right half: raw px, px the loader handed the game, and the game's own mouse entries (1.0.6 offsets).\n"
                   "touch_coalesce       (v69) keep only the newest touch-move position and hand it to the game once per display-link tick instead of on every UIKit move. Needs a display lock (hz_60 / hz_90 / default 120, not hz_off).\n"
-                  "v72 BUILT IN (no line needed): MoltenVK fast-math ON, P2RE_VKSHADOWMIN = the iPhone model preset (256 to 4096; shadow casters under that many triangles are skipped), P2RE_VKSHADOWHALF=1 (half-size shadow maps).\n"
+                  "v72 BUILT IN (no line needed): MoltenVK fast-math ON, P2RE_VKSHADOWMIN = the iPhone model preset (512 to 4096; shadow casters under that many triangles are skipped), P2RE_VKSHADOWHALF=1 (half-size shadow maps).\n"
           "shadowmin_off        (v72) remove the model-preset P2RE_VKSHADOWMIN so every shadow caster is drawn (the game's own behaviour). A setenv_P2RE_VKSHADOWMIN=N line instead changes the number. P2RE_VKSHADOWHALF is built in and a setenv_ line for it is ignored.\n"
           "passtime_on          (v72) every 5 s log PASSSIG lines: each kind of render pass (size, attachments) with its passes and draws per frame. Create it with the app CLOSED so the numbering is the same for the whole run. Needs the game to record passes with vkCmdBeginRendering (VKTRACE lines say dyn).\n"
           "passskip_K           (v72, DIAGNOSTIC) while the game runs: a line like passskip_3 skips every draw of the passes numbered K in the PASSSIG list (the picture breaks; watch fps and the GPU ms). Remove the line to bring it back. Checked twice a second. Does not touch indirect-count draws.\n"
@@ -2026,19 +2026,18 @@ jobs:
           #define P2T1 50, 4096   /* A12 / A13 */
           #define P2T2 60, 2048   /* A14, A15 4-core GPU */
           #define P2T3 67, 1024   /* A15 5-core, A15 Pro, A16 (the old built-in default) */
-          #define P2T4 75, 512    /* A18 / A19 non-Pro (+ iPhone Air) */
-          #define P2T5 80, 256    /* A17 Pro and newer Pro models */
-          static const P2DevPreset kP2DevPresets[] = {
+          #define P2T4 75, 512    /* A17 Pro and newer: Pro and non-Pro alike (+ iPhone Air) */
+                    static const P2DevPreset kP2DevPresets[] = {
               {"iPhone11,2", "iPhone XS", P2T1}, {"iPhone11,4", "iPhone XS Max", P2T1}, {"iPhone11,6", "iPhone XS Max", P2T1}, {"iPhone11,8", "iPhone XR", P2T1},
               {"iPhone12,1", "iPhone 11", P2T1}, {"iPhone12,3", "iPhone 11 Pro", P2T1}, {"iPhone12,5", "iPhone 11 Pro Max", P2T1}, {"iPhone12,8", "iPhone SE (2nd gen)", P2T1},
               {"iPhone13,1", "iPhone 12 mini", P2T2}, {"iPhone13,2", "iPhone 12", P2T2}, {"iPhone13,3", "iPhone 12 Pro", P2T2}, {"iPhone13,4", "iPhone 12 Pro Max", P2T2},
               {"iPhone14,4", "iPhone 13 mini", P2T2}, {"iPhone14,5", "iPhone 13", P2T2}, {"iPhone14,6", "iPhone SE (3rd gen)", P2T2},
               {"iPhone14,2", "iPhone 13 Pro", P2T3}, {"iPhone14,3", "iPhone 13 Pro Max", P2T3}, {"iPhone14,7", "iPhone 14", P2T3}, {"iPhone14,8", "iPhone 14 Plus", P2T3},
               {"iPhone15,2", "iPhone 14 Pro", P2T3}, {"iPhone15,3", "iPhone 14 Pro Max", P2T3}, {"iPhone15,4", "iPhone 15", P2T3}, {"iPhone15,5", "iPhone 15 Plus", P2T3},
-              {"iPhone16,1", "iPhone 15 Pro", P2T5}, {"iPhone16,2", "iPhone 15 Pro Max", P2T5},
-              {"iPhone17,1", "iPhone 16 Pro", P2T5}, {"iPhone17,2", "iPhone 16 Pro Max", P2T5},
+              {"iPhone16,1", "iPhone 15 Pro", P2T4}, {"iPhone16,2", "iPhone 15 Pro Max", P2T4},
+              {"iPhone17,1", "iPhone 16 Pro", P2T4}, {"iPhone17,2", "iPhone 16 Pro Max", P2T4},
               {"iPhone17,3", "iPhone 16", P2T4}, {"iPhone17,4", "iPhone 16 Plus", P2T4}, {"iPhone17,5", "iPhone 16e", P2T4},
-              {"iPhone18,1", "iPhone 17 Pro", P2T5}, {"iPhone18,2", "iPhone 17 Pro Max", P2T5},
+              {"iPhone18,1", "iPhone 17 Pro", P2T4}, {"iPhone18,2", "iPhone 17 Pro Max", P2T4},
               {"iPhone18,3", "iPhone 17", P2T4}, {"iPhone18,4", "iPhone Air", P2T4}, {"iPhone18,5", "iPhone 17e", P2T4},
           };
           int p2_device_preset(int *res_scale, int *shadow_min, char *name, size_t n) {
