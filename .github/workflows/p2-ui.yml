@@ -433,7 +433,7 @@ jobs:
           - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 5; }
           - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section {
               section = hsL(section);
-              if (section == 0) return uiHas(@"metalfx_on") ? 6 : 4; if (section == 1) return 4; if (section == 2) return MAX(2, (NSInteger)self.mods.count + 1); if (section == 3) return 2; return 1;
+              if (section == 0) return uiHas(@"metalfx_on") ? 6 : 4; if (section == 1) return 3; if (section == 2) return MAX(2, (NSInteger)self.mods.count + 1); if (section == 3) return 2; return 1;
           }
           - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)section {
               return @[@"PERFORMANCE", @"GRAPHICS", @"MODS", @"CONTROLS", @"SYSTEM"][hsL(section)];
@@ -447,14 +447,14 @@ jobs:
           }
           - (NSString *)titleForRow:(NSIndexPath *)ip {
               if (ip.section == 0) return @[@"FSR upscaling", @"FPS limit", @"Render scale", @"MetalFX sharpen", @"Sharpen strength", @"MetalFX Upscaling"][ip.row];
-              if (ip.section == 1) return @[@"Graphics preset", @"Manual graphics", @"Potato graphics", @"Quality level"][ip.row];
+              if (ip.section == 1) return @[@"Graphics preset", @"Manual graphics", @"Potato graphics"][ip.row];
               if (ip.section == 2) return ip.row == 0 ? @"Mod loader" : (self.mods.count ? self.mods[(NSUInteger)ip.row - 1] : @"No installed mods");
               if (ip.section == 3) return @[@"Edit touch layout & buttons", @"Camera sensitivity"][ip.row];
               return @"Open live log";
           }
           - (NSString *)keyForRow:(NSIndexPath *)ip {
               if (ip.section == 0) return @[@"upscale", @"", @"", @"p2:metalfx_sharp", @"", @"p2:metalfx_on"][ip.row];   /* v104: row 2 (render scale) reads Documents/.render_scale, not controls.cfg */
-              if (ip.section == 1) return @[@"gfx", @"gfxmanual", @"potato", @"quality"][ip.row];
+              if (ip.section == 1) return @[@"gfx", @"gfxmanual", @"potato"][ip.row];
               if (ip.section == 2 && ip.row == 0) return @"modloader";
               return nil;
           }
@@ -465,7 +465,6 @@ jobs:
               if (ip.section == 0 && ip.row == 1) return hostCfgValue(@"fpscap", @"60");
               if (ip.section == 3 && ip.row == 1) return hostCfgValue(@"camera", @"1.0");
               if (ip.section == 1 && ip.row == 0) return hostCfgValue(@"gfx", @"-1");
-              if (ip.section == 1 && ip.row == 3) return hostCfgValue(@"quality", @"0");
               if (ip.section == 0 && ip.row == 2) return hostScreenValue();
               return @"";
           }
@@ -474,7 +473,7 @@ jobs:
               UITableViewCell *c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
               c.backgroundColor = [UIColor colorWithWhite:1 alpha:0.035]; c.textLabel.textColor = UIColor.labelColor; c.detailTextLabel.textColor = UIColor.secondaryLabelColor;
               c.textLabel.text = [self titleForRow:ip]; c.detailTextLabel.numberOfLines = 2;
-              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right", @"wand.and.stars", @"slider.horizontal.below.rectangle", @"arrow.up.right.square"], @[@"slider.horizontal.3", @"wrench.and.screwdriver", @"leaf", @"dial.low"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
+              NSArray *icons = @[@[@"sparkles", @"speedometer", @"arrow.up.left.and.arrow.down.right", @"wand.and.stars", @"slider.horizontal.below.rectangle", @"arrow.up.right.square"], @[@"slider.horizontal.3", @"wrench.and.screwdriver", @"leaf"], @[@"puzzlepiece.extension", @"puzzlepiece"], @[@"gamecontroller", @"square.grid.3x3"], @[@"doc.text.magnifyingglass"]];
               c.imageView.image = [UIImage systemImageNamed:icons[ip.section][MIN((NSUInteger)ip.row, [icons[ip.section] count] - 1)]]; c.imageView.tintColor = [UIColor colorWithRed:0.35 green:0.68 blue:1 alpha:1];
               if ([self isSwitchRow:ip] || (ip.section == 2 && ip.row > 0 && self.mods.count)) {
                   UISwitch *sw = [UISwitch new];
@@ -483,7 +482,7 @@ jobs:
                   sw.accessibilityIdentifier = (ip.section == 2 && ip.row > 0) ? [@"mod:" stringByAppendingString:self.mods[(NSUInteger)ip.row - 1]] : [self keyForRow:ip];
                   [sw addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged]; c.accessoryView = sw;
                   c.selectionStyle = UITableViewCellSelectionStyleNone;
-                  if ((ip.section == 0 && (ip.row == 0 || ip.row == 5)) || (ip.section == 2 && ip.row == 0)) c.detailTextLabel.text = @"loaded at next launch";   /* FSR, MetalFX Upscaling, Mod loader */
+                  if ((ip.section == 0 && (ip.row == 0 || ip.row == 5)) || (ip.section == 2 && ip.row == 0)) c.detailTextLabel.text = @"loaded next launch";   /* FSR, MetalFX Upscaling, Mod loader */
               } else if (ip.section == 0 && ip.row == 4) {
                   int sv = p2_cfg_val("metalfx_sharp_"); if (sv < 1) sv = 50; if (sv > 100) sv = 100;
                   c.detailTextLabel.text = [NSString stringWithFormat:@"%d%% · live", sv];
@@ -493,11 +492,10 @@ jobs:
                   [sl addTarget:self action:@selector(sharpSaved:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
                   c.accessoryView = sl; c.selectionStyle = UITableViewCellSelectionStyleNone;
               } else if (ip.section == 0 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@ FPS · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
-              else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@%% · loaded at next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@%% · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 1 && ip.row == 0) { NSString *v = [self valueForRow:ip]; c.detailTextLabel.text = [v isEqualToString:@"-1"] ? @"Quality fallback · loaded next launch" : [NSString stringWithFormat:@"Preset %@ · loaded next launch", v]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
-              else if (ip.section == 1 && ip.row == 3) { c.detailTextLabel.text = @"Fallback quality · used when preset is set to Quality fallback"; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 2 && ip.row > 0 && !self.mods.count) { c.detailTextLabel.text = @"Create folders inside Documents/Mods"; c.selectionStyle = UITableViewCellSelectionStyleNone; }
-              else if (ip.section == 3 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@× · loaded at next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 3 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@× · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else { c.detailTextLabel.text = ip.section == 3 ? @"Add, move, resize or delete buttons" : @""; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               return c;
           }
@@ -545,8 +543,7 @@ jobs:
               ip = [NSIndexPath indexPathForRow:(hsL(ip.section) == 0 ? hsRow0(ip.row) : ip.row) inSection:hsL(ip.section)];
               if (ip.section == 0 && ip.row == 1) [self choose:dip title:@"FPS limit" choices:@[@"30 FPS", @"45 FPS", @"60 FPS", @"90 FPS", @"120 FPS", @"144 FPS", @"165 FPS", @"180 FPS", @"240 FPS"] values:@[@"30", @"45", @"60", @"90", @"120", @"144", @"165", @"180", @"240"] key:@"fpscap"];
               else if (ip.section == 0 && ip.row == 2) [self choose:dip title:@"Render scale" choices:@[@"60%", @"67% (game default)", @"75%", @"80%", @"100%"] values:@[@"60", @"67", @"75", @"80", @"100"] key:@"screen"];
-              else if (ip.section == 1 && ip.row == 0) [self choose:dip title:@"Graphics preset" choices:@[@"Use quality fallback", @"Very Low", @"Low", @"Medium", @"High"] values:@[@"<remove>", @"0", @"1", @"2", @"3"] key:@"gfx"];
-              else if (ip.section == 1 && ip.row == 3) [self choose:dip title:@"Quality level" choices:@[@"Low", @"Medium", @"High"] values:@[@"0", @"1", @"2"] key:@"quality"];
+              else if (ip.section == 1 && ip.row == 0) [self choose:dip title:@"Graphics preset" choices:@[@"Very Low", @"Low", @"Medium", @"High"] values:@[@"0", @"1", @"2", @"3"] key:@"gfx"];
               else if (ip.section == 3 && ip.row == 0) { if (self.onEdit) self.onEdit(); }
               else if (ip.section == 3 && ip.row == 1) [self choose:dip title:@"Camera sensitivity" choices:@[@"0.5×", @"0.75×", @"1.0× (default)", @"1.5×", @"2.0×", @"3.0×", @"4.0×", @"5.0×", @"6.0×"] values:@[@"0.5", @"0.75", @"1.0", @"1.5", @"2.0", @"3.0", @"4.0", @"5.0", @"6.0"] key:@"camera"];
               else if (ip.section == 4 && ip.row == 0) [self.navigationController pushViewController:[LogVC new] animated:YES];
