@@ -232,7 +232,7 @@ jobs:
                            @[@"Xbox", @"PlayStation"], @"Playstation Buttons"),
                       ],
                   @[ sMenu(@"Wait spin", @"How long a game thread busy-waits before sleeping. Longer reacts faster but uses more CPU, battery and heat.",
-                           @[@"Off (0 us)", @"250 us", @"1000 us (default)", @"2000 us", @"4000 us"], @[@"waitspin_0", @"waitspin_250", @"", @"waitspin_2000", @"waitspin_4000"], @"waitspin_"),
+                           @[@"250 us (default)", @"1000 us", @"2000 us", @"4000 us"], @[@"", @"waitspin_1000", @"waitspin_2000", @"waitspin_4000"], @"waitspin_"),
                      sMenu(@"Thread priority", @"Tells iOS how urgent the game's threads are. The default is the highest class.",
                            @[@"Highest (default)", @"High", @"iOS default"], @[@"", @"qos_initiated", @"qos_off"], nil),
                      sMenu(@"Shadow casters", @"Which size objects cast shadows. Higher numbers skip smaller objects for better performance.",
@@ -524,7 +524,7 @@ jobs:
                   sw.accessibilityIdentifier = (ip.section == 2 && ip.row > 0) ? [@"mod:" stringByAppendingString:self.mods[(NSUInteger)ip.row - 1]] : [self keyForRow:ip];
                   [sw addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged]; c.accessoryView = sw;
                   c.selectionStyle = UITableViewCellSelectionStyleNone;
-                  if ((ip.section == 0 && (ip.row == 0 || ip.row == 5)) || (ip.section == 2 && ip.row == 0)) c.detailTextLabel.text = @"loaded next launch";   /* FSR, MetalFX Upscaling, Mod loader */
+                  if ((ip.section == 0 && (ip.row == 0 || ip.row == 5)) || (ip.section == 2 && ip.row == 0)) c.detailTextLabel.text = @" • Loaded next launch";   /* FSR, MetalFX Upscaling, Mod loader */
               } else if (ip.section == 0 && ip.row == 4) {
                   int sv = p2_cfg_val("metalfx_sharp_"); if (sv < 1) sv = 50; if (sv > 100) sv = 100;
                   c.detailTextLabel.text = [NSString stringWithFormat:@"%d%% · live", sv];
@@ -533,11 +533,11 @@ jobs:
                   [sl addTarget:self action:@selector(sharpDragged:) forControlEvents:UIControlEventValueChanged];
                   [sl addTarget:self action:@selector(sharpSaved:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
                   c.accessoryView = sl; c.selectionStyle = UITableViewCellSelectionStyleNone;
-              } else if (ip.section == 0 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@ FPS · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
-              else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@%% · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
-              else if (ip.section == 1 && ip.row == 0) { NSString *v = [self valueForRow:ip]; c.detailTextLabel.text = [v isEqualToString:@"-1"] ? @"Quality fallback · loaded next launch" : [NSString stringWithFormat:@"Preset %@ · loaded next launch", v]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              } else if (ip.section == 0 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@ FPS · Loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 0 && ip.row == 2) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@%% · Loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 1 && ip.row == 0) { NSString *v = [self valueForRow:ip]; c.detailTextLabel.text = [v isEqualToString:@"-1"] ? @"Quality fallback · Loaded next launch" : [NSString stringWithFormat:@"Preset %@ · Loaded next launch", v]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else if (ip.section == 2 && ip.row > 0 && !self.mods.count) { c.detailTextLabel.text = @"Create folders inside Documents/Mods"; c.selectionStyle = UITableViewCellSelectionStyleNone; }
-              else if (ip.section == 3 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@× · loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
+              else if (ip.section == 3 && ip.row == 1) { c.detailTextLabel.text = [NSString stringWithFormat:@"%@× · Loaded next launch", [self valueForRow:ip]]; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               else { c.detailTextLabel.text = ip.section == 3 ? @"Add, move, resize or delete buttons" : @""; c.accessoryType = UITableViewCellAccessoryDisclosureIndicator; }
               return c;
           }
@@ -1088,7 +1088,7 @@ jobs:
                   [self note:[NSString stringWithFormat:@"  %@  ->  %s", nm, meaning ? meaning : "not a known switch (ignored)"].UTF8String]; n++;
               }
               if (!n) [self note:"  (no flags set)"];
-              [self note:"  no entry = defaults: 120 Hz lock on, RBTRACE on, WAITTRACE on, waitspin 1000 us, QoS interactive, rt_render off, futex on, LOAD_OP rewrite on"];
+              [self note:"  no entry = defaults: 120 Hz lock on, RBTRACE on, WAITTRACE on, waitspin 250 us, QoS interactive, rt_render off, futex on, LOAD_OP rewrite on"];
           }
           - (void)hzTick:(CADisplayLink *)l { tcTick(l); }   /* v69: still no real work unless touch_trace or touch_coalesce is on; the link mainly tells iOS which refresh rate this app wants */
           - (void)publishFlags { if (gFlags.length > 1000) [gFlags deleteCharactersInRange:NSMakeRange(1000, gFlags.length - 1000)]; p2_boot_flags = strdup(gFlags.UTF8String); }
