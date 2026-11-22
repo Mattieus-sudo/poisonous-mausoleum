@@ -29,7 +29,7 @@ jobs:
           /* ================= v66 settings UI (UIKit, no storyboard) =================
              A switch is one line in Documents/p2.cfg. Every control below only adds or removes such lines.
              CONFIG MODEL: behaviour changes = lines in p2.cfg (loader reads them via p2_cfg_*); host settings = the hidden Documents/.controls.cfg (hostCfgPath). Switches are never written as folders;
-             the only exceptions are the nosplash marker folder (mirrored by the loader from p2.cfg) and files the host reads itself (.render_scale). */
+             the only exception is files the host reads itself (.render_scale). */
           static NSString *uiDocs(void) { cfgReady(); return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
           static BOOL uiHas(NSString *n) { cfgReady(); return p2_cfg_has(n.UTF8String) != 0; }
           static void uiSet(NSString *n, BOOL on) {

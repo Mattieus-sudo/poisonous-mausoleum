@@ -1681,7 +1681,7 @@ jobs:
           /* ---- p2.cfg: the single configuration file. Each line is one switch (hz_off, imgdelay_6000, setenv_P2RE_VKGPUTIME=1 ...). Present = ON. Blank lines and lines starting with # are comments.
                 CONFIG MODEL: every behaviour change in this loader is a line added to or removed from Documents/p2.cfg (read through p2_cfg_*), and the Android host's own settings live in the separate
                 hidden Documents/.controls.cfg (written by the launcher UI, parsed by the host). Switches are NEVER written as p2.cfg lines. The only things on disk besides those two files are the ones the game/host reads
-                itself: the nosplash marker folder (mirrored from the p2.cfg entry at every start), Documents/.render_scale, .fake_aspect, .waitspin (host-read files written from p2.cfg entries) and the layout files under Documents/layouts/<name>/ (foot = layouts/foot/). ---- */
+                itself: nothing for nosplash (the game's folder check is answered from the p2.cfg line), Documents/.render_scale, .fake_aspect, .waitspin (host-read files written from p2.cfg entries) and the layout files under Documents/layouts/<name>/ (foot = layouts/foot/). ---- */
           static char gCfgPath[1200];
           static pthread_mutex_t gCfgMu = PTHREAD_MUTEX_INITIALIZER;
           static const char kCfgHeader[] =
@@ -1820,6 +1820,8 @@ jobs:
                  Files app > On My iPhone > Prototype 2 > Mods (= Documents/Mods, the one the settings UI lists), so those host paths land there. Every shim below goes through fixp, so list / stat / open / mkdir all agree. */
               if (rest) { static const char *const mg_[] = {"Prototype2/game/Mods", "Prototype2/Mods"};
                   for (unsigned mi_ = 0; mi_ < 2; mi_++) { size_t ml_ = strlen(mg_[mi_]); if (!strncasecmp(rest, mg_[mi_], ml_) && (rest[ml_] == 0 || rest[ml_] == '/')) { snprintf(out, n, "%s/Mods%s", gDocs, rest + ml_); return out; } } }
+              /* nosplash: the game checks for a folder Documents/nosplash. Nothing is ever written for it: when p2.cfg has the nosplash line the check is pointed at Documents itself (always exists), otherwise at a path that never exists. */
+              if (rest && !strcmp(rest, "nosplash")) { if (sw_has("nosplash")) snprintf(out, n, "%s", gDocs); else snprintf(out, n, "%s/.nosplash_unset", gDocs); return out; }
               /* hidden files: the game asks for Documents/<name>, the file on disk is Documents/.<name> */
               if (rest) { static const char *const hid[] = {"controls.cfg", "render_scale", "fake_aspect", "waitspin"}; for (unsigned hi_ = 0; hi_ < sizeof hid / sizeof hid[0]; hi_++) if (!strcmp(rest, hid[hi_])) { char t_[64]; snprintf(t_, sizeof t_, ".%s", rest); snprintf(out, n, "%s/%s", gDocs, t_); return out; } } }
               return res;
@@ -2016,8 +2018,8 @@ jobs:
           }
           static void p2re_env_setup(void) {
               if (!gDocs[0]) return;
-              /* nosplash is the one switch the game itself reads as a folder (Documents/nosplash), so the loader mirrors the p2.cfg entry onto that marker folder at every start */
-              { char nsp[1300]; snprintf(nsp, sizeof nsp, "%s/nosplash", gDocs); if (sw_has("nosplash")) mkdir(nsp, 0755); else rmdir(nsp); }
+              /* nosplash is only a p2.cfg line now (fixp answers the game's folder check from it). Remove the marker folders older builds left in Documents. */
+              { char o1[1300], o2[1300]; snprintf(o1, sizeof o1, "%s/nosplash", gDocs); snprintf(o2, sizeof o2, "%s/.nosplash", gDocs); rmdir(o1); rmdir(o2); }
               if (p2_boot_flags) L("BOOT FLAGS (as seen when the app started):\n%s", p2_boot_flags);
               gRbOff = flg()->rbtrace ? 0 : 1; gTxOff = flg()->textrace ? 0 : 1; L("TEXTRACE: %s (p2.cfg line textrace_on enables it; needs RBTRACE on for the submit / done checks%s)", gTxOff ? "OFF" : "on", gRbOff ? "; RBTRACE IS OFF so only record-time facts are logged" : ""); L("RBTRACE: %s (opt-in: p2.cfg line rbtrace_on)", gRbOff ? "OFF" : "on"); gMaxLod = sw_val("maxlod_"); L("MAXLOD: %s", gMaxLod >= 0 ? "ON, every sampler the game creates gets maxLod capped at that value (p2.cfg line maxlod_<N>; maxlod_0 = sample only the full-size mip level, so no mip data is ever read)" : "off (p2.cfg line maxlod_0 pins every sampler to the full-size level; maxlod_<N> caps at level N; read at launch only)"); L("UPLOADGAP: %s (texture-like images older than 5 s whose mip levels were never written; reported in the TEXTRACE window; p2.cfg line textrace_on enables it)", gTxOff ? "OFF" : "on"); gSleepCap = sw_val("sleepcap_"); L("SLEEPCAP: %s", gSleepCap >= 0 ? "ON, guest sleeps of 2000..20000 us are shortened (p2.cfg line sleepcap_<us>)" : "off (p2.cfg line sleepcap_<us> shortens frame-sized guest sleeps to <us>; experiment)"); gWtOff = flg()->waittrace ? 0 : 1; L("WAITTRACE: %s (opt-in: p2.cfg line waittrace_on)", gWtOff ? "OFF" : "on"); gpuhud_start();
               { int ws = sw_val("waitspin_"); int wsDef = 0; if (ws < 0) { ws = 250; wsDef = 1; } char wp[1200], wa[1200]; snprintf(wp, sizeof wp, "%s/.waitspin", gDocs); snprintf(wa, sizeof wa, "%s/.waitspin.p2auto", gDocs);
