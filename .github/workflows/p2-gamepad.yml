@@ -133,10 +133,7 @@ jobs:
           static float gPadAx[PAD_AX]; static BOOL gPadNb[PB_N]; static BOOL gPadNativeLive;
           static const int kPadKc[PB_N] = { 96, 97, 99, 100, 102, 103, 0, 0, 106, 107, 108, 109, 0, 0, 0, 0 };   /* A B X Y LB RB (LT RT are axes) L3 R3 Start Back (D-pad is the hat) */
           static void padNativePush(int type, int action, int source, int keycode, const float *axis) {
-              InEv e; memset(&e, 0, sizeof e);
-              e.type = type; e.action = action; e.source = source; e.keycode = keycode; e.n = 1;
-              if (axis) memcpy(e.axis, axis, sizeof e.axis);
-              pthread_mutex_lock(&gInMu); inq_push_locked(&e); pthread_mutex_unlock(&gInMu);
+              p2_pad_event(type, action, source, keycode, axis);   /* defined in ctl_core.c (InEv and the queue lock live there) */
           }
           static void padApplyNative(const PadState *s, BOOL force) {
               for (int i = 0; i < PB_N; i++) if (kPadKc[i] && s->b[i] != gPadNb[i]) {

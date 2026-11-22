@@ -540,6 +540,13 @@ jobs:
               } else btn_edge_main(d->ch, d->down);
               free(d);
           }
+          /* gamepad (p2-gamepad, native mode): queue one Android-style gamepad event for the game. type 1 = key (action 0 down / 1 up, keycode), type 2 = joystick motion (axis[24] by Android axis id). source: 0x401 gamepad key, 0x01000010 joystick. Any thread. */
+          void p2_pad_event(int type, int action, int source, int keycode, const float *axis) {
+              InEv e; memset(&e, 0, sizeof e);
+              e.type = type; e.action = action; e.source = source; e.keycode = keycode; e.n = 1;
+              if (axis) memcpy(e.axis, axis, sizeof e.axis);
+              pthread_mutex_lock(&gInMu); inq_push_locked(&e); pthread_mutex_unlock(&gInMu);
+          }
           void p2_btn_edge(int ch, int down) {                /* any thread */
               if (ch < 0 || ch >= BQ_N) return;
               int tt = TT_ON(), main = ON_MAIN(); down = down ? 1 : 0;
@@ -600,6 +607,7 @@ jobs:
                block x y w h          a region where touches are swallowed (use it to kill the dev's invisible joystick zone)
              A touch that starts on one of these never reaches the dev. Every other touch is forwarded unchanged (camera, menus). Pair it with ovl_off (or ovl_hide) to hide the dev's own drawing. ---- */
           extern void p2_btn_edge(int dik, int down);
+          extern void p2_pad_event(int type, int action, int source, int keycode, const float *axis);
           extern void p2_mouse(int button, int down);   /* v84: 0 left, 1 right */
           extern int p2_menu_on(void);   /* v90: menu mode (automatic) */
           extern void p2_touch_view(float w, float h);   /* v91: real touch view size in pixels */
