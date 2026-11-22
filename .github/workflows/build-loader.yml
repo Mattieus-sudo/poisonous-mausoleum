@@ -851,7 +851,7 @@ jobs:
           #include "layout.h"
           #include "p2core.h"
           typedef struct { uint64_t off; uint32_t kind; uint32_t sym; int64_t addend; } Rel;
-          static int gFd = -1, gFd2 = -1;
+          static int gFd = -1;
           static uintptr_t gBase;
           static void (*gEmit)(const char *);
           static volatile int gEmitLive = 1;   /* v101: while 0, L() never touches the main thread (no strdup, no dispatch, no UITextView rewrite) */
@@ -880,7 +880,6 @@ jobs:
               if (n < 0) return; if (n > 1199) n = 1199;
               b[n++] = '\n'; b[n] = 0;
               if (gFd >= 0) write(gFd, b, n);
-              if (gFd2 >= 0) write(gFd2, b, n);
               #ifdef __APPLE__
           if (gEmit && gEmitLive) { char *c = strndup(b, n - 1); if (c) dispatch_async_f(dispatch_get_main_queue(), c, emit_tramp); }
           #else
@@ -894,6 +893,43 @@ jobs:
           static void p2_altstack(void) { stack_t ss; ss.ss_sp = malloc(1 << 16); ss.ss_size = 1 << 16; ss.ss_flags = 0; if (ss.ss_sp) sigaltstack(&ss, NULL); }
           static long long p2_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000; }
           static int p2_tid(void) { uint64_t t = 0; pthread_threadid_np(NULL, &t); return (int)t; }
+          static char gDocs[1100];   /* set by p2_run; empty on the launcher screen, so loader features do not read p2.cfg before the game starts (the launcher UI reads it through p2_cfg_* directly) */
+          static int sw_val(const char *prefix) { if (!gDocs[0]) return -1; return p2_cfg_val(prefix); }   /* switches are lines in p2.cfg */
+          static int sw_has(const char *name) { if (!gDocs[0]) return 0; return p2_cfg_has(name); }
+          static void sw_clear(const char *name) { if (!gDocs[0]) return; p2_cfg_set(name, 0); }
+          /* L_N: log at most `cap` times from this call site. The counter is only incremented while it is under the cap, so a capped site costs one relaxed load afterwards. */
+          #define L_N(cap, ...) do { static int n_; if (__atomic_load_n(&n_, __ATOMIC_RELAXED) < (cap) && __atomic_fetch_add(&n_, 1, __ATOMIC_RELAXED) < (cap)) L(__VA_ARGS__); } while (0)
+          /* ONE place for the p2.cfg switches the hot paths read. Filled once, the first time p2.cfg is readable (gDocs set); until then the defaults below apply and nothing is locked in.
+             Tracing is OPT-IN: every *trace_on / vktrace_on line is absent by default, whatever the UI has or has not written. */
+          typedef struct { int ready, futex, qos, loadfix, snap, dropmon, imgdelay_us, imgdelay_all, rbtrace, waittrace, textrace, vktrace, touch_trace; } P2Flags;
+          static P2Flags gF = { .qos = 1, .loadfix = 1, .snap = 1, .imgdelay_us = 6000 };
+          static pthread_mutex_t gFMu = PTHREAD_MUTEX_INITIALIZER;
+          static void flags_load(void) {
+              if (!gDocs[0]) return;
+              pthread_mutex_lock(&gFMu);
+              if (__atomic_load_n(&gF.ready, __ATOMIC_ACQUIRE)) { pthread_mutex_unlock(&gFMu); return; }
+              P2Flags f = gF;
+              f.futex = sw_has("futex_off") ? 0 : 1;
+              f.qos = sw_has("qos_off") ? 0 : sw_has("qos_initiated") ? 2 : 1;
+              f.loadfix = sw_has("vk_loadop_fix_off") ? 0 : 1;
+              f.snap = sw_has("snapshot_off") ? 0 : 1;
+              f.dropmon = sw_has("dropmon_on");
+              f.imgdelay_us = sw_val("imgdelay_"); if (f.imgdelay_us < 0) f.imgdelay_us = 6000;
+              f.imgdelay_all = sw_has("imgdelay_all");
+              f.rbtrace = sw_has("rbtrace_on"); f.waittrace = sw_has("waittrace_on"); f.textrace = sw_has("textrace_on"); f.vktrace = sw_has("vktrace_on");
+              f.touch_trace = sw_has("touch_trace");
+              gF = f;
+              L("FUTEX mode: %s (p2.cfg line futex_off %s; FUTEXTRACE lines count the calls either way)", f.futex ? "REAL wait/wake (default since v46)" : "off, syscall(98) -> -1 ENOSYS as in v44", f.futex ? "absent" : "present");
+              L("QOS mode: %s (p2.cfg lines qos_off / qos_initiated; applies to every thread the guest creates)", f.qos == 0 ? "OFF (p2.cfg line qos_off present), threads stay at default QoS as in v48" : f.qos == 2 ? "USER_INITIATED (p2.cfg line qos_initiated present)" : "USER_INTERACTIVE (default)");
+              L("VKTRACE LOAD_OP_NONE/STORE_OP_NONE -> LOAD/STORE rewrite: %s", f.loadfix ? "ON (p2.cfg line vk_loadop_fix_off turns it off)" : "off");
+              L("imgdelay: %d us per vkCreateImage, %s (default 6000 since v52; p2.cfg line imgdelay_0 = off; imgdelay_<number> = other value)", f.imgdelay_us, f.imgdelay_all ? "kept for the first 800 images (imgdelay_all)" : "stops at state 6 target 3");
+              L("TRACES (all opt-in): rbtrace_on %d, waittrace_on %d, textrace_on %d, vktrace_on %d, touch_trace %d", f.rbtrace, f.waittrace, f.textrace, f.vktrace, f.touch_trace);
+              __atomic_store_n(&gF.ready, 1, __ATOMIC_RELEASE);
+              pthread_mutex_unlock(&gFMu);
+          }
+          static inline const P2Flags *flg(void) { if (__builtin_expect(!__atomic_load_n(&gF.ready, __ATOMIC_ACQUIRE), 0)) flags_load(); return &gF; }
+          static int fx_mode(void) { return flg()->futex; }
+          static int qos_mode(void) { return flg()->qos; }
           static volatile int gImgN, gPresN, gThrN, gClkN;
           static volatile int gS6Seen;
           static volatile long long gImgFirstMs, gImgLastMs;
@@ -926,7 +962,7 @@ jobs:
           static int safe_rd(uint64_t a, void *buf, size_t n) {
               vm_size_t got = 0; return a > 0x1000 && vm_read_overwrite(mach_task_self(), (vm_address_t)a, n, (vm_address_t)buf, &got) == KERN_SUCCESS && got == n;
           }
-          static void dump_w(const char *m, int n) { write(gFd, m, n); fsync(gFd); if (gFd2 >= 0) { write(gFd2, m, n); fsync(gFd2); } }
+          static void dump_w(const char *m, int n) { write(gFd, m, n); fsync(gFd); }
           static void dump_guest(const char *label, uint32_t gaddr, int ndw) {
               char b[200]; uint32_t w[64]; int n, ln; if (ndw > 64) ndw = 64;
               if (!safe_rd(0x7800000000ULL + gaddr, w, (size_t)ndw * 4)) { n = snprintf(b, sizeof b, " %s: guest 0x%x unreadable\n", label, gaddr); dump_w(b, n); return; }
@@ -1016,7 +1052,7 @@ jobs:
               if (gGuard && pthread_equal(pthread_self(), gGuardTh)) { gGuard = 0; gCrashSig = sig; gCrashPc = pc; gCrashFault = (uint64_t)si->si_addr; siglongjmp(gJ, 1); }
               int n = snprintf(b, sizeof b, "\nCRASH (thread %llx, stage %s) sig=%d fault=%p pc=0x%llx (elf+0x%llx) lr=0x%llx (elf+0x%llx)\n", (unsigned long long)(uintptr_t)pthread_self(), (const char *)gStage, sig, si->si_addr,
                                (unsigned long long)pc, (unsigned long long)(pc - gBase), (unsigned long long)lr, (unsigned long long)(lr - gBase));
-              write(gFd, b, n); fsync(gFd); if (gFd2 >= 0) { write(gFd2, b, n); fsync(gFd2); } dump_ctx(ctx, si->si_addr); _exit(139);
+              write(gFd, b, n); fsync(gFd); dump_ctx(ctx, si->si_addr); _exit(139);
           }
           static void *slurp(const char *dir, const char *name, size_t *len);
           static void *gPhdr;
@@ -1267,9 +1303,8 @@ jobs:
                   case 3: d = CLOCK_THREAD_CPUTIME_ID; break;
                   default: errno = EINVAL; return -1;
               }
-              { int rr = clock_gettime(d, ts); int k = __atomic_add_fetch(&gClkN, 1, __ATOMIC_RELAXED); if (k <= 24 && rr == 0) L("CLOCKPROBE #%d clk=%d -> %lld.%09ld tid=%d from elf+0x%lx", k, c, (long long)ts->tv_sec, (long)ts->tv_nsec, p2_tid(), (unsigned long)((uintptr_t)__builtin_return_address(0) - gBase)); return rr; }
+              { int rr = clock_gettime(d, ts); if (__atomic_load_n(&gClkN, __ATOMIC_RELAXED) < 24) { int k = __atomic_add_fetch(&gClkN, 1, __ATOMIC_RELAXED); if (k <= 24 && rr == 0) L("CLOCKPROBE #%d clk=%d -> %lld.%09ld tid=%d from elf+0x%lx", k, c, (long long)ts->tv_sec, (long)ts->tv_nsec, p2_tid(), (unsigned long)((uintptr_t)__builtin_return_address(0) - gBase)); } return rr; }
           }
-          static int sw_val(const char *prefix);
           static long sh_sysconf_raw(int n);
           static long sh_sysconf(int n) {
               long r = sh_sysconf_raw(n); static int c; if (c++ < 40) L("PLAT sysconf(%d) -> %ld (from elf+0x%lx)", n, r, (unsigned long)__builtin_return_address(0) - (unsigned long)gBase); return r;
@@ -1400,7 +1435,6 @@ jobs:
           #ifndef CLOCK_UPTIME_RAW
           #define CLOCK_UPTIME_RAW CLOCK_MONOTONIC
           #endif
-          static int fx_mode(void);
           static unsigned gFxCmd[16];
           static struct { uintptr_t caller; unsigned n; } gFxCaller[8];
           static unsigned gFxCallerOver, gFxFirst;
@@ -1592,10 +1626,11 @@ jobs:
               if (ds && !sig_is_fault(sig) && ((uint64_t)h == 0 || (uint64_t)h == 1)) signal(ds, (void (*)(int))h);
               return prev;
           }
-          static volatile int gAlogN;
+          static volatile int gAlogN, gAlogQuiet, gVbN, gDrN;   /* gAlogQuiet: the 800-line cap is hit and the state-6 gates are past, so alog and its callers skip all work */
           static volatile int gOvrSeen;
-          static int sw_has(const char *name);
+          static void p2_chain(char *cb, int cap);
           static void alog(long prio, uint64_t tag, const char *msg) {
+              if (gAlogQuiet) return;
               if (msg && strstr(msg, "game state: state 5 target 3")) { static int hd; if (!hd) { hd = 1; int h = sw_val("hold_s5_"); if (h > 0 && h <= 5000) { L("HOLD: pausing the state thread for %d ms at state 5 target 3", h); usleep(h * 1000); } } }
           if (msg && strstr(msg, "game state: state")) { static int gsn; if (gsn < 14) { gsn++; p2_snap(msg + 12 < msg + strlen(msg) ? msg + 12 : msg); } }
           if (msg && strstr(msg, "game state: state 6 target 3")) {
@@ -1610,21 +1645,16 @@ jobs:
                   usleep(400000); _exit(0); }
               { int isvb = msg && strstr(msg, "VB lock") && (strstr(msg, "count 3 size 72") || strstr(msg, "count 4 size 64"));
                 int isdr = msg && strstr(msg, "draw left out");
-                static volatile int nvc, ndc;
-                if ((isvb && nvc < 8 && ++nvc) || (isdr && ndc < 2 && ++ndc)) {
-                    char cb[1100]; int co = 0; uint64_t fp = (uint64_t)__builtin_frame_address(0);
-                    for (int k = 0; k < 64 && co < 1000; k++) { uint64_t fr[2]; if (!safe_rd(fp, fr, sizeof fr)) break;
-                        uint64_t pc = fr[1]; if (pc >= gBase && pc - gBase < P2_DATA_VADDR) co += snprintf(cb + co, sizeof cb - co, " e+%llx", (unsigned long long)(pc - gBase));
-                        else co += snprintf(cb + co, sizeof cb - co, " x%llx", (unsigned long long)pc);
-                        if (fr[0] <= fp) break; fp = fr[0]; }
+                if ((isvb && gVbN < 8 && ++gVbN) || (isdr && gDrN < 2 && ++gDrN)) {
+                    char cb[1100]; p2_chain(cb, sizeof cb);
                     L("%s thread %d:%s", isvb ? "VBCHAIN" : "DRAWCHAIN", sh_gettid(), cb); } }
-              if (gAlogN > 800) return;
+              if (gAlogN > 800) { if (gS6Seen && !sw_has("auto_exit")) gAlogQuiet = 1; return; }
               if (++gAlogN == 801) { L("ANDROID LOG: further lines suppressed"); return; }
               { struct timespec tn; clock_gettime(CLOCK_MONOTONIC, &tn);
                 L("ANDROID LOG [%ld] %s: %s {t=%d m=%lld}", prio, safe_s(tag), msg, sh_gettid(), (long long)tn.tv_sec * 1000 + tn.tv_nsec / 1000000); }
           }
-          static int sh_alog_print(REGS) { MKSRC(s, 3); char b[1024]; b[0] = 0; uint64_t sl_[NSLOT + 2]; memset(sl_, 0, sizeof sl_); bio_slots(safe_s(x2), &s, sl_); vsnprintf(b, sizeof b, safe_s(x2), AS_VA(sl_)); alog(x0, (uint64_t)x1, b); return 1; }
-          static int sh_alog_vprint(int prio, const char *tag, const char *f, BioVa *va) { VSRC(s, va); char b[1024]; b[0] = 0; uint64_t sl_[NSLOT + 2]; memset(sl_, 0, sizeof sl_); bio_slots(safe_s((uint64_t)f), &s, sl_); vsnprintf(b, sizeof b, safe_s((uint64_t)f), AS_VA(sl_)); alog(prio, (uint64_t)tag, b); return 1; }
+          static int sh_alog_print(REGS) { if (gAlogQuiet) return 1; MKSRC(s, 3); char b[1024]; b[0] = 0; uint64_t sl_[NSLOT + 2]; memset(sl_, 0, sizeof sl_); bio_slots(safe_s(x2), &s, sl_); vsnprintf(b, sizeof b, safe_s(x2), AS_VA(sl_)); alog(x0, (uint64_t)x1, b); return 1; }
+          static int sh_alog_vprint(int prio, const char *tag, const char *f, BioVa *va) { if (gAlogQuiet) return 1; VSRC(s, va); char b[1024]; b[0] = 0; uint64_t sl_[NSLOT + 2]; memset(sl_, 0, sizeof sl_); bio_slots(safe_s((uint64_t)f), &s, sl_); vsnprintf(b, sizeof b, safe_s((uint64_t)f), AS_VA(sl_)); alog(prio, (uint64_t)tag, b); return 1; }
           static int sh_alog_write(int prio, const char *tag, const char *text) { alog(prio, (uint64_t)tag, safe_s((uint64_t)text)); return 1; }
           static size_t sh_fwrite_chk(const void *p, size_t sz, size_t n, void *fp, size_t bos) {
               (void)fp; (void)bos; if (okptr((uint64_t)p) && sz * n < 400 && gAlogN <= 800) { gAlogN++; L("GUEST fwrite: %.*s", (int)(sz * n), (const char *)p); } return n;
@@ -1635,7 +1665,6 @@ jobs:
               if (f & 0x800) d |= O_NONBLOCK; if (f & 0x4000) d |= O_DIRECTORY; if (f & 0x8000) d |= O_NOFOLLOW; if (f & 0x80000) d |= O_CLOEXEC;
               return d;
           }
-          static char gDocs[1100];
           /* ---- Logs: every log / diagnostic file of the loader lives in Documents/Logs ---- */
           static void logp(char *out, size_t n, const char *name) {
               char d[1200]; snprintf(d, sizeof d, "%s/Logs", gDocs); mkdir(d, 0755);
@@ -1783,7 +1812,6 @@ jobs:
               if (rest) { static const char *const hid[] = {"controls.cfg", "render_scale", "fake_aspect", "waitspin"}; for (unsigned hi_ = 0; hi_ < sizeof hid / sizeof hid[0]; hi_++) if (!strcmp(rest, hid[hi_])) { char t_[64]; snprintf(t_, sizeof t_, ".%s", rest); snprintf(out, n, "%s/%s", gDocs, t_); return out; } } }
               return res;
           }
-          static int bio_oflags(int f);
           static void st_to_bionic(const struct stat *s, uint8_t *o) {
               memset(o, 0, 128);
               *(uint64_t *)(o + 0) = (uint64_t)s->st_dev; *(uint64_t *)(o + 8) = s->st_ino; *(uint32_t *)(o + 16) = s->st_mode; *(uint32_t *)(o + 20) = s->st_nlink;
@@ -1863,28 +1891,6 @@ jobs:
           static PFN_pa gRealGipa, gRealGdpa;
           static void *gVkInst, *gVkDev, *gVkPhys;
           typedef struct { char name[256]; unsigned spec; } VkExtP;
-          static int sw_val(const char *prefix) { if (!gDocs[0]) return -1; return p2_cfg_val(prefix); }   /* switches are lines in p2.cfg */
-          static int sw_has(const char *name) { if (!gDocs[0]) return 0; return p2_cfg_has(name); }
-          static int fx_mode(void) {
-              static int m = -1;
-              int v = __atomic_load_n(&m, __ATOMIC_RELAXED);
-              if (v >= 0) return v;
-              if (!gDocs[0]) return 0;
-              int r = sw_has("futex_off") ? 0 : 1, ex = -1;
-              if (__atomic_compare_exchange_n(&m, &ex, r, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED))
-                  L("FUTEX mode: %s (p2.cfg line futex_off %s; FUTEXTRACE lines count the calls either way)", r ? "REAL wait/wake (default since v46)" : "off, syscall(98) -> -1 ENOSYS as in v44", r ? "absent" : "present");
-              return __atomic_load_n(&m, __ATOMIC_RELAXED);
-          }
-          static int qos_mode(void) {
-              static int m = -1;
-              int v = __atomic_load_n(&m, __ATOMIC_RELAXED);
-              if (v >= 0) return v;
-              if (!gDocs[0]) return 1;
-              int r = sw_has("qos_off") ? 0 : sw_has("qos_initiated") ? 2 : 1, ex = -1;
-              if (__atomic_compare_exchange_n(&m, &ex, r, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED))
-                  L("QOS mode: %s (p2.cfg lines qos_off / qos_initiated; applies to every thread the guest creates)", r == 0 ? "OFF (p2.cfg line qos_off present), threads stay at default QoS as in v48" : r == 2 ? "USER_INITIATED (p2.cfg line qos_initiated present)" : "USER_INTERACTIVE (default)");
-              return __atomic_load_n(&m, __ATOMIC_RELAXED);
-          }
           static void p2_rt_render(int k, uintptr_t entry) {
           #ifdef __APPLE__
               static int done; if (done || entry != 0x59e0da0UL) return;
@@ -1912,7 +1918,6 @@ jobs:
               (void)k; (void)entry;
           #endif
           }
-          static void sw_clear(const char *name) { if (!gDocs[0]) return; p2_cfg_set(name, 0); }
           static void mvk_env_setup(void) {
               static int done; if (done) return; done = 1;
               char p[1200], dump[1200] = "";
@@ -1955,7 +1960,6 @@ jobs:
                   "metalfx_sharp        (needs metalfx_on) sharpen the MetalFX picture with a contrast-adaptive pass (the same idea as the FSR sharpening step). Add metalfx_sharp_N (N = 1 to 100) for the strength; without it the strength is 50. The in-game settings cog (Sharpen toggle and slider) writes both lines, and a change shows within about half a second. Log lines start with METALFX SHARP.\n\n"
                   "pan_smooth_off       (v81) smooth camera panning is ON by default: touch moves are kept with their real timestamps and the game gets one move per frame, interpolated on the finger path a measured few ms back (touch_coalesce is ignored while it is on). This line gives the old raw behaviour.\n"
                   "pan_lag_N            (v81) smooth panning: use a fixed lag of N ms instead of the measured one (try 8 to 30). Less = more responsive, more = smoother on a bumpy touch feed. The PAN lines in p2.log show the measured lag.\n"
-                  "hold_ms_N            (v97) minimum time a key or click stays down after a quick tap, in ms (0 to 200). Default: two measured game frames (33 ms at 60 fps, 20 ms floor, 110 ms ceiling). hold_off = no minimum at all.\n"
                   "pan_clock_off        (v82) turn OFF the steady pan clock: camera steps follow the real time the game thread drains (the v81 way). On by default: steps are whole screen refreshes.\n"
                   "inputtap_on          (v81) one INPUTTAP line per game frame while a finger moves in the right half: raw px, px the loader handed the game, and the game's own mouse entries (1.0.6 offsets).\n"
                   "touch_coalesce       (v69) keep only the newest touch-move position and hand it to the game once per display-link tick instead of on every UIKit move. Needs a display lock (hz_60 / hz_90 / default 120, not hz_off).\n"
@@ -1978,13 +1982,12 @@ jobs:
                   "nosplash             (the dev's own flag, found by the user) skips the autosave splash and the Disclaimer screen that credits the dev. Keep a credit somewhere else.\n"
                   "qos_initiated        (v49) use USER_INITIATED (priority 37) instead of USER_INTERACTIVE. Compare the prio numbers on the THREADCPU lines.\n"
                   "pcprof_on            (v52) start the ~100 Hz PC sampler (PCPROF / PCCUM lines, pcprof_total.txt). OFF by default since v52 (it suspends the hot threads and may cost fps; v46 name pcprof_off is now the default). THREADCPU, FUTEXTRACE and WAITTRACE lines are always logged.\n"
-                            "rbtrace_off          (v55) do not record RBTRACE (tiny image->buffer copies, Vulkan fence / semaphore / idle waits and queue submits, timed). On by default; measurement only.\n"
+                            "rbtrace_on           (v55) record RBTRACE (tiny image->buffer copies, Vulkan fence / semaphore / idle waits and queue submits, timed). OFF by default; measurement only.\n"
                             "maxlod_N             (v60, diagnostic) cap maxLod of every sampler the game creates at N. maxlod_0 = every texture is sampled from its full-size level only, so bad data in the small mips can never show. Read at launch. Costs some fps; distant textures shimmer. Off by default. SAMPLER / MAXLOD lines in the loader log show what was changed.\n"
                   "snapshot_off        (v94) turn OFF the staging snapshot fix (default ON): texture upload copies normally read a loader-owned snapshot taken when the copy is recorded, because the game rewrites its staging memory before the submit. SNAPSHOT lines in the loader log show it working.\n"
-                            "textrace_off         (v59) do not record TEXTRACE (texture upload source-memory hashes) and UPLOADGAP (mip levels that were never written). On by default; measurement only.\n"
                             "setenv_P2RE_VKLODBIAS=X  (the game's own switch, read through getenv; the meaning of X is UNVERIFIED until the v60 xref output shows its reader). Same for setenv_P2RE_VKANISO=N.\n"
                             "sleepcap_US          (v54, experiment) shorten guest sleeps of 2000..20000 us to US microseconds (try 1000, 500). Counts in waittrace_total.txt header. Off by default.\n"
-                            "waittrace_off        (v52) do not record WAITTRACE (per-thread time blocked in cond waits, futex waits, sleeps, yields and contended mutexes, by guest caller). On by default.\n"
+                            "waittrace_on         (v52) record WAITTRACE (per-thread time blocked in cond waits, futex waits, sleeps, yields and contended mutexes, by guest caller). OFF by default.\ntextrace_on          record TEXTRACE + UPLOADGAP (hashes texture uploads). OFF by default.\nvktrace_on           record per-pass attachment info and draw counts, and write the automatic VKTRACE dump every 15 s (vktrace_now needs it too). OFF by default.\n"
                   "RACEPROBE / THREADSTART / CLOCKPROBE / IMGCHAIN lines are always logged.\n\n"
                   "Log files (all in Documents/Logs): p2_loader_log.txt (run start time, VKTRACE / MVKENV / P2RE_ENV / GUEST getenv lines), p2.log (the game's own log), mvk_stderr.log (MoltenVK's own messages), waittrace_total.txt, pcprof_total.txt; vkshots/ and mvk_shaders/ (diagnostic dumps) are there too.\n"
                   "Log rotation: only the last two runs are kept. The latest run uses the normal name; the run before it is renamed with _prev (p2_prev.log, p2_loader_log_prev.txt, mvk_stderr_prev.log, ...). Anything older is deleted when a run starts.\n", f); fclose(f); } }
@@ -2007,7 +2010,7 @@ jobs:
               /* nosplash is the one switch the game itself reads as a folder (Documents/nosplash), so the loader mirrors the p2.cfg entry onto that marker folder at every start */
               { char nsp[1300]; snprintf(nsp, sizeof nsp, "%s/nosplash", gDocs); if (sw_has("nosplash")) mkdir(nsp, 0755); else rmdir(nsp); }
               if (p2_boot_flags) L("BOOT FLAGS (as seen when the app started):\n%s", p2_boot_flags);
-              gRbOff = sw_has("rbtrace_off") ? 1 : 0; gTxOff = sw_has("textrace_off") ? 1 : 0; L("TEXTRACE: %s (p2.cfg line textrace_off disables; needs RBTRACE on for the submit / done checks%s)", gTxOff ? "OFF" : "on", gRbOff ? "; RBTRACE IS OFF so only record-time facts are logged" : ""); L("RBTRACE: %s (p2.cfg line rbtrace_off disables)", gRbOff ? "OFF" : "on"); gMaxLod = sw_val("maxlod_"); L("MAXLOD: %s", gMaxLod >= 0 ? "ON, every sampler the game creates gets maxLod capped at that value (p2.cfg line maxlod_<N>; maxlod_0 = sample only the full-size mip level, so no mip data is ever read)" : "off (p2.cfg line maxlod_0 pins every sampler to the full-size level; maxlod_<N> caps at level N; read at launch only)"); L("UPLOADGAP: %s (texture-like images older than 5 s whose mip levels were never written; reported in the TEXTRACE window; p2.cfg line textrace_off disables)", gTxOff ? "OFF" : "on"); gSleepCap = sw_val("sleepcap_"); L("SLEEPCAP: %s", gSleepCap >= 0 ? "ON, guest sleeps of 2000..20000 us are shortened (p2.cfg line sleepcap_<us>)" : "off (p2.cfg line sleepcap_<us> shortens frame-sized guest sleeps to <us>; experiment)"); gWtOff = sw_has("waittrace_off") ? 1 : 0; L("WAITTRACE: %s (p2.cfg line waittrace_off disables)", gWtOff ? "OFF" : "on"); gpuhud_start();
+              gRbOff = flg()->rbtrace ? 0 : 1; gTxOff = flg()->textrace ? 0 : 1; L("TEXTRACE: %s (p2.cfg line textrace_on enables it; needs RBTRACE on for the submit / done checks%s)", gTxOff ? "OFF" : "on", gRbOff ? "; RBTRACE IS OFF so only record-time facts are logged" : ""); L("RBTRACE: %s (opt-in: p2.cfg line rbtrace_on)", gRbOff ? "OFF" : "on"); gMaxLod = sw_val("maxlod_"); L("MAXLOD: %s", gMaxLod >= 0 ? "ON, every sampler the game creates gets maxLod capped at that value (p2.cfg line maxlod_<N>; maxlod_0 = sample only the full-size mip level, so no mip data is ever read)" : "off (p2.cfg line maxlod_0 pins every sampler to the full-size level; maxlod_<N> caps at level N; read at launch only)"); L("UPLOADGAP: %s (texture-like images older than 5 s whose mip levels were never written; reported in the TEXTRACE window; p2.cfg line textrace_on enables it)", gTxOff ? "OFF" : "on"); gSleepCap = sw_val("sleepcap_"); L("SLEEPCAP: %s", gSleepCap >= 0 ? "ON, guest sleeps of 2000..20000 us are shortened (p2.cfg line sleepcap_<us>)" : "off (p2.cfg line sleepcap_<us> shortens frame-sized guest sleeps to <us>; experiment)"); gWtOff = flg()->waittrace ? 0 : 1; L("WAITTRACE: %s (opt-in: p2.cfg line waittrace_on)", gWtOff ? "OFF" : "on"); gpuhud_start();
               { int ws = sw_val("waitspin_"); int wsDef = 0; if (ws < 0) { ws = 1000; wsDef = 1; } char wp[1200], wa[1200]; snprintf(wp, sizeof wp, "%s/.waitspin", gDocs); snprintf(wa, sizeof wa, "%s/.waitspin.p2auto", gDocs);
                 if (ws >= 0) { FILE *wf = fopen(wp, "w"); if (wf) { fprintf(wf, "%d\n", ws); fclose(wf); FILE *wm = fopen(wa, "w"); if (wm) fclose(wm); L("WAITSPIN: %s -> wrote Documents/waitspin = %d (game default 250 us; check the game's 'waits: spin N us' line)", wsDef ? "no waitspin_ p2.cfg line, built-in default (v56)" : "p2.cfg line override", ws); } else L("WAITSPIN: could not write Documents/waitspin"); }
                 }
@@ -2124,44 +2127,10 @@ jobs:
           static void ovl_early(void);
 
           static volatile int gItOn; static float gItDx, gItDy; static unsigned gItMoves, gItEv;
-          static volatile int gRsOn; static volatile float gRsR; static int gRsHeld;
-          typedef struct { uint8_t on, pad[3]; float x1, y1, x2, y2; uint8_t f1, f2; } RsJ;
-          static void rs_key(int down) { ((void (*)(unsigned char, unsigned char))(gBase + 0x5a86040))(0x2A, (unsigned char)down); }
-          static void rs_poll(unsigned fr) {
+          static void it_poll(unsigned fr) {   /* INPUTTAP switch, re-read every 30 frames (the old ringsprint feature that shared this poll is gone) */
               if (fr != 1 && fr % 30) return;
-              int v = 0, it = sw_has("inputtap_on");
-              if (v > 0 && !gRsOn) L("RINGSPRINT: ON, ring radius %d per mille of the screen height (p2.cfg line ringsprint_%d). To find where the dev's own forward ring is, use ringsprint_900 once (ours never triggers) and push straight forward until the game sprints: the log prints that displacement; then set N to it.", v, v);
-              if (v <= 0 && gRsOn) L("RINGSPRINT: off");
-              gRsR = v > 0 ? (float)v / 1000.0f : 0.0f; gRsOn = v > 0;
+              int it = sw_has("inputtap_on");
               if (it != gItOn) { gItOn = it; L("INPUTTAP: %s (p2.cfg line inputtap_on)", it ? "ON, one INPUTTAP line per game frame while fingers move (cap 6000 lines)" : "off"); }
-          }
-          static void rs_tick(void) {
-              static long long lastLog; static float maxd;
-              if (!gBase) return;
-              if (!gRsOn) { if (gRsHeld) { rs_key(0); gRsHeld = 0; L("RINGSPRINT: released (feature off)"); } return; }
-              RsJ j = ((RsJ (*)(void))(gBase + 0x5a877d0))();
-              float d = 0.0f; int want = 0;
-              if (j.on && p2_win_h > 0) {
-                  float dxp = (j.x2 - j.x1) * (float)p2_win_w, dyp = (j.y2 - j.y1) * (float)p2_win_h;
-                  d = __builtin_sqrtf(dxp * dxp + dyp * dyp) / (float)p2_win_h;
-                  want = gRsHeld ? (d > gRsR * 0.9f) : (d > gRsR);
-              }
-              if (d > maxd) maxd = d;
-              uint8_t ks = 0; int ksok = safe_rd((uint64_t)gBase + 0x5eca1b8 + 0x2A, &ks, 1);
-              { static int hisPrev; if (ksok && ks && !gRsHeld && j.on) { if (!hisPrev) L("RINGSPRINT: the dev's own sprint pressed Shift at stick displacement %.0f per mille of the screen height (that is where his ring is)", d * 1000.0f); hisPrev = 1; } else hisPrev = 0; }
-              long long now = fx_now_ns(CLOCK_MONOTONIC);
-              if (want != gRsHeld) {
-                  rs_key(want); gRsHeld = want;
-                  L("RINGSPRINT: %s (stick displacement %.0f per mille of the screen height, ring %.0f, flag14 %u flag15 %u)", want ? "Shift DOWN" : "Shift up", d * 1000.0f, gRsR * 1000.0f, j.f1, j.f2);
-              } else if (want && ksok && !ks) {
-                  rs_key(1); L("RINGSPRINT: Shift was released by the dev's own code while the stick is past the ring; pressed again");
-              }
-              if (j.on && now - lastLog > 1000000000LL) {
-                  lastLog = now;
-                  L("RINGSPRINT: stick active, displacement %.0f per mille (max since last line %.0f, ring %.0f), points (%.3f,%.3f) (%.3f,%.3f) flag14 %u flag15 %u, Shift key state %d, ours %d",
-                    d * 1000.0f, maxd * 1000.0f, gRsR * 1000.0f, j.x1, j.y1, j.x2, j.y2, j.f1, j.f2, ksok ? (int)ks : -1, gRsHeld);
-                  maxd = 0.0f;
-              }
           }
           #define SIG_N 48
           typedef struct { unsigned h, w, hh, nc, dw, dh; int cf, df; volatile unsigned passes, draws; } SigE;
@@ -2253,7 +2222,8 @@ jobs:
               if ((gSigStats || gDcOn) && fr % 300 == 0) sig_report(fr);
           }
           static int pr_draw(void) {
-              __atomic_fetch_add(&gDrawTot, 1, __ATOMIC_RELAXED); PRec *r = tCur; if (!r) { __atomic_fetch_add(&gDrawOut, 1, __ATOMIC_RELAXED); return 0; }
+              PRec *r = tCur; if (flg()->vktrace) { gDrawTot++; if (!r) gDrawOut++; }   /* one render thread: plain increments, and they only feed the vktrace_on dump header */
+              if (!r) return 0;
               unsigned k = r->draws++; if (k == 0 || k == 49) {
                   PSt *s = &r->s[k ? 1 : 0]; s->ok = 1; if (tVpOK) s->vp = tVp; if (tScOK) memcpy(s->sc, tSc, sizeof s->sc);
                   s->cull = tCull; s->front = tFront; s->dt = tDT; s->dw = tDW; s->dop = tDop;
@@ -2268,13 +2238,16 @@ jobs:
           static void (*gR_ssc)(void *, unsigned, unsigned, const int *), (*gR_sscc)(void *, unsigned, const int *);
           static void (*gR_cull)(void *, unsigned), (*gR_front)(void *, int), (*gR_dt)(void *, unsigned), (*gR_dw)(void *, unsigned), (*gR_dop)(void *, int);
           static int (*gR_cimg)(void *, const VkICI2 *, const void *, uint64_t *), (*gR_cview)(void *, const VkIVCI *, const void *, uint64_t *);
-          static int gLoadFix = -1, gLoadFixed;
+          static int gLoadFixed;
           static void w_begin_rendering(void *cb, const VkRI *ri) {
               ovl_early();
               PRec *r = pr_new(1, ri->w, ri->h, ri->nColor);
-              for (unsigned i = 0; i < ri->nColor && i < 3 && ri->pColor; i++) att_fill(&r->c[i], &ri->pColor[i]);
-              if (ri->pDepth) att_fill(&r->d, ri->pDepth);
-              if (gSigStats || gSkipSig >= 0 || gDcOn) {
+              const int sigOn = gSigStats || gSkipSig >= 0 || gDcOn;
+              if (sigOn || flg()->vktrace) {   /* attachment info is only read by the pass signature, DONT_CARE and the vktrace_on dump: skip the image-table lookups otherwise */
+                  for (unsigned i = 0; i < ri->nColor && i < 3 && ri->pColor; i++) att_fill(&r->c[i], &ri->pColor[i]);
+                  if (ri->pDepth) att_fill(&r->d, ri->pDepth);
+              }
+              if (sigOn) {
                   r->sig = sig_get(r);
                   if (r->sig >= 0) {
                       int k = r->sig; r->ord = dc_ord(k);
@@ -2283,24 +2256,24 @@ jobs:
                       if (r->d.used) { int l = r->d.load, st = r->d.store; __sync_fetch_and_add(&gSigDLd[k][l >= 0 && l < 3 ? l : 3], 1); __sync_fetch_and_add(&gSigDSt[k][st >= 0 && st < 2 ? st : 2], 1); }
                   }
               }
-              if (gLoadFix < 0) { gLoadFix = sw_has("vk_loadop_fix_off") ? 0 : 1; L("VKTRACE LOAD_OP_NONE/STORE_OP_NONE -> LOAD/STORE rewrite: %s", gLoadFix ? "ON (p2.cfg line vk_loadop_fix_off turns it off)" : "off"); }
+              const int lf = flg()->loadfix;
               {
                   int dc = dc_decide(r);
-                  if ((gLoadFix || dc) && ri->nColor <= 8) {
+                  if ((lf || dc) && ri->nColor <= 8) {
                       int need = 0, ndc = 0; VkRAI col[8], dep, stc; VkRI c2 = *ri;
                       for (unsigned i = 0; i < ri->nColor && ri->pColor; i++) {
                           col[i] = ri->pColor[i];
-                          if (gLoadFix && col[i].loadOp == LOADOP_NONE) { col[i].loadOp = 0; need = 1; }
-                          if (gLoadFix && col[i].storeOp == STOREOP_NONE) { col[i].storeOp = 0; need = 1; }
+                          if (lf && col[i].loadOp == LOADOP_NONE) { col[i].loadOp = 0; need = 1; }
+                          if (lf && col[i].storeOp == STOREOP_NONE) { col[i].storeOp = 0; need = 1; }
                           if (dc && col[i].loadOp == 0) { col[i].loadOp = 2; ndc++; need = 1; }   /* LOAD -> DONT_CARE, colour only */
                       }
-                      if (gLoadFix && ri->pDepth) { dep = *ri->pDepth; if (dep.loadOp == LOADOP_NONE) { dep.loadOp = 0; need = 1; } if (dep.storeOp == STOREOP_NONE) { dep.storeOp = 0; need = 1; } c2.pDepth = &dep; }
-                      if (gLoadFix && ri->pStencil) { stc = *ri->pStencil; if (stc.loadOp == LOADOP_NONE) { stc.loadOp = 0; need = 1; } if (stc.storeOp == STOREOP_NONE) { stc.storeOp = 0; need = 1; } c2.pStencil = &stc; }
+                      if (lf && ri->pDepth) { dep = *ri->pDepth; if (dep.loadOp == LOADOP_NONE) { dep.loadOp = 0; need = 1; } if (dep.storeOp == STOREOP_NONE) { dep.storeOp = 0; need = 1; } c2.pDepth = &dep; }
+                      if (lf && ri->pStencil) { stc = *ri->pStencil; if (stc.loadOp == LOADOP_NONE) { stc.loadOp = 0; need = 1; } if (stc.storeOp == STOREOP_NONE) { stc.storeOp = 0; need = 1; } c2.pStencil = &stc; }
                       if (need) {
                           c2.pColor = ri->pColor ? col : NULL;
                           if (ndc) { r->dcap = 1; if (r->sig >= 0) __sync_fetch_and_add(&gDcApplied[r->sig], 1); __sync_fetch_and_add(&gDcAppliedTot, 1);
                                      if (gDcFirstLog++ < 12) L("DONTCARE: kind %d slot %d (%ux%u): %d colour attachment(s) LOAD -> DONT_CARE (%s)", r->sig, r->ord, ri->w, ri->h, ndc, (gDcForce >> (r->sig < 0 ? 0 : r->sig)) & 1 ? "forced by dc_K" : "learned"); }
-                          else if (gLoadFixed++ < 3) L("VKTRACE rewrote a NONE load/store op in a %ux%u pass", ri->w, ri->h);
+                          else if (lfed++ < 3) L("VKTRACE rewrote a NONE load/store op in a %ux%u pass", ri->w, ri->h);
                           gR_begin(cb, &c2); return;
                       }
                   }
@@ -2337,9 +2310,7 @@ jobs:
                   if (fr[0] <= fp) break; fp = fr[0]; }
           }
           static int w_cimg(void *dev, const VkICI2 *ci, const void *al, uint64_t *pi) {
-              { static int dl = -2, all = 0; if (dl == -2) { dl = sw_val("imgdelay_"); if (dl < 0) dl = 6000; all = sw_has("imgdelay_all");
-                    L("imgdelay: %d us per vkCreateImage, %s (default 6000 since v52; p2.cfg line imgdelay_0 = off; imgdelay_<number> = other value)", dl, all ? "kept for the first 800 images (imgdelay_all)" : "stops at state 6 target 3"); }
-                if (dl > 0 && gImgN < 800 && (all || !gS6Seen)) usleep((useconds_t)(dl > 100000 ? 100000 : dl)); }
+              { const P2Flags *f = flg(); int dl = f->imgdelay_us; if (dl > 0 && gImgN < 800 && (f->imgdelay_all || !gS6Seen)) usleep((useconds_t)(dl > 100000 ? 100000 : dl)); }
               int r = gR_cimg(dev, ci, al, pi);
               if (r == 0) { p2_img_note(); if (gImgN <= 3 || gImgN == 50 || gImgN == 150) { char cb[420]; p2_chain(cb, sizeof cb); L("IMGCHAIN #%d tid=%d %ux%u fmt=%d:%s", gImgN, p2_tid(), ci->w, ci->h, ci->format, cb); } }
               if (r == 0 && pi) { ImgE e; memset(&e, 0, sizeof e); e.fmt = ci->format; e.w = ci->w; e.h = ci->h; e.usage = ci->usage; e.mips = ci->mips; e.layers = ci->layers; e.t0 = wt_now(); img_put(*pi, &e); }
@@ -2362,7 +2333,6 @@ jobs:
           static void (*gR_cp2b)(void *, uint64_t, int, uint64_t, unsigned, const VkBIC *); static void (*gR_cp2b2)(void *, const void *);
           static int (*gR_sub)(void *, unsigned, const void *, uint64_t), (*gR_sub2)(void *, unsigned, const void *, uint64_t);
           static int (*gR_wf)(void *, unsigned, const void *, unsigned, uint64_t), (*gR_gfs)(void *, uint64_t), (*gR_ws)(void *, const void *, uint64_t), (*gR_qwi)(void *), (*gR_dwi)(void *);
-          static void p2_chain(char *cb, int cap);
           static void rb_copy_note(const char *base, unsigned n, size_t stride, size_t off, uint64_t img, uint64_t buf) {
               int tiny = 0; const VkBIC *tr = NULL;
               for (unsigned i = 0; i < n && i < 16; i++) { const VkBIC *r = (const VkBIC *)(base + i * stride + off); if (r->ed == 1 && r->ew >= 1 && r->ew <= 8 && r->eh >= 1 && r->eh <= 8) { tiny = 1; tr = r; break; } }
@@ -2406,8 +2376,7 @@ jobs:
               { TxE *t = which ? gTxBuf : gTxMem; if (t) { unsigned h = tx_h(k), n = 0; while (t[h].k && n++ < TX_N) { if (t[h].k == k) { *o = t[h]; ok = 1; break; } h = (h + 1) & (TX_N - 1); } } }
               tx_unlock(); return ok;
           }
-          static int gSnWant = -1;
-          static int sn_want(void) { if (gSnWant < 0) gSnWant = sw_has("snapshot_off") ? 0 : 1; return gSnWant; }
+          static int sn_want(void) { return flg()->snap; }
           #define tx_trk() (!gTxOff || sn_want())
           typedef struct { int sType; const void *pNext; unsigned flags; uint64_t size; unsigned usage; } VkBCI;
           static int (*gR_cbuf)(void *, const VkBCI *, const void *, uint64_t *);
@@ -2957,7 +2926,7 @@ jobs:
           }
           #define DEV_BTN_VECS 0x5e43440UL
           static void dev_btn_clear(void) {
-              static int said, cfgd, logs, cfgtry; uintptr_t base = gBase + DEV_BTN_VECS; unsigned total = 0, cleared = 0;
+              static int said, cfgd, logs, cfgtry, cfgskip; uintptr_t base = gBase + DEV_BTN_VECS; unsigned total = 0, cleared = 0;
               for (int i = 0; i < 6; i++) {
                   uintptr_t v[3] = {0, 0, 0};
                   memcpy(v, (const void *)(base + (uintptr_t)i * 0x18), sizeof v);   /* PERF: plain read (the write below is already unguarded); was a Mach call */
@@ -2966,7 +2935,7 @@ jobs:
                   if (v[1] != v[0]) { *(volatile uintptr_t *)(base + (uintptr_t)i * 0x18 + 8) = v[0]; cleared += n; }
               }
               if ((cleared || !said) && logs++ < 20) { said = 1; L("OWNLAYOUT: emptied %u dev touch buttons (%u seen across the 6 layouts)", cleared, total); }
-              if (!cfgd && cfgtry++ < 300) {
+              if (!cfgd && cfgtry < 300 && (cfgtry == 0 || ++cfgskip % 60 == 0)) { cfgtry++;   /* the file appears late; look every 60th call, not on every one */
                   char p[1300]; snprintf(p, sizeof p, "%s/.controls.cfg", gDocs); FILE *f = fopen(p, "r");
                   if (f) { cfgd = 1; char ln[200]; while (fgets(ln, sizeof ln, f)) if (!strncmp(ln, "joystick", 8) || !strncmp(ln, "joyscale", 8) || !strncmp(ln, "layout ", 7) || !strncmp(ln, "sprintdist", 10)) { ln[strcspn(ln, "\r\n")] = 0; L("OWNLAYOUT: dev controls.cfg: %s", ln); } fclose(f); }
               }
@@ -2997,61 +2966,26 @@ jobs:
           }
           /* v81: NO FLASH. ovl_poll only runs after vkQueuePresentKHR, so the dev's overlay (on-screen controls, joystick) was drawn by the first frame(s) before the wrapper went in, and the
              dev's button vectors were emptied just as late. This runs from the pass-begin and blit hooks, i.e. on the render thread before the dev's DrawOverlay of the same frame, as soon as g_host+0x208
-             (the builder) is set. It installs the wrapper for ovl_off / ovl_hide / ovl_trace and empties the dev's buttons for own_layout. Afterwards it only re-checks every 32nd call (the dev
-             re-running InstallTouchOverlay would put its builder back) and re-reads the p2.cfg lines every 256th. ovl_poll keeps handling live changes. */
+             (the builder) is set. It installs the wrapper for ovl_off / ovl_hide / ovl_trace and empties the dev's buttons for own_layout. It runs once, the first time the builder is set, then
+             stops: ovl_poll (once per presented frame) handles live changes and a builder the dev puts back, and empties the dev's buttons every frame. */
           static void ovl_early(void) {
-              static volatile int busy; static volatile unsigned calls; static int want = -2, own;
-              if (!gBase || !gDocs[0]) return;
-              unsigned c = __atomic_add_fetch(&calls, 1, __ATOMIC_RELAXED);
-              if (want != -2 && (c & 31)) return;
+              static volatile int busy, fin; static int want, own;
+              if (fin || !gBase || !gDocs[0]) return;
               if (!__sync_bool_compare_and_swap(&busy, 0, 1)) return;
               uintptr_t host = 0, cur = 0;
-              if (safe_rd(gBase + OVL_SLOT, &host, sizeof host) && host && safe_rd(host + 0x208, &cur, sizeof cur) && cur) {
-                  if (want == -2 || !(c & 255)) { want = sw_has("ovl_off") ? 2 : sw_has("ovl_hide") ? 1 : sw_has("ovl_trace") ? 0 : -1; own = sw_has("own_layout"); }
+              if (!fin && safe_rd(gBase + OVL_SLOT, &host, sizeof host) && host && safe_rd(host + 0x208, &cur, sizeof cur) && cur) {
+                  want = sw_has("ovl_off") ? 2 : sw_has("ovl_hide") ? 1 : sw_has("ovl_trace") ? 0 : -1; own = sw_has("own_layout");
                   if (want >= 0 && cur == gBase + OVL_BUILDER) {
                       gOvlMode = want; gOvlOrig = (void (*)(void *, unsigned, unsigned))cur; __sync_synchronize();
                       *(volatile uintptr_t *)(host + 0x208) = (uintptr_t)ovl_wrap; gOvlInstalled = 1;
-                      { static int said; if (said++ < 5) L("OVERLAY: wrapper installed early, mode %d, before the dev drew its overlay", want); }
+                      L_N(5, "OVERLAY: wrapper installed early, mode %d, before the dev drew its overlay", want);
                   }
                   if (own) dev_btn_clear();
+                  fin = 1;   /* one-shot: ovl_poll (every 30 frames, and dev_btn_clear every frame) takes over from here */
               }
               busy = 0;
           }
-          /* v95: MINIMUM HOLD. The loader used to send a key or click down and up the instant your finger touched and left. At a low clock the game draws a frame every 30-40 ms, so a quick tap could go down and up
-             between two of its frames and the game never saw it (a missed jump or attack). Now a press stays down for at least about two game frames (v97: never under 20 ms, never over 110 ms): if the finger lifts sooner,
-             the release is sent later. A new press during that wait just keeps the key down. gFrameMs is the measured time between presented frames. p2.cfg line hold_off = the old instant release. */
-          static volatile double gFrameMs = 16.7;
-          double p2_frame_ms(void) { return gFrameMs; }
-          double p2_hold_ms(void) {   /* v97: exactly two measured game frames (no 45 ms floor: at 60 fps that is 33 ms instead of 45 ms), never under 20 ms, never over 110 ms. p2.cfg line hold_ms_N = a fixed N ms (0-200). The p2.cfg line is read once, not per press. */
-              static int off = -1, fixed = -1; if (off < 0 && gDocs[0]) { off = sw_has("hold_off") ? 1 : 0; fixed = sw_val("hold_ms_"); }
-              if (off > 0) return 0.0; if (fixed >= 0) return fixed > 200 ? 200.0 : (double)fixed;
-              double h = gFrameMs * 2.0; return h < 20.0 ? 20.0 : h > 110.0 ? 110.0 : h; }
-          static void p2_key_now(int dik, int down);
-          static double gKeyDownAt[256]; static unsigned gKeyGen[256]; static unsigned char gKeyPend[256];
-          typedef struct { int k; unsigned g; } KeyUp;
-          static void key_up_tramp(void *ctx) { KeyUp *u = (KeyUp *)ctx; if (gKeyPend[u->k] && gKeyGen[u->k] == u->g) { gKeyPend[u->k] = 0; p2_key_now(u->k, 0); } free(u); }
-          void p2_key(int dik, int down) {
-              int k = dik & 0xff; double now = (double)fx_now_ns(CLOCK_UPTIME_RAW) / 1e6;
-              if (down) { gKeyGen[k]++; if (gKeyPend[k]) { gKeyPend[k] = 0; gKeyDownAt[k] = now; return; } gKeyDownAt[k] = now; p2_key_now(dik, 1); return; }   /* a press while the release was waiting: the key never came up */
-              double held = now - gKeyDownAt[k], need = p2_hold_ms();
-              if (gKeyDownAt[k] > 0.0 && held < need && !gKeyPend[k]) {
-                  KeyUp *u = malloc(sizeof *u); if (u) { u->k = k; u->g = gKeyGen[k]; gKeyPend[k] = 1; dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((need - held) * 1e6)), dispatch_get_main_queue(), u, key_up_tramp); return; }
-              }
-              if (gKeyPend[k]) return;   /* an up is already on its way */
-              p2_key_now(dik, 0);
-          }
-          static void p2_key_now(int dik, int down) {
-              static int ok = -1; if (!gBase) return;
-              if (ok < 0) {
-                  uintptr_t host = 0, cur = 0;
-                  if (!safe_rd(gBase + OVL_SLOT, &host, sizeof host) || !host || !safe_rd(host + 0x208, &cur, sizeof cur) || !cur) return;   /* builder not set yet: retry on the next key */
-                  ok = (cur == gBase + OVL_BUILDER || cur == (uintptr_t)ovl_wrap) ? 1 : 0;
-                  L("OWNKEY: %s (g_host+0x208 = %p)", ok ? "1.0.7 layout confirmed, PushKey calls enabled" : "NOT the 1.0.7 layout, key injection disabled", (void *)cur);
-              }
-              { static int n; if (n++ < 40) L("OWNKEY: PushKey(0x%02x, %d) %s", dik & 0xff, down ? 1 : 0, ok > 0 ? "sent" : "NOT sent (layout not confirmed)"); }
-              if (ok > 0) ((void (*)(unsigned char, unsigned char))(gBase + 0x5a699e0))((unsigned char)dik, (unsigned char)(down ? 1 : 0));
-          }
-          /* v89: the 1.0.7 layout check that p2_key does, shared. p2_mouse and the menu cursor (both in the controls piece, ctl_core.c) call it before they touch any elf address.
+          /* The 1.0.7 layout check, shared by p2_key_now, p2_mouse and the menu cursor (the last two live in the controls piece, ctl_core.c); they call it before they touch any elf address.
              p2_mouse moved there: it used to post the click with PostMouseMessage at x=0,y=0 and never set the game's own button state, which is why Left Click did nothing. */
           int p2_layout_ok(void) {
               static int ok = -1, bad; if (!gBase) return 0;
@@ -3064,10 +2998,15 @@ jobs:
               }
               return ok;
           }
+          static void p2_key_now(int dik, int down) {
+              if (!gBase) return;
+              int ok = p2_layout_ok();   /* 0 while the builder is not set yet: retry on the next key */
+              L_N(40, "OWNKEY: PushKey(0x%02x, %d) %s", dik & 0xff, down ? 1 : 0, ok > 0 ? "sent" : "NOT sent (layout not confirmed)");
+              if (ok > 0) ((void (*)(unsigned char, unsigned char))(gBase + 0x5a699e0))((unsigned char)dik, (unsigned char)(down ? 1 : 0));
+          }
           static void trace_present(void) {
-              { static long long lastNs; long long nn = fx_now_ns(CLOCK_UPTIME_RAW); if (lastNs) { double d = (double)(nn - lastNs) / 1e6; if (d > 2.0 && d < 250.0) gFrameMs += (d - gFrameMs) * 0.1; } lastNs = nn; }   /* v95: frame time for the minimum hold */
-              static int dumps; unsigned fr = __sync_add_and_fetch(&gFrame, 1); rb_report(fr); sig_poll(fr); rs_poll(fr); it_frame(fr); inq_rearm(); ovl_poll(fr);
-              if (fr % 900 == 0 && dumps < 20) { dumps++; trace_dump(fr, "automatic, every 15 s"); }
+              static int dumps; unsigned fr = __sync_add_and_fetch(&gFrame, 1); rb_report(fr); sig_poll(fr); it_poll(fr); it_frame(fr); inq_rearm(); ovl_poll(fr);
+              if (flg()->vktrace && fr % 900 == 0 && dumps < 20) { dumps++; trace_dump(fr, "automatic, every 15 s"); }
               else if (fr % 30 == 0 && sw_has("vktrace_now")) { sw_clear("vktrace_now"); trace_dump(fr, "vktrace_now p2.cfg line"); }
           }
           static int mvk_open(void) {
@@ -3209,7 +3148,7 @@ jobs:
               fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
               BAsset *a = calloc(1, sizeof *a); a->d = malloc(n ? n : 1); a->n = (size_t)n;
               if (fread(a->d, 1, n, f) != (size_t)n) a->n = 0;
-              fclose(f); { static int c; if (c++ < 12) L("PLAT AAssetManager_open(%s): %ld bytes", name, n); }
+              fclose(f); L_N(12, "PLAT AAssetManager_open(%s): %ld bytes", name, n);
               return a;
           }
           static long sh_aa_len(BAsset *a) { return (long)a->n; }
@@ -4114,7 +4053,7 @@ jobs:
               }
               (void)tot_w;
           }
-          static int dm_on(void) { static int v = -1; if (v < 0) v = sw_has("dropmon_on") ? 1 : 0; return v; }   /* PERF: DROPMON is an old diagnostic, off unless p2.cfg has dropmon_on */
+          static int dm_on(void) { return flg()->dropmon; }   /* PERF: DROPMON is an old diagnostic, off unless p2.cfg has dropmon_on */
           static void *mem_thread(void *p) {
               (void)p;
               for (;;) {

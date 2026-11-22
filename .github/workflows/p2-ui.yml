@@ -202,9 +202,9 @@ jobs:
                      sMenu(@"Shadow casters", @"Which size objects cast shadows. Higher numbers skip smaller objects for better performance.",
                    @[@"Skip under 1024 triangles (default)", @"Skip under 256", @"Skip under 64 (low preset)", @"Skip all shadow casters", @"Cast all"],
                    @[@"", @"setenv_P2RE_VKSHADOWMIN=256", @"setenv_P2RE_VKSHADOWMIN=64", @"setenv_P2RE_VKSHADOWMIN=40000000", @"shadowmin_off"], @"setenv_P2RE_VKSHADOWMIN=") ],
-                  @[ sSwitch(@"Render thread trace", @"Records what the render thread waits for. Measurement only, may cost a little speed. Turn on when sending logs.", @"rbtrace_off", NO),
-                     sSwitch(@"Wait trace", @"Records how long each game thread is blocked. Measurement only.", @"waittrace_off", NO),
-                     sSwitch(@"Texture trace", @"Hashes texture uploads to catch broken textures. Probably the costliest trace.", @"textrace_off", NO),
+                  @[ sSwitch(@"Render thread trace", @"Records what the render thread waits for. Measurement only, may cost a little speed. Turn on when sending logs.", @"rbtrace_on", YES),
+                     sSwitch(@"Wait trace", @"Records how long each game thread is blocked. Measurement only.", @"waittrace_on", YES),
+                     sSwitch(@"Texture trace", @"Hashes texture uploads to catch broken textures. Probably the costliest trace.", @"textrace_on", YES),
                      sSwitch(@"Code sampler", @"Samples where game code is running about 100 times a second. Can cost fps.", @"pcprof_on", YES),
                      sSwitch(@"Touch trace", @"Once a second while you touch the screen, logs how many touch moves iOS delivered, how long handing them to the game took, and the real display refresh interval (shows if iOS changes the refresh rate while you touch). Measurement only.", @"touch_trace", YES) ],
                   @[ sMenu(@"Screen aspect ratio", @"Makes the game see a screen of this shape. Its resolution list follows it (16:9 offers 1280x720). A different shape than your real screen may show black bars or stretch; try it and look.",
@@ -349,7 +349,6 @@ jobs:
                           if (q.kind == SKMenu) { for (NSString *f in q.cfgKeys) if (f.length) uiSet(f, NO); if (q.prefix.length) for (NSString *f in uiWithPrefix(q.prefix)) uiSet(f, NO); }
                       }
                       uiSet(@"nosplash", YES);   /* default is ON */
-                      uiSet(@"rbtrace_off", YES); uiSet(@"waittrace_off", YES); uiSet(@"textrace_off", YES);   /* traces default to OFF */
                       if (self.onHz) self.onHz();
                       [self.tableView reloadData];
                   }]];
@@ -1019,8 +1018,8 @@ jobs:
           - (void)startFlags {
               static const struct { const char *n; int pre; const char *m; } K[] = {
                   {"hz_off",0,"120 Hz lock OFF"}, {"seeded_nosplash",0,"first-run default (skip splash) already applied"}, {"seeded_traces_off",0,"first-run default (traces off) already applied"}, {"seeded_own_layout",0,"first-run default (own controls on) already applied"}, {"rt_render",0,"render thread real-time policy ON (6000 us budget)"}, {"hz_90",0,"display locked to 90 Hz"}, {"hz_60",0,"display locked to 60 Hz"},
-                  {"waittrace_off",0,"WAITTRACE recording OFF"}, {"rbtrace_off",0,"RBTRACE (render-thread trace + GPU timing) OFF"}, {"gpuhud_off",0,"GPU % for the dev HUD OFF"}, {"threaddump_on",0,"timed THREADDUMP at 20/45/90 s ON"}, {"gpuhud_est",0,"GPU % estimated from RBTRACE timing (not the Apple counter)"},
-                  {"textrace_off",0,"TEXTRACE + UPLOADGAP OFF"}, {"maxlod_",1,"sampler max-LOD cap (maxlod_0 = full-size level only; read at launch)"},
+                  {"waittrace_on",0,"WAITTRACE recording ON (default off)"}, {"rbtrace_on",0,"RBTRACE (render-thread trace + GPU timing) ON (default off)"}, {"vktrace_on",0,"per-pass attachment records, draw counts and the automatic VKTRACE dump ON (default off)"}, {"gpuhud_off",0,"GPU % for the dev HUD OFF"}, {"threaddump_on",0,"timed THREADDUMP at 20/45/90 s ON"}, {"gpuhud_est",0,"GPU % estimated from RBTRACE timing (not the Apple counter)"},
+                  {"textrace_on",0,"TEXTRACE + UPLOADGAP ON (default off)"}, {"maxlod_",1,"sampler max-LOD cap (maxlod_0 = full-size level only; read at launch)"},
                   {"pcprof_on",0,"PC sampler ON"}, {"futex_off",0,"real futex OFF"}, {"audio_off",0,"audio OFF"}, {"auto_exit",0,"auto exit"},
                   {"qos_off",0,"thread QoS left at default"}, {"qos_initiated",0,"thread QoS USER_INITIATED"},
                   {"vk_loadop_fix_off",0,"LOAD_OP_NONE rewrite OFF"}, {"vkshot",0,"vkshot"}, {"vktrace_now",0,"VKTRACE dump now"},
@@ -1077,10 +1076,10 @@ jobs:
           - (void)applyHz { gTcLink = NO; tcFlush(); [gHzLink invalidate]; gHzLink = nil; [self startHz]; }
           - (BOOL)application:(UIApplication *)a didFinishLaunchingWithOptions:(NSDictionary *)o {
               gText = [NSMutableString string];
-              { cfgReady();   /* nosplash is ON by default and the traces OFF: seed them once. The "seeded" markers live in p2.cfg too (they used to be NSUserDefaults), so a fresh p2.cfg gets the defaults again */
+              { cfgReady();   /* nosplash is ON by default: seed it once. The "seeded" markers live in p2.cfg too (they used to be NSUserDefaults), so a fresh p2.cfg gets the defaults again */
                 if (!p2_cfg_has("seeded_nosplash")) { uiSet(@"nosplash", YES); p2_cfg_set("seeded_nosplash", 1); }
                 if (!p2_cfg_has("seeded_own_layout")) { uiSet(@"own_layout", YES); p2_cfg_set("seeded_own_layout", 1); }   /* own controls are ON by default */
-                if (!p2_cfg_has("seeded_traces_off")) { uiSet(@"rbtrace_off", YES); uiSet(@"waittrace_off", YES); uiSet(@"textrace_off", YES); p2_cfg_set("seeded_traces_off", 1); } }
+                /* traces are opt-in in the loader itself (rbtrace_on, waittrace_on, textrace_on, vktrace_on): nothing to seed */ }
               self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
               gView = [[UITextView alloc] initWithFrame:CGRectZero];
               gView.editable = NO; gView.selectable = YES; gView.font = [UIFont fontWithName:@"Menlo" size:10]; gView.backgroundColor = UIColor.blackColor; gView.textColor = UIColor.greenColor;
