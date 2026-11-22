@@ -1,0 +1,226 @@
+name: "P2 gamepad source (v1 Bluetooth / MFi / Xbox / PlayStation controllers)"
+# GAMEPAD: physical controller support through Apple's GameController framework. Any pad iOS can pair (Xbox, PlayStation, Switch Pro, MFi) works.
+# It adds no new input path: it feeds the paths the touch controls already use, so the game cannot tell a pad from the screen.
+#   left stick  -> W A S D through p2_btn_edge (8-way, hysteresis; full push = Shift only with the "stickSprint 1" line in gamepad.txt)
+#   right stick -> p2_rstick (the camera RATE stick: same speed sliders, same rstick_invy line, and in a menu it moves the game's cursor)
+#   buttons     -> DirectInput keys / Left Click / Right Click through p2_btn_edge (Documents/gamepad.txt, written with defaults the first time)
+# In a menu (p2_menu_on, automatic) the pad switches to a fixed menu map: A = Left Click, X = Right Click, B / Start = Esc, Y = Enter, D-pad = arrows, LB / RB = Page Up / Down,
+# and BOTH sticks move the cursor. A button that is held while the mode changes does nothing in the new mode until it is let go (no stray click when a menu opens under your thumb).
+# While a pad is connected the on-screen controls (own_layout stick / buttons, custom buttons) are hidden and stop taking touches; the gear stays, and Move mode shows them again. Nothing polls until a pad connects: the connect / disconnect
+# notifications start and stop the 60 Hz timer. p2.cfg line gamepad_off turns it all off (Settings > Game > Controller support). Called by build-loader.yml (uses: ./.github/workflows/p2-gamepad.yml). It only writes source text and uploads it.
+# pad_main.m is joined into main.m after lay_main.m and before ui_main_2.m (it needs p2_btn_edge / p2_rstick / p2_menu_on from the controls piece; the UI's launch code calls padStart()).
+on:
+  workflow_call:
+jobs:
+  gamepad:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write the source piece
+        run: |
+          set -e
+          mkdir -p parts
+          cat > parts/pad_main.m <<'EOF_PAD_MAIN_M'
+          /* ================= GAMEPAD (GameController framework) =================
+             Everything here runs on the main thread: GCController delivers its handlers on the main queue, and the 60 Hz timer below is a main-run-loop timer.
+             The one rule that keeps it simple: every call recomputes the WHOLE wanted state (which of the 258 input channels should be down, plus the camera stick) from the pads as they are now,
+             then sends only the differences (edges) to the game. A button that two things want (Shift from the stick and from LB) is simply wanted once. Disconnecting a pad = nothing wanted = every key is released. */
+          extern void p2_btn_edge(int dik, int down);   /* channels: 0..255 DirectInput scancodes, 256 Left Click, 257 Right Click */
+          extern void p2_rstick(float x, float y);
+          extern int p2_menu_on(void);
+
+          enum { PB_A, PB_B, PB_X, PB_Y, PB_LB, PB_RB, PB_LT, PB_RT, PB_L3, PB_R3, PB_START, PB_BACK, PB_UP, PB_DOWN, PB_LEFT, PB_RIGHT, PB_N };
+          static const char *const kPadName[PB_N] = {"A","B","X","Y","LB","RB","LT","RT","L3","R3","START","BACK","UP","DOWN","LEFT","RIGHT"};
+          #define PAD_CH 258          /* same size as the loader's BQ_N */
+          #define PAD_LMB 256
+          #define PAD_RMB 257
+          typedef struct { BOOL b[PB_N]; float lx, ly, rx, ry; int pads; } PadState;   /* stick y: GameController has up = +1 */
+
+          static int gPadMap[PB_N];                 /* gameplay map: channel per button, 0 = nothing */
+          static int gPadMenuMap[PB_N];             /* menu map (fixed) */
+          static BOOL gPadStickSprint;              /* gamepad.txt line "stickSprint 1": a full push of the left stick also holds Shift */
+          static BOOL gPadLoaded, gPadOffNow;
+          static unsigned char gPadSent[PAD_CH];    /* what the game has been told so far */
+          static BOOL gPadLatch[PB_N];              /* down when the mode changed: ignored until let go */
+          static BOOL gPadMenuMode;
+          static BOOL gPadKey[4];                   /* W A S D as currently wanted (hysteresis) */
+          static BOOL gPadSprintOn;
+          static float gPadSentRx, gPadSentRy; static BOOL gPadRsActive;
+          static NSTimer *gPadTimer; static int gPadTick; static BOOL gPadConnected;
+
+          static int padParseKey(const char *s) {
+              if (!s || !*s) return 0;
+              if (!strcasecmp(s, "LMB") || !strcasecmp(s, "LEFTCLICK")) return PAD_LMB;
+              if (!strcasecmp(s, "RMB") || !strcasecmp(s, "RIGHTCLICK")) return PAD_RMB;
+              if (!strcasecmp(s, "NONE") || !strcasecmp(s, "-")) return 0;
+              char *end = NULL; long v = strtol(s, &end, 16);
+              return (end && *end == 0 && v > 0 && v < 256) ? (int)v : 0;
+          }
+          static void padDefaults(void) {
+              /* keys that exist in the touch layout's defaults: Space jump, Ctrl crouch, E use, Shift sprint, arrows. The rest are my guesses for Prototype 2's PC keys: change them in gamepad.txt. */
+              static const int d[PB_N] = { 0x39, 0x1D, 0x12, 0x10, 0x2A, 0x21, PAD_RMB, PAD_LMB, 0x2A, 0, 0x01, 0x0F, 0xC8, 0xD0, 0xCB, 0xCD };
+              memcpy(gPadMap, d, sizeof d);
+              static const int m[PB_N] = { PAD_LMB, 0x01, PAD_RMB, 0x1C, 0xC9, 0xD1, 0, 0, 0, 0, 0x01, 0, 0xC8, 0xD0, 0xCB, 0xCD };
+              memcpy(gPadMenuMap, m, sizeof m);
+          }
+          static NSString *padFile(void) { return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] stringByAppendingPathComponent:@"gamepad.txt"]; }
+          static void padLoad(void) {
+              if (gPadLoaded) return; gPadLoaded = YES;
+              padDefaults();
+              NSString *f = padFile();
+              NSString *txt = [NSString stringWithContentsOfFile:f encoding:NSUTF8StringEncoding error:nil];
+              if (!txt) {
+                  NSMutableString *s = [NSMutableString stringWithString:
+                      @"# gamepad (v1). One line per button: NAME KEY. KEY = a DirectInput scancode in hex (39 space, 2A shift, 1D ctrl, 12 E, 21 F, 10 Q, 0F tab, 01 esc, 1C enter, C8 up, D0 down, CB left, CD right), or LMB, RMB, NONE.\n"
+                      @"# Buttons: A B X Y LB RB LT RT L3 R3 START BACK UP DOWN LEFT RIGHT (UP..RIGHT = the D-pad). Left stick = W A S D, right stick = camera. In menus a fixed map is used (A = click, B = Esc).\n"
+                      @"# stickSprint 1 = a full push of the left stick also holds Shift (off by default; L3 and LB already hold Shift).\n"];
+                  for (int i = 0; i < PB_N; i++) {
+                      int k = gPadMap[i];
+                      if (k == PAD_LMB) [s appendFormat:@"%s LMB\n", kPadName[i]]; else if (k == PAD_RMB) [s appendFormat:@"%s RMB\n", kPadName[i]];
+                      else if (k == 0) [s appendFormat:@"%s NONE\n", kPadName[i]]; else [s appendFormat:@"%s %02X\n", kPadName[i], k];
+                  }
+                  [s appendString:@"stickSprint 0\n"];
+                  [s writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                  p2_note("GAMEPAD: wrote the default Documents/gamepad.txt");
+                  return;
+              }
+              int n = 0;
+              for (NSString *line in [txt componentsSeparatedByString:@"\n"]) {
+                  const char *c = line.UTF8String; if (!c || c[0] == '#') continue;
+                  char nm[24], key[24]; if (sscanf(c, "%23s %23s", nm, key) != 2) continue;
+                  if (!strcasecmp(nm, "stickSprint")) { gPadStickSprint = atoi(key) != 0; continue; }
+                  for (int i = 0; i < PB_N; i++) if (!strcasecmp(nm, kPadName[i])) { gPadMap[i] = padParseKey(key); n++; break; }
+              }
+              p2_note([NSString stringWithFormat:@"GAMEPAD: %d button lines read from gamepad.txt, stick sprint %s", n, gPadStickSprint ? "on" : "off"].UTF8String);
+          }
+
+          static BOOL padPressed(GCControllerButtonInput *b) { return b && (b.isPressed || b.value > 0.35f); }
+          static void padRead(PadState *s) {
+              memset(s, 0, sizeof *s);
+              float lm = 0, rm = 0;
+              for (GCController *c in GCController.controllers) {
+                  GCExtendedGamepad *g = c.extendedGamepad; if (!g) continue;
+                  s->pads++;
+                  s->b[PB_A] |= padPressed(g.buttonA); s->b[PB_B] |= padPressed(g.buttonB); s->b[PB_X] |= padPressed(g.buttonX); s->b[PB_Y] |= padPressed(g.buttonY);
+                  s->b[PB_LB] |= padPressed(g.leftShoulder); s->b[PB_RB] |= padPressed(g.rightShoulder);
+                  s->b[PB_LT] |= padPressed(g.leftTrigger); s->b[PB_RT] |= padPressed(g.rightTrigger);
+                  s->b[PB_L3] |= padPressed(g.leftThumbstickButton); s->b[PB_R3] |= padPressed(g.rightThumbstickButton);
+                  s->b[PB_START] |= padPressed(g.buttonMenu); s->b[PB_BACK] |= padPressed(g.buttonOptions);
+                  s->b[PB_UP] |= padPressed(g.dpad.up); s->b[PB_DOWN] |= padPressed(g.dpad.down); s->b[PB_LEFT] |= padPressed(g.dpad.left); s->b[PB_RIGHT] |= padPressed(g.dpad.right);
+                  float x = g.leftThumbstick.xAxis.value, y = g.leftThumbstick.yAxis.value, m = hypotf(x, y);
+                  if (m > lm) { lm = m; s->lx = x; s->ly = y; }
+                  x = g.rightThumbstick.xAxis.value; y = g.rightThumbstick.yAxis.value; m = hypotf(x, y);
+                  if (m > rm) { rm = m; s->rx = x; s->ry = y; }
+              }
+          }
+          static void padDead(float *x, float *y, float dz) {   /* radial dead zone, the rest rescaled to 0..1 */
+              float m = hypotf(*x, *y);
+              if (m <= dz) { *x = *y = 0; return; }
+              if (m > 1.0f) { *x /= m; *y /= m; m = 1.0f; }
+              float k = (m - dz) / (1.0f - dz) / m; *x *= k; *y *= k;
+          }
+          static void padSend(const unsigned char *want) {
+              for (int i = 0; i < PAD_CH; i++) if (want[i] != gPadSent[i]) { gPadSent[i] = want[i]; p2_btn_edge(i, want[i]); }
+          }
+          static void padApply(void) {
+              if (gPadOffNow) return;
+              PadState s; padRead(&s);
+              BOOL menu = p2_menu_on() != 0;
+              if (menu != gPadMenuMode) {   /* the mode changed: whatever is down right now waits until it is let go */
+                  gPadMenuMode = menu;
+                  for (int i = 0; i < PB_N; i++) gPadLatch[i] = s.b[i];
+              }
+              for (int i = 0; i < PB_N; i++) { if (!s.b[i]) gPadLatch[i] = NO; else if (gPadLatch[i]) s.b[i] = NO; }
+              unsigned char want[PAD_CH]; memset(want, 0, sizeof want);
+              const int *map = menu ? gPadMenuMap : gPadMap;
+              for (int i = 0; i < PB_N; i++) if (s.b[i] && map[i] > 0 && map[i] < PAD_CH) want[map[i]] = 1;
+              float cx = 0, cy = 0;   /* the camera / cursor stick, in screen terms (down = +) */
+              if (menu) {   /* both sticks drive the cursor; the one pushed harder wins */
+                  float lx = s.lx, ly = s.ly, rx = s.rx, ry = s.ry; padDead(&lx, &ly, 0.15f); padDead(&rx, &ry, 0.15f);
+                  if (hypotf(lx, ly) > hypotf(rx, ry)) { cx = lx; cy = -ly; } else { cx = rx; cy = -ry; }
+                  gPadKey[0] = gPadKey[1] = gPadKey[2] = gPadKey[3] = NO; gPadSprintOn = NO;
+              } else {
+                  float rx = s.rx, ry = s.ry; padDead(&rx, &ry, 0.15f); cx = rx; cy = -ry;
+                  float x = s.lx, y = s.ly;   /* W A S D: on at 0.45, off again below 0.32, so a wobbling stick does not chatter */
+                  gPadKey[0] = y >  (gPadKey[0] ? 0.32f : 0.45f);
+                  gPadKey[1] = x < -(gPadKey[1] ? 0.32f : 0.45f);
+                  gPadKey[2] = y < -(gPadKey[2] ? 0.32f : 0.45f);
+                  gPadKey[3] = x >  (gPadKey[3] ? 0.32f : 0.45f);
+                  float m = hypotf(x, y); gPadSprintOn = gPadStickSprint && m > (gPadSprintOn ? 0.80f : 0.92f);
+                  static const int dik[4] = {0x11, 0x1E, 0x1F, 0x20};
+                  for (int k = 0; k < 4; k++) if (gPadKey[k]) want[dik[k]] = 1;
+                  if (gPadSprintOn) want[0x2A] = 1;
+              }
+              padSend(want);
+              if (fabsf(cx - gPadSentRx) > 0.001f || fabsf(cy - gPadSentRy) > 0.001f || (cx == 0 && cy == 0 && gPadRsActive)) {
+                  gPadSentRx = cx; gPadSentRy = cy; gPadRsActive = (cx != 0 || cy != 0); p2_rstick(cx, cy);
+              }
+          }
+          static void padReleaseAll(void) {
+              unsigned char none[PAD_CH]; memset(none, 0, sizeof none); padSend(none);
+              memset(gPadKey, 0, sizeof gPadKey); gPadSprintOn = NO;
+              if (gPadRsActive) { gPadRsActive = NO; gPadSentRx = gPadSentRy = 0; p2_rstick(0, 0); }
+              for (int i = 0; i < PB_N; i++) gPadLatch[i] = NO;
+          }
+          static void padHook(GCController *c) {
+              GCExtendedGamepad *g = c.extendedGamepad; if (!g) { p2_note([NSString stringWithFormat:@"GAMEPAD: %s is not an extended gamepad, ignored", (c.vendorName ?: @"controller").UTF8String].UTF8String); return; }
+              g.valueChangedHandler = ^(GCExtendedGamepad *gp, GCControllerElement *el) { (void)gp; (void)el; padApply(); };
+              p2_note([NSString stringWithFormat:@"GAMEPAD: connected %s (%s)", (c.vendorName ?: @"controller").UTF8String, c.productCategory.UTF8String ?: "?"].UTF8String);
+          }
+          static void padTouchSync(void) {   /* main thread; also called from layTick */
+              BOOL hide = gPadHideTouch && !gCbEdit;
+              if (gOwnView && gOwnView.hidden != hide) gOwnView.hidden = hide;
+              for (CbButton *b in gCbList) if (b.hidden != hide) b.hidden = hide;
+          }
+          static void padTick(void) {
+              if ((gPadTick++ % 30) == 0) {   /* twice a second: Settings > Game > Controller support */
+                  BOOL off = p2_cfg_has("gamepad_off") != 0;
+                  if (off != gPadOffNow) {
+                      gPadOffNow = off; if (off) padReleaseAll();
+                      BOOL hide = gPadConnected && !off;
+                      if (hide != gPadHideTouch) { gPadHideTouch = hide; if (hide) ownReleaseAll(); padTouchSync(); gPadSentRx = gPadSentRy = 99.0f; memset(gPadSent, 0, sizeof gPadSent); }
+                      p2_note(off ? "GAMEPAD: turned off (p2.cfg line gamepad_off)" : "GAMEPAD: turned on");
+                  }
+              }
+              padApply();   /* the handlers are the fast path; this catches the menu / game mode changing while the pad sits still */
+          }
+          /* Called when a pad connects or disconnects (and once at start). Only here does anything start or stop: with no pad there is no timer and no work at all. */
+          static void padConnChanged(GCController *leaving) {
+              BOOL any = NO;
+              for (GCController *c in GCController.controllers) if (c != leaving && c.extendedGamepad) any = YES;
+              gPadOffNow = p2_cfg_has("gamepad_off") != 0;
+              gPadConnected = any;
+              BOOL hide = any && !gPadOffNow;
+              if (any && !gPadTimer) {
+                  gPadTick = 0; gPadMenuMode = NO;
+                  gPadTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer *t) { (void)t; padTick(); }];
+              } else if (!any && gPadTimer) { [gPadTimer invalidate]; gPadTimer = nil; }
+              if (!any) padReleaseAll();
+              if (hide != gPadHideTouch) {
+                  gPadHideTouch = hide;
+                  if (hide) ownReleaseAll();   /* a finger that was holding an on-screen key must not leave it held */
+                  padTouchSync();
+                  gPadSentRx = gPadSentRy = 99.0f; memset(gPadSent, 0, sizeof gPadSent);   /* ownReleaseAll may have let go of what the pad holds: the next apply sends it again (the loader ignores repeated edges) */
+                  p2_note(hide ? "GAMEPAD: pad connected, on-screen controls hidden" : "GAMEPAD: no pad, on-screen controls shown");
+              }
+          }
+          static void padStart(void) {
+              static BOOL started; if (started) return; started = YES;
+              cfgReady(); padLoad();
+              NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
+              [nc addObserverForName:GCControllerDidConnectNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) { padHook((GCController *)n.object); padConnChanged(nil); }];
+              [nc addObserverForName:GCControllerDidDisconnectNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
+                  GCController *gone = (GCController *)n.object;
+                  p2_note([NSString stringWithFormat:@"GAMEPAD: disconnected %s", (gone.vendorName ?: @"controller").UTF8String].UTF8String);
+                  padConnChanged(gone);   /* the pad may or may not still be in GCController.controllers at this point, so it is excluded by hand */
+              }];
+              for (GCController *c in GCController.controllers) padHook(c);
+              padConnChanged(nil);   /* a pad that was already connected at launch */
+              p2_note("GAMEPAD: waiting for connect / disconnect notifications (no polling until a pad is connected)");
+          }
+          EOF_PAD_MAIN_M
+      - name: Upload the piece
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-src-gamepad
+          path: parts/
+          if-no-files-found: error

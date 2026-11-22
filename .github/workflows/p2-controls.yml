@@ -621,6 +621,7 @@ jobs:
           static BOOL gCbPinch;                      /* v84: a pinch is in progress, drags are ignored */
           static void cbSelUpdate(void); static void cbSelClear(void); static void cbSelOwn(int i);
 
+          static BOOL gPadHideTouch;   /* gamepad piece: a pad is connected, so the on-screen controls are hidden and the screen no longer presses them (Move mode always shows them) */
           static BOOL ownHasR(void) { for (int i = 0; i < gOwnN; i++) if (gOwn[i].kind == 3) return YES; return NO; }
           static BOOL ownAny(void) { return gOwnOn || ownHasR(); }   /* v88: the right stick lives in camera.txt and works without own_layout */
           static void camSave(void) {
@@ -911,7 +912,7 @@ jobs:
           }
                   gFeedTs = t.timestamp;
                   if (ownAny()) { static unsigned ownTrace; if (ph != 1 && gTcTrace && ownTrace++ < 20000) NSLog(@"BTNTRACE: UI phase=%d slot=%d ui_ts=%.9f arrival_age=%.2fms xy=%.0f,%.0f", ph, s, gFeedTs, (CACurrentMediaTime() - gFeedTs) * 1000.0, p.x, p.y); }
-                  if (ownAny() && ownFeed(ph, s, p, self.bounds.size)) { if (ph >= 2) gSlot[s] = NULL; continue; }   /* v76: our own element, the dev never sees this touch */
+                  if (ownAny() && !gPadHideTouch && ownFeed(ph, s, p, self.bounds.size)) { if (ph >= 2) gSlot[s] = NULL; continue; }   /* v76: our own element, the dev never sees this touch */
                   if (ph == 1) {
                       gTcUiMoves++;
                       if (p2_pan_smooth()) {   /* v81: every intermediate sample (about 120 a second) with its hardware timestamp; the loader resamples them once per game frame */

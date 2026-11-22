@@ -176,8 +176,10 @@ jobs:
               CGRect d = gCbDone.frame; CGFloat w = [gLayChip sizeThatFits:CGSizeMake(400, d.size.height)].width + 28;
               gLayChip.frame = CGRectMake(CGRectGetMaxX(d) + 10, d.origin.y, w, d.size.height);
           }
+          static void padTouchSync(void);   /* gamepad piece: hides / shows the on-screen controls; run here every 0.1 s because a layout switch rebuilds those views */
           static void layTick(void) {
               static int raw = -9, same, waited;
+              padTouchSync();
               if (gLayWait) {
                   if (!gCbEdit && !p2_ctx_known() && ++waited < 40) { for (CbButton *b in gCbList) b.alpha = 0; if (gOwnView) gOwnView.alpha = 0; return; }   /* about 4 s at most, then show whatever p2_ctx says */
                   gLayWait = NO;
