@@ -2273,7 +2273,7 @@ jobs:
                           c2.pColor = ri->pColor ? col : NULL;
                           if (ndc) { r->dcap = 1; if (r->sig >= 0) __sync_fetch_and_add(&gDcApplied[r->sig], 1); __sync_fetch_and_add(&gDcAppliedTot, 1);
                                      if (gDcFirstLog++ < 12) L("DONTCARE: kind %d slot %d (%ux%u): %d colour attachment(s) LOAD -> DONT_CARE (%s)", r->sig, r->ord, ri->w, ri->h, ndc, (gDcForce >> (r->sig < 0 ? 0 : r->sig)) & 1 ? "forced by dc_K" : "learned"); }
-                          else if (lfed++ < 3) L("VKTRACE rewrote a NONE load/store op in a %ux%u pass", ri->w, ri->h);
+                          else if (gLoadFixed++ < 3) L("VKTRACE rewrote a NONE load/store op in a %ux%u pass", ri->w, ri->h);
                           gR_begin(cb, &c2); return;
                       }
                   }
