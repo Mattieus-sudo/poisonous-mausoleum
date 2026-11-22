@@ -1,0 +1,9 @@
+Prototype 2 mod loader
+
+One folder in here per mod, named as you like: Mods/<mod name>/<its files>. Inside a mod the files can be in any
+sub folders. Each file replaces the game file with the same name (upper / lower case does not matter).
+
+Turn mods on or off in the controls editor: MOD LOADER ON, then MODS - tick the mods you want; they are loaded
+the next time the game starts. The game's own files are never changed.
+
+Two ticked mods with a file of the same name: the mod first in alphabetical order wins (p2.log, 'mod loader' lines).
