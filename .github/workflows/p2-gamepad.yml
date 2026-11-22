@@ -6,7 +6,7 @@ name: "P2 gamepad source (v2 Bluetooth / MFi / Xbox / PlayStation controllers)"
 #   key events, source 0x401 (GAMEPAD): action 0 down / 1 up; 96 A, 97 B, 99 X, 100 Y, 102 LB, 103 RB, 106 L3, 107 R3, 108 Start, 109 Back (the game maps these to XInput bits 0x1000 0x2000 0x4000 0x8000 0x100 0x200 0x40 0x80 0x10 0x20)
 #   A finger on the screen clears the game's pad-present flag again (that is how it switches back to touch prompts); the next pad input sets it.
 # v2: the keyboard-emulation mode (p2.cfg gamepad_keys, Documents/gamepad.txt) and the Off switch (gamepad_off) are gone. Old gamepad_keys / gamepad_off lines in p2.cfg are simply ignored.
-# The only controller option is the STYLE, Settings > Game > Controller: Xbox (default) or PlayStation (p2.cfg line gamepad_ps). The loader reads it into gPadPS (logged when it changes); nothing uses it yet.
+# Xbox vs PlayStation is not decided here: Settings > Game > Controller flips the "Playstation Buttons" mod in the mod loader (Documents/.controls.cfg), and the pad itself always speaks the game's Xbox protocol.
 # While a pad is connected the on-screen controls (own_layout stick / buttons, custom buttons) are hidden and stop taking touches; the gear stays, and Move mode shows them again. Nothing polls until a pad connects: the connect / disconnect
 # notifications start and stop the 60 Hz timer. Called by build-loader.yml (uses: ./.github/workflows/p2-gamepad.yml). It only writes source text and uploads it.
 # pad_main.m is joined into main.m after lay_main.m and before ui_main_2.m (the UI's launch code calls padStart()).
@@ -28,7 +28,6 @@ jobs:
           enum { PB_A, PB_B, PB_X, PB_Y, PB_LB, PB_RB, PB_LT, PB_RT, PB_L3, PB_R3, PB_START, PB_BACK, PB_UP, PB_DOWN, PB_LEFT, PB_RIGHT, PB_N };
           typedef struct { BOOL b[PB_N]; float lx, ly, rx, ry, lt, rt; int pads; } PadState;   /* stick y: GameController has up = +1 */
 
-          static BOOL gPadPS;                     /* p2.cfg line gamepad_ps: PlayStation-style prompts wanted (default Xbox). Settings > Game > Controller. */
           static NSTimer *gPadTimer; static int gPadTick; static BOOL gPadConnected;
 
           static BOOL padPressed(GCControllerButtonInput *b) { return b && (b.isPressed || b.value > 0.35f); }
@@ -94,17 +93,13 @@ jobs:
               for (CbButton *b in gCbList) if (b.hidden != hide) b.hidden = hide;
           }
           static void padTick(void) {
-              if ((gPadTick++ % 30) == 0) {   /* twice a second: Settings > Game > Controller */
-                  BOOL ps = p2_cfg_has("gamepad_ps") != 0;
-                  if (ps != gPadPS) { gPadPS = ps; p2_note(ps ? "GAMEPAD: style = PlayStation" : "GAMEPAD: style = Xbox"); }
-              }
+              gPadTick++;
               padApply();   /* the handlers are the fast path; this catches a pad that sits still while the game changes state */
           }
           /* Called when a pad connects or disconnects (and once at start). Only here does anything start or stop: with no pad there is no timer and no work at all. */
           static void padConnChanged(GCController *leaving) {
               BOOL any = NO;
               for (GCController *c in GCController.controllers) if (c != leaving && c.extendedGamepad) any = YES;
-              gPadPS = p2_cfg_has("gamepad_ps") != 0;
               gPadConnected = any;
               BOOL hide = any;
               if (any && !gPadTimer) {

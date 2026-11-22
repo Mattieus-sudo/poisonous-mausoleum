@@ -69,6 +69,7 @@ jobs:
           @property (nonatomic, copy) NSArray<NSString *> *cfgKeys; /* menu: p2.cfg line per choice, @"" = no line (the default) */
           @property (nonatomic, copy) NSString *prefix;             /* menu: also clear every <prefix><digits> line */
           @property (nonatomic) BOOL hz;                            /* menu: apply the display lock right away */
+          @property (nonatomic, copy) NSString *hostMod;            /* menu: a 2-choice row (0 = off, 1 = on) that flips this mod's "mod <name>" line in Documents/.controls.cfg instead of a p2.cfg line */
           @end
           @implementation SRow @end
 
@@ -77,6 +78,9 @@ jobs:
           }
           static SRow *sMenu(NSString *t, NSString *d, NSArray *labels, NSArray *cfgKeys, NSString *prefix) {
               SRow *r = [SRow new]; r.kind = SKMenu; r.title = t; r.detail = d; r.labels = labels; r.cfgKeys = cfgKeys; r.prefix = prefix; return r;
+          }
+          static SRow *sModMenu(NSString *t, NSString *d, NSArray *labels, NSString *modName) {
+              SRow *r = [SRow new]; r.kind = SKMenu; r.title = t; r.detail = d; r.labels = labels; r.cfgKeys = @[@"", @""]; r.hostMod = modName; return r;
           }
           static SRow *sPlain(SKind k, NSString *t, NSString *d) { SRow *r = [SRow new]; r.kind = k; r.title = t; r.detail = d; return r; }
           static SRow *sBtn(NSString *t, NSString *action) { SRow *r = sPlain(SKButton, t, @""); r.cfgKey = action; return r; }
@@ -154,6 +158,21 @@ jobs:
               return [out writeToFile:hostCfgPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
           }
 
+          /* v105: flip ONE mod line (no other line and no other mod is touched, and it does not matter whether the mod's folder exists yet). */
+          static BOOL hostSetModLine(NSString *name, BOOL enabled) {
+              NSString *wanted = [@"mod " stringByAppendingString:name];
+              NSMutableArray<NSString *> *lines = [NSMutableArray array];
+              for (NSString *line in hostCfgLines()) if (line.length && ![line isEqualToString:wanted]) [lines addObject:line];
+              if (enabled) [lines addObject:wanted];
+              NSString *out = lines.count ? [[lines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] : @"";
+              return [out writeToFile:hostCfgPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
+          }
+          /* v105: the mod loader is ON by default. No "modloader" line yet (first launch) = write "modloader 1"; once the line exists (the Mod loader switch in the game settings writes 1 or 0) it is never touched here. */
+          static void hostSeedModLoader(void) {
+              for (NSString *line in hostCfgLines()) if ([line hasPrefix:@"modloader "]) return;
+              hostCfgSet(@"modloader", @"1");
+          }
+
           /* ---- live log screen: reuses the one text view that emit() already feeds ---- */
           @interface LogVC : UIViewController @end
           @implementation LogVC
@@ -194,8 +213,8 @@ jobs:
               self.rows = @[
                   @[ sMenu(@"Display refresh rate", @"Locks the screen to this rate. Applies immediately.",
                            @[@"iOS decides", @"60 Hz", @"90 Hz", @"120 Hz (default)"], @[@"hz_off", @"hz_60", @"hz_90", @""], nil),
-                     sMenu(@"Controller", @"Optional. Game looks for a controller at any time, this option just chooses between Xbox and PlayStation style controls",
-                           @[@"Xbox (default)", @"PlayStation"], @[@"", @"gamepad_ps"], nil),
+                     sModMenu(@"Controller", @"Optional. Game looks for a controller at any time, this option just chooses between Xbox and PlayStation style controls",
+                           @[@"Xbox", @"PlayStation"], @"Playstation Buttons"),
                       ],
                   @[ sMenu(@"Wait spin", @"How long a game thread busy-waits before sleeping. Longer reacts faster but uses more CPU, battery and heat.",
                            @[@"Off (0 us)", @"250 us", @"1000 us (default)", @"2000 us", @"4000 us"], @[@"waitspin_0", @"waitspin_250", @"", @"waitspin_2000", @"waitspin_4000"], @"waitspin_"),
@@ -259,12 +278,18 @@ jobs:
               return nil;
           }
           - (NSInteger)currentIndex:(SRow *)r {   /* -1 = a custom p2.cfg line the list does not offer */
+              if (r.hostMod.length) return hostModEnabled(r.hostMod) ? 1 : 0;   /* the mod's own state in the loader is the choice */
               for (NSInteger i = 0; i < (NSInteger)r.cfgKeys.count; i++) if (r.cfgKeys[i].length && uiHas(r.cfgKeys[i])) return i;
               if (r.prefix.length && uiWithPrefix(r.prefix).count) return -1;
               for (NSInteger i = 0; i < (NSInteger)r.cfgKeys.count; i++) if (!r.cfgKeys[i].length) return i;
               return 0;
           }
           - (void)choose:(SRow *)r index:(NSInteger)i {
+              if (r.hostMod.length) {   /* Xbox = mod off, PlayStation = mod on (and the loader itself is switched on so it takes effect); nothing else changes */
+                  if (i == 1) hostCfgSet(@"modloader", @"1");
+                  hostSetModLine(r.hostMod, i == 1);
+                  return;
+              }
               for (NSString *f in r.cfgKeys) if (f.length) uiSet(f, NO);
               if (r.prefix.length) for (NSString *f in uiWithPrefix(r.prefix)) uiSet(f, NO);
               if (r.cfgKeys[i].length) uiSet(r.cfgKeys[i], YES);
@@ -348,6 +373,7 @@ jobs:
                   [al addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
                       for (NSArray<SRow *> *sec in self.rows) for (SRow *q in sec) {
                           if (q.kind == SKSwitch) uiSet(q.cfgKey, NO);
+                          if (q.kind == SKMenu && q.hostMod.length) hostSetModLine(q.hostMod, NO);   /* back to Xbox */
                           if (q.kind == SKMenu) { for (NSString *f in q.cfgKeys) if (f.length) uiSet(f, NO); if (q.prefix.length) for (NSString *f in uiWithPrefix(q.prefix)) uiSet(f, NO); }
                       }
                       uiSet(@"nosplash", YES);   /* default is ON */
@@ -462,7 +488,7 @@ jobs:
           - (BOOL)isSwitchRow:(NSIndexPath *)ip { return (ip.section == 0 && (ip.row == 0 || ip.row == 3 || ip.row == 5)) || (ip.section == 1 && (ip.row == 1 || ip.row == 2)) || (ip.section == 2 && ip.row == 0); }
           - (NSString *)valueForRow:(NSIndexPath *)ip {
               NSString *key = [self keyForRow:ip]; if ([key hasPrefix:@"p2:"]) return uiHas([key substringFromIndex:3]) ? @"1" : @"0";   /* p2.cfg switch */
-              if (key.length) return hostCfgValue(key, @"0");
+              if (key.length) return hostCfgValue(key, [key isEqualToString:@"modloader"] ? @"1" : @"0");   /* v105: the mod loader defaults to ON */
               if (ip.section == 0 && ip.row == 1) return hostCfgValue(@"fpscap", @"60");
               if (ip.section == 3 && ip.row == 1) return hostCfgValue(@"camera", @"1.0");
               if (ip.section == 1 && ip.row == 0) return hostCfgValue(@"gfx", @"-1");
@@ -1029,7 +1055,7 @@ jobs:
                   {"settle_s6",0,"settle at state 6"}, {"swapchain_alpha_keep",0,"keep swapchain alpha"}, {"imgdelay_all",0,"image delay for all images"},
                   {"mvk_argbuf_off",0,"MoltenVK argument buffers OFF"}, {"mvk_dumpshaders",0,"MoltenVK dump shaders"},
                   {"mvk_fastmath_auto",0,"MoltenVK fast math auto"}, {"mvk_fastmath_on",0,"MoltenVK fast math ON (default since v72)"}, {"mvk_fastmath_off",0,"MoltenVK fast math OFF"}, {"shadowmin_off",0,"built-in shadow min OFF (every caster drawn)"}, {"passtime_on",0,"PASSSIG pass signature log"}, {"passskip_",1,"skip the draws of pass signature K (diagnostic)"}, {"ringsprint_",1,"stick sprints past a ring in ANY direction, radius N per mille of screen height"}, {"inputtap_on",0,"INPUTTAP log: finger movement vs what the game receives"}, {"mvk_log_info",0,"MoltenVK info logging"},
-                  {"own_layout",0,"own controls on (v76)"}, {"gamepad_ps",0,"controller prompts / style: PlayStation (default Xbox)"}, {"rstick_on",0,"right camera stick added to own controls (v87)"}, {"rstick_speed_",1,"right stick: full push in percent of screen width per second (v87)"}, {"rstick_vert_",1,"right stick: up/down speed in percent (v87)"}, {"rstick_invy",0,"right stick: flip up/down (v87)"}, {"ovl_trace",0,"dev overlay measured (v75)"}, {"ovl_hide",0,"dev overlay hidden (v75)"}, {"ovl_off",0,"dev overlay builder not called (v75)"}, {"passtrace_now",0,"dev one-frame pass trace trigger (v75)"}, {"drawtrace_now",0,"dev one-frame draw trace trigger (v75)"}, {"dbgoff_",1,"dev renderer feature switched off via debugoff file (v75)"}, {"env",0,"env switch (see loader help)"}, {"nosplash",0,"skip the autosave splash and the Disclaimer (the original port credits EliteMV; credited in the launcher instead)"},
+                  {"own_layout",0,"own controls on (v76)"}, {"rstick_on",0,"right camera stick added to own controls (v87)"}, {"rstick_speed_",1,"right stick: full push in percent of screen width per second (v87)"}, {"rstick_vert_",1,"right stick: up/down speed in percent (v87)"}, {"rstick_invy",0,"right stick: flip up/down (v87)"}, {"ovl_trace",0,"dev overlay measured (v75)"}, {"ovl_hide",0,"dev overlay hidden (v75)"}, {"ovl_off",0,"dev overlay builder not called (v75)"}, {"passtrace_now",0,"dev one-frame pass trace trigger (v75)"}, {"drawtrace_now",0,"dev one-frame draw trace trigger (v75)"}, {"dbgoff_",1,"dev renderer feature switched off via debugoff file (v75)"}, {"env",0,"env switch (see loader help)"}, {"nosplash",0,"skip the autosave splash and the Disclaimer (the original port credits EliteMV; credited in the launcher instead)"},
                   {"fakeaspect_",1,"fake screen aspect ratio x 10000 (loader writes Documents/fake_aspect)"}, {"touch_coalesce",0,"touch moves coalesced to one per display tick (ignored while smooth panning is on)"}, {"pan_smooth_off",0,"smooth camera panning OFF: every touch move goes to the game raw (v81)"}, {"pan_lag_",1,"smooth panning: fixed lag in ms instead of the measured one (v81)"}, {"pan_clock_off",0,"steady pan clock OFF: camera steps follow the real time the game thread drains, as in v81 (v82)"}, {"inputtap_on",0,"INPUTTAP lines: raw finger px vs what the loader handed the game per frame (v81)"}, {"touch_trace",0,"touch trace (logs TOUCHTRACE lines while touching)"}, {"waitspin_",1,"wait spin in us"}, {"rt_render_",1,"render thread real-time policy, budget in us"}, {"imgdelay_",1,"image delay"}, {"sleepcap_",1,"guest sleep cap in us"},
                   {"hold_s5_",1,"hold at state 5"}, {"hold_s6_",1,"hold at state 6"}, {"ncpu_",1,"reported CPU count"},
                   {"pdelay_",1,"present delay"}, {"pthrottle_",1,"present throttle"}, {"setenv_",1,"sets an env var for the game"},
@@ -1092,7 +1118,7 @@ jobs:
               RootVC *vc = [RootVC new]; vc.game = gGame;
               vc.onPlay = ^{ [self run]; };
               vc.onHz = ^{ [self applyHz]; };
-              self.window.rootViewController = vc; [self.window makeKeyAndVisible]; [self startFlags]; [self startHz]; padStart(); return YES;
+              self.window.rootViewController = vc; [self.window makeKeyAndVisible]; hostSeedModLoader(); [self startFlags]; [self startHz]; padStart(); return YES;
           }
           - (void)run {
               if (gRan) { emit("(already ran in this launch: close the app from the app switcher and open it again to repeat)"); return; }
