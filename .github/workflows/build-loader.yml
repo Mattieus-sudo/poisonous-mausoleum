@@ -4551,6 +4551,7 @@ jobs:
           unzip -q -o ../game.apk 'assets/*' -d $APP/ && du -sh $APP/assets || echo 'no assets in apk'
           mkdir -p $APP/icons && cp "$P/icons/icons/"*.png $APP/icons/ 2>/dev/null && echo "button icons: $(ls $APP/icons | wc -l) PNGs in the app" || echo 'button icons: none in p2-icons/, buttons keep their text labels'
           mkdir -p $APP/bundled-mods && cp -R "$GITHUB_WORKSPACE/repo_files/p2-mods/." $APP/bundled-mods/ 2>/dev/null && echo "bundled mods: $(ls $APP/bundled-mods | wc -l) item(s) in the app" || echo 'bundled mods: none in p2-mods/'
+          mkdir -p $APP/bundled-layouts && cp -R "$GITHUB_WORKSPACE/repo_files/p2-layouts/." $APP/bundled-layouts/ 2>/dev/null && rm -rf $APP/bundled-layouts/__MACOSX && find $APP/bundled-layouts -name '.DS_Store' -delete && echo "bundled layouts: $(ls $APP/bundled-layouts | wc -l) item(s) in the app" || echo 'bundled layouts: none in p2-layouts/'
           cat > $APP/Frameworks/P2Code.framework/Info.plist <<'EOF_FWPLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <plist version="1.0"><dict>

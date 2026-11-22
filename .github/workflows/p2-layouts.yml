@@ -57,7 +57,9 @@ jobs:
           static NSString *layName(int c) {
               if (!gLayNames) {
                   gLayNames = [NSMutableDictionary new]; NSFileManager *fm = NSFileManager.defaultManager; NSString *d = [layDocs() stringByAppendingPathComponent:@"layouts"], *f = layCtxFile();
-                  if (![fm fileExistsAtPath:d]) {   /* first run: the folder, the names file, and a video layout that is just a Skip (M) button with no stick */
+                  NSString *bl = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"bundled-layouts"]; BOOL fresh = ![fm fileExistsAtPath:d];   /* first run: copy the layouts that ship in the app (repo folder p2-layouts/); never touches an existing Documents/layouts */
+                  if (fresh && [fm contentsOfDirectoryAtPath:bl error:nil].count) [fm copyItemAtPath:bl toPath:d error:nil];
+                  else if (fresh) {   /* no shipped layouts in this build, so: the folder, the names file, and a video layout that is just a Skip (M) button with no stick */
                       [fm createDirectoryAtPath:[d stringByAppendingPathComponent:@"video"] withIntermediateDirectories:YES attributes:nil error:nil];
                       [@"# Names for the game's touch layouts. layout N name. Built in: 0 foot (layouts/foot), 1 vehicle, 2 menu (pause, options, any screen with the game's cursor). Others are called layoutN until named here.\n# Easiest: be in a video or a vehicle, open the editor, pick the layout in the picker and choose \"Assign to the game's current screen\". Or watch p2.log for LAYOUT: lines and add e.g.  layout 3 video\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
                       [@"# video layout: only a Skip button (M).\nbtn 32 0.8300 0.7800 0.1000 0.1700 M\n" writeToFile:[d stringByAppendingPathComponent:@"video/custom_buttons.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
@@ -152,9 +154,10 @@ jobs:
               UIAction *as = [UIAction actionWithTitle:(gLayRaw >= 3 ? [NSString stringWithFormat:@"Assign \"%@\" to the game's current screen", layPretty(gLayCtx)] : @"Assign to the game's current screen (only for its layouts 3 and up)") image:nil identifier:nil handler:^(UIAction *x) { layAssign(gLayRaw, gLayCtx); }];
               if (gLayRaw < 3) as.attributes = UIMenuElementAttributesDisabled; [more addObject:as];
               if (![gLayCtx isEqualToString:@"foot"]) {
-                  UIAction *rs = [UIAction actionWithTitle:@"Reset this layout (use the plain one)" image:nil identifier:nil handler:^(UIAction *x) {
+                  UIAction *rs = [UIAction actionWithTitle:@"Reset this layout (back to its default)" image:nil identifier:nil handler:^(UIAction *x) {
                       NSString *d = [[layDocs() stringByAppendingPathComponent:@"layouts"] stringByAppendingPathComponent:gLayCtx];
-                      [NSFileManager.defaultManager removeItemAtPath:[d stringByAppendingPathComponent:@"custom_buttons.txt"] error:nil]; [NSFileManager.defaultManager removeItemAtPath:[d stringByAppendingPathComponent:@"own_layout.txt"] error:nil];
+                      { NSFileManager *rfm = NSFileManager.defaultManager; NSString *sd = [[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"bundled-layouts"] stringByAppendingPathComponent:gLayCtx];   /* back to the layout that shipped in the app if there is one, else (nothing shipped) the plain foot one */
+                          for (NSString *fn in @[@"custom_buttons.txt", @"own_layout.txt"]) { NSString *to = [d stringByAppendingPathComponent:fn], *from = [sd stringByAppendingPathComponent:fn]; [rfm removeItemAtPath:to error:nil]; if ([rfm fileExistsAtPath:from]) [rfm copyItemAtPath:from toPath:to error:nil]; } }
                       layApply(gLayCtx, YES);
                   }];
                   rs.attributes = UIMenuElementAttributesDestructive; [more addObject:rs];
