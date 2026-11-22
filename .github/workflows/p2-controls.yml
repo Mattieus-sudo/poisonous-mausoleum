@@ -1,6 +1,6 @@
 name: "P2 controls source (v104 dynamic menu render space)"
 # (icons and layouts hook in here: the picture code is in p2-icons.yml, the per-layout code in p2-layouts.yml; both are joined into main.m around this piece)
-# CONTROLS: the touch input path in p2core.c (pan smoothing, right stick, swipe feed) and, in main.m, the own controls, the right stick and its menu, custom buttons and the add list.
+# CONTROLS: the touch input path in p2core.c (right stick, swipe feed) and, in main.m, the own controls, the right stick and its menu, custom buttons and the add list.
 # Called by build-loader.yml (uses: ./.github/workflows/p2-controls.yml). It only writes source text and uploads it; the loader joins the pieces and compiles.
 on:
   workflow_call:
@@ -28,16 +28,7 @@ jobs:
           static int gInPipe[2] = {-1, -1};
           static volatile int gInAttached;
           static struct { int id; float x, y; } gTp[IQ_PTRS]; static int gTn;
-          /* v81: PAN SMOOTHING (default ON, p2.cfg line pan_smooth_off = raw). Moves are kept per finger with their real touch times; once per frame the game thread gets ONE move per finger,
-             placed on the finger path at (now - lag), so the step per frame follows finger speed x real frame time. Down, up and cancel are never delayed. p2.cfg line pan_lag_N = fixed lag in ms. */
-          typedef struct { double t; float x, y; } PSm;
-          #define PH_N 16
-          static PSm gPH[IQ_PTRS][PH_N]; static unsigned gPHn[IQ_PTRS];
-          static struct { float x, y; } gOut[IQ_PTRS];   /* what the dev's handler last saw for each finger (only for the INPUTTAP numbers) */
-          static int gPanOn = -1, gPanLagMs = -1;
-          static int gMvPend, gMvArmed, gMvServed;       /* all under gInMu */
-          static double gPanEma = 1.0 / 120.0;           /* measured touch sample interval, seconds */
-          static double gPanT, gPanLag = 0.008, gPanPeak, gPanLastNow;   /* resample clock (never runs backwards), current lag, recent worst age of the newest sample */
+          static int gMvArmed, gMvServed;       /* all under gInMu */
           static float gItFedDx, gItFedDy;
           /* v90: MENU TOUCH state (all under gInMu). One finger owns the game's cursor while the game is in a menu; the game thread (menu_touch_tick) turns it into SetTouchMouse calls. */
           static int gMtId = -1, gMt2Id = -1, gMtWarp, gMtPressed, gMtUp, gMtMoved; static float gMtX, gMtY; static long long gMtPressAt, gMtRelAt, gMtUpAt;
@@ -45,31 +36,9 @@ jobs:
           #define RS_H 16
           static RsS gRsH[RS_H]; static unsigned gRsHn; static int gRsTail; static double gRsT0;   /* gRsTail: a push that was let go before the game thread saw it keeps its one last move; gRsT0: the hardware time of the touch that started the push, until its first frame */
           static float gRsX, gRsY, gRsPx, gRsPy; static int gRsStickOn, gRsDown, gRsInit, gRsSpeed = 100, gRsVert = 100, gRsInv; static double gRsLast;   /* v87 right camera stick, see rs_emit_locked */
-          /* v82: PAN CLOCK. The sample time advances by the game thread's gap rounded to WHOLE SCREEN TICKS and is nudged gently toward the real clock, so drain-time wobble does not
-             change the camera step; a dropped frame is still followed. p2.cfg line pan_clock_off = the v81 way. */
           static volatile double gPanTick = 1.0 / 60.0;   /* screen refresh period in seconds, set by the display setup */
-          static int gPanClockOn = -1;
-          static double gPanGapEma;                       /* smoothed game-thread gap (steady frames), seconds */
-          static double gPanDrainLast;                    /* when the game thread last drained a resampled move (0 = new gesture) */
-          static double gPsN, gPsSumGap, gPsSumGap2, gPsSumAdv, gPsSumAdv2, gPsSnaps, gPsSteerMax;   /* per-gesture numbers for the PAN log line */
           static double pan_now(void) { return (double)fx_now_ns(CLOCK_UPTIME_RAW) / 1e9; }   /* same clock as UITouch.timestamp */
           void p2_set_tick(double seconds) { if (seconds > 0.002 && seconds < 0.05) gPanTick = seconds; }   /* display setup tells the loader the refresh period */
-          static void ph_push(int i, double t, float x, float y) {
-              unsigned n = gPHn[i];
-              if (n) { PSm *p = &gPH[i][(n - 1) % PH_N]; if (t <= p->t) t = p->t + 1e-6; double d = t - p->t; if (d > 0.002 && d < 0.05) gPanEma += (d - gPanEma) * 0.1; }
-              gPH[i][n % PH_N].t = t; gPH[i][n % PH_N].x = x; gPH[i][n % PH_N].y = y; gPHn[i] = n + 1;
-          }
-          static int ph_at(int i, double T, float *ox, float *oy) {   /* finger i on its touch path at time T; 1 = T is at or past the newest sample (nothing left to catch up) */
-              unsigned n = gPHn[i]; if (!n) { *ox = *oy = 0.0f; return 1; }
-              unsigned cnt = n < PH_N ? n : PH_N; const PSm *nw = &gPH[i][(n - 1) % PH_N];
-              if (T >= nw->t) { *ox = nw->x; *oy = nw->y; return 1; }
-              for (unsigned k = 1; k < cnt; k++) {
-                  const PSm *a = &gPH[i][(n - 1 - k) % PH_N], *b = &gPH[i][(n - k) % PH_N];
-                  if (a->t <= T) { float u = (float)((T - a->t) / (b->t - a->t)); *ox = a->x + (b->x - a->x) * u; *oy = a->y + (b->y - a->y) * u; return 0; }
-              }
-              { const PSm *o = &gPH[i][(n - cnt) % PH_N]; *ox = o->x; *oy = o->y; }   /* T is older than everything kept */
-              return 0;
-          }
           static void inq_push_locked(const InEv *e) {
               InEv traced = *e;
               traced.trace_seq = ++gTouchTraceSeq;
@@ -107,54 +76,9 @@ jobs:
               if (gInPipe[1] >= 0) { char c = 1; if (write(gInPipe[1], &c, 1) < 0) {} }
           }
           static void pan_arm_locked(void) { if (!gMvArmed && gInPipe[1] >= 0) { char c = 1; if (write(gInPipe[1], &c, 1) < 0) {} gMvArmed = 1; } }   /* one wake-up byte; the queue-empty path of sh_inq_get drains it */
-          static void pan_flush_locked(void) {   /* a held-back move goes out at the newest raw position, ahead of whatever event is about to be queued */
-              InEv e; memset(&e, 0, sizeof e); e.type = 2; e.action = 2; e.n = gTn;
-              for (int i = 0; i < gTn; i++) {
-                  e.id[i] = gTp[i].id; e.x[i] = gTp[i].x; e.y[i] = gTp[i].y;
-                  if (gItOn && gTp[i].x > (float)p2_win_w * 0.5f) { gItFedDx += gTp[i].x - gOut[i].x; gItFedDy += gTp[i].y - gOut[i].y; }
-                  gOut[i].x = gTp[i].x; gOut[i].y = gTp[i].y;
-              }
-              gMvPend = 0; inq_push_locked(&e);
-          }
           static void inq_rearm(void) {   /* called once per presented frame: a finger still behind its newest sample gets another move next frame even if it did not move */
               if (!gInAttached) return;
-              pthread_mutex_lock(&gInMu); if ((gPanOn > 0 && gMvPend) || gRsStickOn || gRsTail || gMtId >= 0 || gMtWarp) pan_arm_locked(); pthread_mutex_unlock(&gInMu);
-          }
-          static int pan_resample_locked(InEv *e) {   /* the one move per frame the game thread gets */
-              double now = pan_now(), newest = 0.0;
-              for (int i = 0; i < gTn; i++) if (gPHn[i]) { double t = gPH[i][(gPHn[i] - 1) % PH_N].t; if (t > newest) newest = t; }
-              /* Lag = how old the newest sample can get when the game thread asks (touch interval plus how late UIKit hands samples over). Tracked as a slowly decaying peak,
-                 moved toward in small steps so the picture does not lurch, and the sample time never goes backwards. A fixed p2.cfg line value wins. */
-              double age = newest > 0.0 ? now - newest : 1.0, dtn = gPanLastNow > 0.0 ? now - gPanLastNow : 0.0; gPanLastNow = now;
-              gPanPeak -= dtn * 0.002; if (age < 0.04 && age > gPanPeak) gPanPeak = age; if (gPanPeak < 0.0) gPanPeak = 0.0;
-              if (gPanLagMs >= 0) gPanLag = gPanLagMs / 1000.0;
-              else { double want = gPanPeak + 0.004; if (want < 0.004) want = 0.004; if (want > 0.036) want = 0.036;
-                     double st = want - gPanLag; if (st > 0.002) st = 0.002; if (st < -0.0002) st = -0.0002; gPanLag += st; }
-              double T = now - gPanLag;
-              double dd = gPanDrainLast > 0.0 ? now - gPanDrainLast : 0.0; gPanDrainLast = now;
-              if (gPanClockOn > 0 && gPanT > 0.0 && dd > 0.0 && dd < 0.25) {
-                  double tk = gPanTick, use = dd;
-                  if (gPanGapEma > 0.0 && fabs(dd - gPanGapEma) <= 0.6 * gPanGapEma) { gPanGapEma += (dd - gPanGapEma) * 0.2; use = gPanGapEma; }   /* steady frames: the smoothed gap, so wobble cannot flip the tick count */
-                  else { gPanGapEma = gPanGapEma > 0.0 ? gPanGapEma + (dd - gPanGapEma) * 0.05 : dd; }   /* a real change (a dropped frame, a rate switch): follow the raw gap at once */
-                  double nt = floor(use / tk + 0.5); if (nt < 1.0) nt = 1.0;
-                  double adv = nt * tk;                       /* the gap since the last frame, in whole screen ticks */
-                  double Tc = gPanT + adv, err = T - Tc;      /* err = how far the steady clock has drifted from the real one */
-                  if (err > 1.5 * tk || err < -1.5 * tk) { gPsSnaps += 1.0; }   /* too far off (a long stall): take the real clock */
-                  else { double st = err * 0.2, lim = tk * 0.15; if (st > lim) st = lim; if (st < -lim) st = -lim; if (st < 0 ? -st > gPsSteerMax : st > gPsSteerMax) gPsSteerMax = st < 0 ? -st : st; T = Tc + st; }
-                  gPsN += 1.0; gPsSumGap += dd; gPsSumGap2 += dd * dd; gPsSumAdv += adv; gPsSumAdv2 += adv * adv;
-              }
-              if (gPanClockOn > 0 && newest > 0.0 && T > newest) T = newest;   /* never past the newest real sample */
-              if (T < gPanT) T = gPanT; gPanT = T;
-              int caught = 1;
-              memset(e, 0, sizeof *e); e->type = 2; e->action = 2; e->n = gTn;
-              for (int i = 0; i < gTn; i++) {
-                  float px, py; if (!ph_at(i, T, &px, &py)) caught = 0;
-                  e->id[i] = gTp[i].id; e->x[i] = px; e->y[i] = py;
-                  if (gItOn && px > (float)p2_win_w * 0.5f) { gItFedDx += px - gOut[i].x; gItFedDy += py - gOut[i].y; }
-                  gOut[i].x = px; gOut[i].y = py;
-              }
-              gMvPend = !caught;
-              return 1;
+              pthread_mutex_lock(&gInMu); if (gRsStickOn || gRsTail || gMtId >= 0 || gMtWarp) pan_arm_locked(); pthread_mutex_unlock(&gInMu);
           }
           /* v90: MENU MODE (automatic only, there is no Menu button any more), real Left Click, real Right Click, finger = cursor in menus.
              Menu mode is decided from three things the game itself exposes: its touch layout (GameScreen() -> EO_CTXTAB, layout 2 = menu), GameCursorShown() (the game is showing its mouse
@@ -441,14 +365,6 @@ jobs:
               for (int i = 0; i < LSRC_MAX; i++) if (gInPipe[0] >= 0 && l->s[i].fd == gInPipe[0]) l->s[i].fd = -1;
               L("PLAT AInputQueue_detachLooper");
           }
-          int p2_pan_smooth(void) {
-              if (!gDocs[0]) return 1;   /* p2.cfg not readable yet (launcher screen): smoothing assumed, decided at the first real touch */
-              if (gPanOn < 0) {
-                  gPanOn = sw_has("pan_smooth_off") ? 0 : 1; gPanLagMs = sw_val("pan_lag_"); gPanClockOn = sw_has("pan_clock_off") ? 0 : 1;
-                  L("PAN: touch smoothing %s (p2.cfg line pan_smooth_off turns it off), lag %s (p2.cfg line pan_lag_N = N ms overrides the measured touch interval), steady clock %s (p2.cfg line pan_clock_off = the v81 way), screen tick %.2f ms", gPanOn ? "ON" : "off", gPanLagMs >= 0 ? "fixed by p2.cfg line" : "measured", gPanClockOn ? "ON" : "off", gPanTick * 1000.0);
-              }
-              return gPanOn;
-          }
           static int menu_touch_locked(int phase, int tid, float x, float y) {   /* v90, gInMu held. 1 = this event belongs to the menu cursor, the dev's handler never sees it */
               if (gMtId >= 0 && tid == gMtId) {
                   gMtX = x; gMtY = y;
@@ -471,25 +387,22 @@ jobs:
           }
           void p2_touch_ts(int phase, int tid, float x, float y, double ts) {   /* ts = UITouch.timestamp (seconds, same clock as CLOCK_UPTIME_RAW), 0 = now */
               if (!gInAttached) return;
-              int pan = p2_pan_smooth(); double t = ts > 0.0 ? ts : pan_now();
+              double t = ts > 0.0 ? ts : pan_now();
               if (phase != 1 && TT_ON()) L_N(20000, "TOUCHTRACE: UI phase=%d touch=%d ui_ts=%.9f arrival_age=%.2fms xy=%.0f,%.0f", phase, tid, t, (pan_now() - t) * 1000.0, x, y);
               pthread_mutex_lock(&gInMu);
               if (menu_touch_locked(phase, tid, x, y)) goto out;   /* v90: menu mode, the finger drives the game's cursor */
-              if (pan && gMvPend && phase != 1) pan_flush_locked();
               if (phase == 0 && gRsDown) rs_cancel_locked();
               InEv e; memset(&e, 0, sizeof e); e.type = 2; e.touch_id = tid; e.ui_ts = t;
               int idx = -1; for (int i = 0; i < gTn; i++) if (gTp[i].id == tid) idx = i;
               if (phase == 0) {
                   if (idx < 0 && gTn < IQ_PTRS) { idx = gTn++; gTp[idx].id = tid; }
                   if (idx < 0) goto out;
-                  if (gTn == 1) { gPanT = 0.0; gPanLastNow = 0.0; gPanPeak = 0.0; gPanDrainLast = 0.0; gPanGapEma = 0.0; gPsN = gPsSumGap = gPsSumGap2 = gPsSumAdv = gPsSumAdv2 = gPsSnaps = gPsSteerMax = 0.0; gPanLag = gPanEma < 0.004 ? 0.004 : gPanEma > 0.016 ? 0.016 : gPanEma; if (gPanClockOn > 0 && gPanLag < 0.0125) gPanLag = 0.0125; }   /* a new gesture: start the lag from the touch interval */
-                  gTp[idx].x = x; gTp[idx].y = y; gPHn[idx] = 0; ph_push(idx, t, x, y); gOut[idx].x = x; gOut[idx].y = y; e.action = (gTn == 1) ? 0 : (5 | (idx << 8));
+                  gTp[idx].x = x; gTp[idx].y = y; e.action = (gTn == 1) ? 0 : (5 | (idx << 8));
               } else {
                   if (idx < 0) goto out;
                   if (phase == 1 && gItOn && gTp[idx].x > (float)p2_win_w * 0.5f) { gItDx += x - gTp[idx].x; gItDy += y - gTp[idx].y; gItMoves++; }
                   gTp[idx].x = x; gTp[idx].y = y;
                   if (phase == 1) {
-                      if (pan) { ph_push(idx, t, x, y); gMvPend = 1; pan_arm_locked(); goto out; }   /* held back: the game thread picks it up once per frame */
                       e.action = 2;
                   }
                   else if (phase == 3) e.action = 3;
@@ -497,11 +410,8 @@ jobs:
               }
               e.n = gTn; for (int i = 0; i < gTn; i++) { e.id[i] = gTp[i].id; e.x[i] = gTp[i].x; e.y[i] = gTp[i].y; }
               if (phase == 3) gTn = 0;
-              else if (phase == 2) { for (int i = idx; i < gTn - 1; i++) { gTp[i] = gTp[i + 1]; memcpy(gPH[i], gPH[i + 1], sizeof gPH[i]); gPHn[i] = gPHn[i + 1]; gOut[i] = gOut[i + 1]; } gTn--; }
+              else if (phase == 2) { for (int i = idx; i < gTn - 1; i++) { gTp[i] = gTp[i + 1]; } gTn--; }
               inq_push_locked(&e);
-              if (pan && gTn == 0 && phase >= 2) { static int ng; if (ng++ < 40) L("PAN: gesture ended, lag %.1f ms, newest-sample age peak %.1f ms, touch interval %.2f ms", gPanLag * 1000.0, gPanPeak * 1000.0, gPanEma * 1000.0);
-                  if (gPsN > 2.0 && ng <= 40) { double mg = gPsSumGap / gPsN, sg = sqrt(fmax(0.0, gPsSumGap2 / gPsN - mg * mg)), ma = gPsSumAdv / gPsN, sa = sqrt(fmax(0.0, gPsSumAdv2 / gPsN - ma * ma));
-                      L("PAN: %.0f frames, game-thread gap avg %.2f ms wobble %.2f ms | step the camera got avg %.2f ms wobble %.2f ms | clock snaps %.0f, biggest nudge %.2f ms", gPsN, mg * 1000.0, sg * 1000.0, ma * 1000.0, sa * 1000.0, gPsSnaps, gPsSteerMax * 1000.0); } }
           out:
               pthread_mutex_unlock(&gInMu);
           }
@@ -576,7 +486,6 @@ jobs:
               pthread_mutex_lock(&gInMu);
               if (gIqH == gIqT && (gRsStickOn || gRsTail) && !gMvServed && rs_emit_locked()) gMvServed = 1;
               if (gIqH != gIqT) { ev = gIq[gIqH % IQ_MAX]; gIqH++; have = 1; if (gInPipe[0] >= 0) { if (read(gInPipe[0], buf, 1) < 0) {} } }
-              else if (gPanOn > 0 && gMvPend && !gMvServed) { gMvServed = 1; have = pan_resample_locked(&ev); }   /* v81: queue empty, a held-back move exists: one resampled move per drain */
               if (!have) { while (gInPipe[0] >= 0 && read(gInPipe[0], buf, sizeof buf) > 0) {} gMvArmed = 0; gMvServed = 0; pthread_mutex_unlock(&gInMu); menu_cursor_apply(); return -1; }
               ev.deq_ns = TT_ON() ? (uint64_t)(pan_now() * 1000000000.0) : 0;
               __atomic_fetch_add(&gItEv, 1, __ATOMIC_RELAXED);
@@ -890,7 +799,7 @@ jobs:
               return YES;
           }
           /* v97: SWIPE CAMERA = DIRECT DRAG, always. The floating-stick swipe (v88, held a touch back, turned a swipe into a stick rate, delayed taps by 0.3 s / 60 ms) is gone: a touch in the right half goes
-             straight to the game as a finger, its samples timestamped and resampled once per frame (pan_resample_locked). The fixed right stick (own controls) is unchanged. p2.cfg line swipe_classic is now the only behaviour. */
+             straight to the game as a finger. The fixed right stick (own controls) is unchanged. p2.cfg line swipe_classic is now the only behaviour. */
           @interface GameView : UIView @end
           @implementation GameView
           + (Class)layerClass { return [CAMetalLayer class]; }
@@ -924,12 +833,6 @@ jobs:
                   if (ownAny() && !gPadHideTouch && ownFeed(ph, s, p, self.bounds.size)) { if (ph >= 2) gSlot[s] = NULL; continue; }   /* v76: our own element, the dev never sees this touch */
                   if (ph == 1) {
                       gTcUiMoves++;
-                      if (p2_pan_smooth()) {   /* v81: every intermediate sample (about 120 a second) with its hardware timestamp; the loader resamples them once per game frame */
-                          NSArray<UITouch *> *co = [ev coalescedTouchesForTouch:t];
-                          if (co.count == 0) co = @[ t ];
-                          for (UITouch *c in co) { CGPoint q = [c locationInView:self]; p2_touch_ts(1, s, (float)(q.x * sc), (float)(q.y * sc), c.timestamp); gTcSent++; }
-                          continue;
-                      }
                       if (gTcCoalesce && gTcLink) { gTcPend[s] = pp; gTcPendOn[s] = YES; continue; }   /* v69: keep only the newest position, the display link tick sends it */
                       tcSend(s, pp); continue;
                   }

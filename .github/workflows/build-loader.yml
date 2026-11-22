@@ -807,7 +807,6 @@ jobs:
           extern const char *p2_boot_flags;
           void p2_touch(int phase, int tid, float x, float y);
           void p2_touch_ts(int phase, int tid, float x, float y, double ts);
-          int p2_pan_smooth(void);
           void p2_set_tick(double seconds);
           void p2_note(const char *s);
           void p2_set_paused(int on);   /* v102: 1 = park every vkQueueSubmit / vkQueuePresent caller and the audio thread (use when the app goes inactive / background), 0 = resume */
@@ -1971,9 +1970,6 @@ jobs:
                   "renderscale_N        the loader writes Documents/render_scale = N (30 to 100, % of the panel) for the game to read at launch. 67 is the game's own default; 75 or 80 is sharper but heavier, 100 = full resolution (MetalFX then has nothing to scale). Remove the line to go back to the default. Applies at the next launch.\n\n"
                   "metalfx_on           (EXPERIMENT) scale the game picture up to the panel with MetalFX (spatial) instead of letting the display stretch it. Needs iOS 16+ and a render scale below 100 (menu > Render scale) with FSR off. The loader enables VK_EXT_metal_objects, lets the swapchain be read, and on every present scales the low-res image onto its own full-size layer. The HUD is scaled with the picture. Add the line with the app CLOSED. Log lines start with METALFX. If anything fails it switches itself off and the normal path takes over.\n\n"
                   "metalfx_sharp        (needs metalfx_on) sharpen the MetalFX picture with a contrast-adaptive pass (the same idea as the FSR sharpening step). Add metalfx_sharp_N (N = 1 to 100) for the strength; without it the strength is 50. The in-game settings cog (Sharpen toggle and slider) writes both lines, and a change shows within about half a second. Log lines start with METALFX SHARP.\n\n"
-                  "pan_smooth_off       (v81) smooth camera panning is ON by default: touch moves are kept with their real timestamps and the game gets one move per frame, interpolated on the finger path a measured few ms back (touch_coalesce is ignored while it is on). This line gives the old raw behaviour.\n"
-                  "pan_lag_N            (v81) smooth panning: use a fixed lag of N ms instead of the measured one (try 8 to 30). Less = more responsive, more = smoother on a bumpy touch feed. The PAN lines in p2.log show the measured lag.\n"
-                  "pan_clock_off        (v82) turn OFF the steady pan clock: camera steps follow the real time the game thread drains (the v81 way). On by default: steps are whole screen refreshes.\n"
                   "inputtap_on          (v81) one INPUTTAP line per game frame while a finger moves in the right half: raw px, px the loader handed the game, and the game's own mouse entries (1.0.6 offsets).\n"
                   "touch_coalesce       (v69) keep only the newest touch-move position and hand it to the game once per display-link tick instead of on every UIKit move. Needs a display lock (hz_60 / hz_90 / default 120, not hz_off).\n"
                   "v72 BUILT IN (no line needed): MoltenVK fast-math ON, P2RE_VKSHADOWMIN=1024 (shadow casters under 1024 triangles are skipped), P2RE_VKSHADOWHALF=1 (half-size shadow maps).\n"
