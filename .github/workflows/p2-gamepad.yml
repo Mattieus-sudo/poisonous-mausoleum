@@ -6,6 +6,11 @@ name: "P2 gamepad source (v1 Bluetooth / MFi / Xbox / PlayStation controllers)"
 #   buttons     -> DirectInput keys / Left Click / Right Click through p2_btn_edge (Documents/gamepad.txt, written with defaults the first time)
 # In a menu (p2_menu_on, automatic) the pad switches to a fixed menu map: A = Left Click, X = Right Click, B / Start = Esc, Y = Enter, D-pad = arrows, LB / RB = Page Up / Down,
 # and BOTH sticks move the cursor. A button that is held while the mode changes does nothing in the new mode until it is let go (no stray click when a menu opens under your thumb).
+# TWO MODES. Default = XBOX PAD (native): the loader hands the game real Android gamepad events and the game's own XInput code (XInputGetState at elf 0x5ac74d0 reads Input()+0x128..0x138, filled by android_main) does the rest:
+#   motion events, source 0x01000010 (JOYSTICK): axis 0/1 = left stick X/Y (game negates Y), 11/14 = right stick X/Y (game negates 14), 17 = left trigger, 18 = right trigger, 15/16 = D-pad hat; sets the "pad present" flag
+#   key events, source 0x401 (GAMEPAD): action 0 down / 1 up; 96 A, 97 B, 99 X, 100 Y, 102 LB, 103 RB, 106 L3, 107 R3, 108 Start, 109 Back (the game maps these to XInput bits 0x1000 0x2000 0x4000 0x8000 0x100 0x200 0x40 0x80 0x10 0x20)
+#   A finger on the screen clears the game's pad-present flag again (that is how it switches back to touch prompts); the next pad input sets it.
+# p2.cfg line gamepad_keys = KEYBOARD EMULATION mode (everything described above in this header's first paragraphs). Mode is picked in Settings > Game > Controller.
 # While a pad is connected the on-screen controls (own_layout stick / buttons, custom buttons) are hidden and stop taking touches; the gear stays, and Move mode shows them again. Nothing polls until a pad connects: the connect / disconnect
 # notifications start and stop the 60 Hz timer. p2.cfg line gamepad_off turns it all off (Settings > Game > Controller support). Called by build-loader.yml (uses: ./.github/workflows/p2-gamepad.yml). It only writes source text and uploads it.
 # pad_main.m is joined into main.m after lay_main.m and before ui_main_2.m (it needs p2_btn_edge / p2_rstick / p2_menu_on from the controls piece; the UI's launch code calls padStart()).
@@ -33,7 +38,7 @@ jobs:
           #define PAD_CH 258          /* same size as the loader's BQ_N */
           #define PAD_LMB 256
           #define PAD_RMB 257
-          typedef struct { BOOL b[PB_N]; float lx, ly, rx, ry; int pads; } PadState;   /* stick y: GameController has up = +1 */
+          typedef struct { BOOL b[PB_N]; float lx, ly, rx, ry, lt, rt; int pads; } PadState;   /* stick y: GameController has up = +1 */
 
           static int gPadMap[PB_N];                 /* gameplay map: channel per button, 0 = nothing */
           static int gPadMenuMap[PB_N];             /* menu map (fixed) */
@@ -45,6 +50,7 @@ jobs:
           static BOOL gPadKey[4];                   /* W A S D as currently wanted (hysteresis) */
           static BOOL gPadSprintOn;
           static float gPadSentRx, gPadSentRy; static BOOL gPadRsActive;
+          static BOOL gPadNative = YES;             /* default: the game's own XInput pad; p2.cfg gamepad_keys = keyboard emulation */
           static NSTimer *gPadTimer; static int gPadTick; static BOOL gPadConnected;
 
           static int padParseKey(const char *s) {
@@ -103,6 +109,7 @@ jobs:
                   s->b[PB_A] |= padPressed(g.buttonA); s->b[PB_B] |= padPressed(g.buttonB); s->b[PB_X] |= padPressed(g.buttonX); s->b[PB_Y] |= padPressed(g.buttonY);
                   s->b[PB_LB] |= padPressed(g.leftShoulder); s->b[PB_RB] |= padPressed(g.rightShoulder);
                   s->b[PB_LT] |= padPressed(g.leftTrigger); s->b[PB_RT] |= padPressed(g.rightTrigger);
+                  if (g.leftTrigger.value > s->lt) s->lt = g.leftTrigger.value; if (g.rightTrigger.value > s->rt) s->rt = g.rightTrigger.value;
                   s->b[PB_L3] |= padPressed(g.leftThumbstickButton); s->b[PB_R3] |= padPressed(g.rightThumbstickButton);
                   s->b[PB_START] |= padPressed(g.buttonMenu); s->b[PB_BACK] |= padPressed(g.buttonOptions);
                   s->b[PB_UP] |= padPressed(g.dpad.up); s->b[PB_DOWN] |= padPressed(g.dpad.down); s->b[PB_LEFT] |= padPressed(g.dpad.left); s->b[PB_RIGHT] |= padPressed(g.dpad.right);
@@ -121,9 +128,39 @@ jobs:
           static void padSend(const unsigned char *want) {
               for (int i = 0; i < PAD_CH; i++) if (want[i] != gPadSent[i]) { gPadSent[i] = want[i]; p2_btn_edge(i, want[i]); }
           }
+          /* ---- NATIVE: Android-style gamepad events into the game's input queue ---- */
+          #define PAD_AX 24
+          static float gPadAx[PAD_AX]; static BOOL gPadNb[PB_N]; static BOOL gPadNativeLive;
+          static const int kPadKc[PB_N] = { 96, 97, 99, 100, 102, 103, 0, 0, 106, 107, 108, 109, 0, 0, 0, 0 };   /* A B X Y LB RB (LT RT are axes) L3 R3 Start Back (D-pad is the hat) */
+          static void padNativePush(int type, int action, int source, int keycode, const float *axis) {
+              InEv e; memset(&e, 0, sizeof e);
+              e.type = type; e.action = action; e.source = source; e.keycode = keycode; e.n = 1;
+              if (axis) memcpy(e.axis, axis, sizeof e.axis);
+              pthread_mutex_lock(&gInMu); inq_push_locked(&e); pthread_mutex_unlock(&gInMu);
+          }
+          static void padApplyNative(const PadState *s, BOOL force) {
+              for (int i = 0; i < PB_N; i++) if (kPadKc[i] && s->b[i] != gPadNb[i]) {
+                  gPadNb[i] = s->b[i]; gPadNativeLive = YES;
+                  padNativePush(1, s->b[i] ? 0 : 1, 0x401, kPadKc[i], NULL);
+              }
+              float ax[PAD_AX]; memset(ax, 0, sizeof ax);
+              ax[0] = s->lx; ax[1] = -s->ly;           /* GameController has up = +1, Android (and so the game) has down = +1 */
+              ax[11] = s->rx; ax[14] = -s->ry;
+              ax[17] = s->lt; ax[18] = s->rt;
+              ax[15] = s->b[PB_RIGHT] ? 1.0f : s->b[PB_LEFT] ? -1.0f : 0.0f;
+              ax[16] = s->b[PB_DOWN] ? 1.0f : s->b[PB_UP] ? -1.0f : 0.0f;
+              BOOL diff = force;
+              for (int i = 0; i < PAD_AX; i++) if (fabsf(ax[i] - gPadAx[i]) > 0.0015f) diff = YES;
+              if (diff) { memcpy(gPadAx, ax, sizeof ax); gPadNativeLive = YES; padNativePush(2, 2, 0x01000010, 0, ax); }
+          }
+          static void padNativeRelease(void) {   /* neutral pad: every button up, sticks centred. Only sends anything if something was sent before. */
+              if (!gPadNativeLive) return;
+              PadState z; memset(&z, 0, sizeof z); padApplyNative(&z, YES); gPadNativeLive = NO;
+          }
           static void padApply(void) {
               if (gPadOffNow) return;
               PadState s; padRead(&s);
+              if (gPadNative) { padApplyNative(&s, NO); return; }
               BOOL menu = p2_menu_on() != 0;
               if (menu != gPadMenuMode) {   /* the mode changed: whatever is down right now waits until it is let go */
                   gPadMenuMode = menu;
@@ -156,6 +193,7 @@ jobs:
               }
           }
           static void padReleaseAll(void) {
+              padNativeRelease();
               unsigned char none[PAD_CH]; memset(none, 0, sizeof none); padSend(none);
               memset(gPadKey, 0, sizeof gPadKey); gPadSprintOn = NO;
               if (gPadRsActive) { gPadRsActive = NO; gPadSentRx = gPadSentRy = 0; p2_rstick(0, 0); }
@@ -174,6 +212,8 @@ jobs:
           static void padTick(void) {
               if ((gPadTick++ % 30) == 0) {   /* twice a second: Settings > Game > Controller support */
                   BOOL off = p2_cfg_has("gamepad_off") != 0;
+                  BOOL nat = !p2_cfg_has("gamepad_keys");
+                  if (nat != gPadNative) { padReleaseAll(); gPadNative = nat; gPadSentRx = gPadSentRy = 99.0f; memset(gPadSent, 0, sizeof gPadSent); p2_note(nat ? "GAMEPAD: mode = Xbox pad (game's own XInput)" : "GAMEPAD: mode = keyboard emulation"); }
                   if (off != gPadOffNow) {
                       gPadOffNow = off; if (off) padReleaseAll();
                       BOOL hide = gPadConnected && !off;
@@ -188,6 +228,7 @@ jobs:
               BOOL any = NO;
               for (GCController *c in GCController.controllers) if (c != leaving && c.extendedGamepad) any = YES;
               gPadOffNow = p2_cfg_has("gamepad_off") != 0;
+              gPadNative = !p2_cfg_has("gamepad_keys");
               gPadConnected = any;
               BOOL hide = any && !gPadOffNow;
               if (any && !gPadTimer) {
@@ -202,6 +243,7 @@ jobs:
                   gPadSentRx = gPadSentRy = 99.0f; memset(gPadSent, 0, sizeof gPadSent);   /* ownReleaseAll may have let go of what the pad holds: the next apply sends it again (the loader ignores repeated edges) */
                   p2_note(hide ? "GAMEPAD: pad connected, on-screen controls hidden" : "GAMEPAD: no pad, on-screen controls shown");
               }
+              if (any && !gPadOffNow && gPadNative) { PadState st; padRead(&st); padApplyNative(&st, YES); }   /* a neutral first event: the game now reports a connected pad before any stick moves */
           }
           static void padStart(void) {
               static BOOL started; if (started) return; started = YES;

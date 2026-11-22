@@ -9,6 +9,7 @@ on:
       - .github/workflows/build-loader.yml
       - .github/workflows/p2-controls.yml
       - .github/workflows/p2-ui.yml
+      - .github/workflows/p2-gamepad.yml
   workflow_dispatch:
     inputs:
       apk_url:
@@ -41,8 +42,11 @@ jobs:
   layouts:
     if: ${{ !inputs.skip_build }}
     uses: ./.github/workflows/p2-layouts.yml
+  gamepad:
+    if: ${{ !inputs.skip_build }}
+    uses: ./.github/workflows/p2-gamepad.yml
   build:
-    needs: [controls, ui, icons, layouts]
+    needs: [controls, ui, icons, layouts, gamepad]
     if: ${{ !inputs.skip_build }}
     runs-on: macos-latest
     steps:
@@ -3236,13 +3240,15 @@ jobs:
               }
           }
           static int sh_ie_type(InEv *e) { return e->type; }
-          static int sh_ie_source(InEv *e) { (void)e; return 0x1002; }
+          static int sh_ie_source(InEv *e) { return e->source ? e->source : 0x1002; }
+          static int sh_ke_code(InEv *e) { return e->keycode; }
+          static int sh_ke_action(InEv *e) { return e->action; }
           static int sh_me_action(InEv *e) { return e->action; }
           static size_t sh_me_count(InEv *e) { return (size_t)e->n; }
           static int sh_me_id(InEv *e, size_t i) { return i < (size_t)e->n ? e->id[i] : 0; }
           static float sh_me_x(InEv *e, size_t i) { return i < (size_t)e->n ? e->x[i] : 0.0f; }
           static float sh_me_y(InEv *e, size_t i) { return i < (size_t)e->n ? e->y[i] : 0.0f; }
-          static float sh_me_axis(InEv *e, int axis, size_t i) { if (i >= (size_t)e->n) return 0.0f; return axis == 0 ? e->x[i] : axis == 1 ? e->y[i] : 0.0f; }
+          static float sh_me_axis(InEv *e, int axis, size_t i) { if (i >= (size_t)e->n) return 0.0f; if (e->source == 0x01000010) return (axis >= 0 && axis < 24) ? e->axis[axis] : 0.0f; return axis == 0 ? e->x[i] : axis == 1 ? e->y[i] : 0.0f; }
           static void *sh_cfg_new(void) { return calloc(1, 64); }
           static void sh_cfg_lang(void *c, char *o) { (void)c; o[0] = 'e'; o[1] = 'n'; }
           static void sh_cfg_country(void *c, char *o) { (void)c; o[0] = 'U'; o[1] = 'S'; }
@@ -3634,7 +3640,7 @@ jobs:
                   {"ANativeWindow_acquire", (void *)sh_void}, {"ANativeWindow_setBuffersGeometry", (void *)sh_win_geom}, {"ANativeWindow_getWidth", (void *)sh_win_w}, {"ANativeWindow_getHeight", (void *)sh_win_h}, {"ANativeWindow_lock", (void *)sh_neg1}, {"ANativeWindow_unlockAndPost", (void *)sh_neg1}, {"ANativeActivity_setWindowFlags", (void *)sh_void}, {"ANativeActivity_finish", (void *)sh_act_finish},
                   {"AAssetManager_open", (void *)sh_aam_open}, {"AAsset_getLength", (void *)sh_aa_len}, {"AAsset_read", (void *)sh_aa_read}, {"AAsset_close", (void *)sh_aa_close}, {"AAsset_getBuffer", (void *)sh_aa_buf}, {"AAssetManager_openDir", (void *)sh_aam_opendir}, {"AAssetDir_getNextFileName", (void *)sh_aad_next}, {"AAssetDir_close", (void *)sh_aad_close},
                   {"ALooper_pollOnce", (void *)sh_looper_poll}, {"ALooper_prepare", (void *)sh_looper_prepare}, {"ALooper_addFd", (void *)sh_looper_addfd}, {"AInputQueue_attachLooper", (void *)sh_inq_attach}, {"AInputQueue_detachLooper", (void *)sh_inq_detach}, {"AInputQueue_getEvent", (void *)sh_inq_get}, {"AInputQueue_preDispatchEvent", (void *)sh_zero}, {"AInputQueue_finishEvent", (void *)sh_inq_finish}, {"AInputEvent_getType", (void *)sh_ie_type}, {"AInputEvent_getSource", (void *)sh_ie_source},
-                  {"AMotionEvent_getAction", (void *)sh_me_action}, {"AMotionEvent_getPointerId", (void *)sh_me_id}, {"AMotionEvent_getPointerCount", (void *)sh_me_count}, {"AMotionEvent_getX", (void *)sh_me_x}, {"AMotionEvent_getY", (void *)sh_me_y}, {"AMotionEvent_getAxisValue", (void *)sh_me_axis}, {"AKeyEvent_getKeyCode", (void *)sh_zero}, {"AKeyEvent_getAction", (void *)sh_zero},
+                  {"AMotionEvent_getAction", (void *)sh_me_action}, {"AMotionEvent_getPointerId", (void *)sh_me_id}, {"AMotionEvent_getPointerCount", (void *)sh_me_count}, {"AMotionEvent_getX", (void *)sh_me_x}, {"AMotionEvent_getY", (void *)sh_me_y}, {"AMotionEvent_getAxisValue", (void *)sh_me_axis}, {"AKeyEvent_getKeyCode", (void *)sh_ke_code}, {"AKeyEvent_getAction", (void *)sh_ke_action},
                   {"AConfiguration_new", (void *)sh_cfg_new}, {"AConfiguration_fromAssetManager", (void *)sh_void}, {"AConfiguration_getLanguage", (void *)sh_cfg_lang}, {"AConfiguration_getCountry", (void *)sh_cfg_country}, {"AConfiguration_delete", (void *)sh_cfg_del},
                   {"AAudio_createStreamBuilder", (void *)sh_aa_create}, {"AAudioStreamBuilder_setFormat", (void *)sh_aa_setfmt}, {"AAudioStreamBuilder_setChannelCount", (void *)sh_aa_setch}, {"AAudioStreamBuilder_setSampleRate", (void *)sh_aa_sethz}, {"AAudioStreamBuilder_setPerformanceMode", (void *)sh_void}, {"AAudioStreamBuilder_setUsage", (void *)sh_void}, {"AAudioStreamBuilder_setDataCallback", (void *)sh_aa_setcb}, {"AAudioStreamBuilder_openStream", (void *)sh_aa_open}, {"AAudioStream_requestStart", (void *)sh_aa_start}, {"AAudioStream_getSampleRate", (void *)sh_aa_rate}, {"AAudioStreamBuilder_delete", (void *)sh_void},
               };
@@ -4310,14 +4316,15 @@ jobs:
               L("== DONE: native code from the patched libp2re executed ==");
           }
           EOF_P2CORE_TAIL
-          P="$GITHUB_WORKSPACE/parts"; ln -sfn "$P/p2-src-controls" "$P/controls"; ln -sfn "$P/p2-src-ui" "$P/ui"; ln -sfn "$P/p2-src-icons" "$P/icons"; ln -sfn "$P/p2-src-layouts" "$P/layouts"
-          for f in "$P/controls/ctl_core.c" "$P/controls/ctl_main_1.m" "$P/controls/ctl_main_2.m" "$P/ui/ui_main_1.m" "$P/ui/ui_main_2.m" "$P/icons/ico_main.m" "$P/layouts/lay_head.m" "$P/layouts/lay_main.m"; do test -s "$f" || { echo "missing source piece $f (the controls/ui jobs did not run?)"; exit 1; }; done
+          P="$GITHUB_WORKSPACE/parts"; ln -sfn "$P/p2-src-controls" "$P/controls"; ln -sfn "$P/p2-src-ui" "$P/ui"; ln -sfn "$P/p2-src-icons" "$P/icons"; ln -sfn "$P/p2-src-layouts" "$P/layouts"; ln -sfn "$P/p2-src-gamepad" "$P/gamepad"
+          for f in "$P/controls/ctl_core.c" "$P/controls/ctl_main_1.m" "$P/controls/ctl_main_2.m" "$P/ui/ui_main_1.m" "$P/ui/ui_main_2.m" "$P/icons/ico_main.m" "$P/layouts/lay_head.m" "$P/layouts/lay_main.m" "$P/gamepad/pad_main.m"; do test -s "$f" || { echo "missing source piece $f (the controls/ui jobs did not run?)"; exit 1; }; done
           cat p2core_head.c "$P/controls/ctl_core.c" p2core_tail.c > p2core.c
           cat > main_head.m <<'EOF_MAIN_HEAD'
           #import <UIKit/UIKit.h>
           #import <Metal/Metal.h>
           #import <QuartzCore/QuartzCore.h>
           #import <AVFoundation/AVFoundation.h>
+          #import <GameController/GameController.h>
           #import <mach/mach_time.h>
           #import <objc/message.h>
           #include "p2core.h"
@@ -4374,7 +4381,7 @@ jobs:
           }
 
           EOF_MAIN_HEAD
-          cat main_head.m "$P/icons/ico_main.m" "$P/layouts/lay_head.m" "$P/controls/ctl_main_1.m" "$P/ui/ui_main_1.m" "$P/controls/ctl_main_2.m" "$P/layouts/lay_main.m" "$P/ui/ui_main_2.m" > main.m
+          cat main_head.m "$P/icons/ico_main.m" "$P/layouts/lay_head.m" "$P/controls/ctl_main_1.m" "$P/ui/ui_main_1.m" "$P/controls/ctl_main_2.m" "$P/layouts/lay_main.m" "$P/gamepad/pad_main.m" "$P/ui/ui_main_2.m" > main.m
           APP=Payload/P2Loader.app
           mkdir -p $APP/Frameworks/P2Code.framework
           MVK_LINK=""
@@ -4531,7 +4538,7 @@ jobs:
               }
           }
           EOF_MFX_M
-          clang -target arm64-apple-ios15.0 -isysroot "$SDK" -fobjc-arc -O1 -framework UIKit -framework Foundation -framework Metal -framework QuartzCore -framework AudioToolbox -framework AVFoundation -framework CoreGraphics -weak_framework MetalFX $MVK_LINK main.m mfx.m p2core.c p2imports.c p2stubs.s p2asm.s -o $APP/P2Loader
+          clang -target arm64-apple-ios15.0 -isysroot "$SDK" -fobjc-arc -O1 -framework UIKit -framework Foundation -framework Metal -framework QuartzCore -framework AudioToolbox -framework AVFoundation -framework GameController -framework CoreGraphics -weak_framework MetalFX $MVK_LINK main.m mfx.m p2core.c p2imports.c p2stubs.s p2asm.s -o $APP/P2Loader
           cp P2Code $APP/Frameworks/P2Code.framework/P2Code
           cp p2data.bin p2relocs.bin p2names.bin p2tls.bin p2phdr.bin $APP/
           unzip -q -o ../game.apk 'assets/*' -d $APP/ && du -sh $APP/assets || echo 'no assets in apk'

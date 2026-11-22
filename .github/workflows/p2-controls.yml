@@ -19,7 +19,8 @@ jobs:
           /* v100 TOUCH TIMING DIAGNOSTICS: preserve the physical UIKit timestamp and
              measure queue age + callback lifetime without changing event ordering. */
           typedef struct { int type, action, n, touch_id; int id[IQ_PTRS]; float x[IQ_PTRS], y[IQ_PTRS];
-                           uint64_t trace_seq, enq_ns, deq_ns; double ui_ts; } InEv;
+                           uint64_t trace_seq, enq_ns, deq_ns; double ui_ts;
+                           int source, keycode; float axis[24]; } InEv;   /* gamepad (see p2-gamepad): source 0 = touchscreen; 0x01000010 = joystick motion with axis[]; 0x401 = gamepad key (keycode, action 0 down / 1 up) */
           static InEv gIq[IQ_MAX]; static unsigned gIqH, gIqT;
           static uint64_t gTouchTraceSeq; static unsigned gTouchTraceLines;
           #define TT_ON() (flg()->touch_trace)   /* TOUCHTRACE / BTNTRACE lines and their clock reads only run with the p2.cfg line touch_trace */

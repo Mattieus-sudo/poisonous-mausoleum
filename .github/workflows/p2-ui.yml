@@ -194,6 +194,8 @@ jobs:
               self.rows = @[
                   @[ sMenu(@"Display refresh rate", @"Locks the screen to this rate. Applies immediately.",
                            @[@"iOS decides", @"60 Hz", @"90 Hz", @"120 Hz (default)"], @[@"hz_off", @"hz_60", @"hz_90", @""], nil),
+                     sMenu(@"Controller", @"A Bluetooth game controller (Xbox, PlayStation, Switch Pro, MFi). Pair it in iOS Settings > Bluetooth first. Xbox pad = the game's own controller support (analog sticks, Xbox prompts). Keyboard emulation presses keys instead (button map in Documents/gamepad.txt). The on-screen controls hide while a controller is connected. Applies at once.",
+                           @[@"Xbox pad (game's own support)", @"Keyboard emulation", @"Off"], @[@"", @"gamepad_keys", @"gamepad_off"], nil),
                       ],
                   @[ sMenu(@"Wait spin", @"How long a game thread busy-waits before sleeping. Longer reacts faster but uses more CPU, battery and heat.",
                            @[@"Off (0 us)", @"250 us", @"1000 us (default)", @"2000 us", @"4000 us"], @[@"waitspin_0", @"waitspin_250", @"", @"waitspin_2000", @"waitspin_4000"], @"waitspin_"),
@@ -550,7 +552,7 @@ jobs:
           @end
 
           /* ---- root screen: left panel (icon, name, version, Play) + settings list; the game view sits underneath ---- */
-          @interface RootVC : UIViewController
+          @interface RootVC : GCEventViewController   /* gamepad: with controllerUserInteractionEnabled = NO iOS hands the pad's buttons (Menu, A, B ...) to the game instead of using them to drive the UI */
           @property (nonatomic, strong) UIView *game;
           @property (nonatomic, strong) UIView *menu;
           @property (nonatomic, strong) UIImageView *icon;
@@ -692,6 +694,7 @@ jobs:
           }
           - (void)viewDidLoad {
               [super viewDidLoad];
+              self.controllerUserInteractionEnabled = NO;
               self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
               self.view.backgroundColor = UIColor.blackColor;
               self.game.frame = self.view.bounds; self.game.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -1026,7 +1029,7 @@ jobs:
                   {"settle_s6",0,"settle at state 6"}, {"swapchain_alpha_keep",0,"keep swapchain alpha"}, {"imgdelay_all",0,"image delay for all images"},
                   {"mvk_argbuf_off",0,"MoltenVK argument buffers OFF"}, {"mvk_dumpshaders",0,"MoltenVK dump shaders"},
                   {"mvk_fastmath_auto",0,"MoltenVK fast math auto"}, {"mvk_fastmath_on",0,"MoltenVK fast math ON (default since v72)"}, {"mvk_fastmath_off",0,"MoltenVK fast math OFF"}, {"shadowmin_off",0,"built-in shadow min OFF (every caster drawn)"}, {"passtime_on",0,"PASSSIG pass signature log"}, {"passskip_",1,"skip the draws of pass signature K (diagnostic)"}, {"ringsprint_",1,"stick sprints past a ring in ANY direction, radius N per mille of screen height"}, {"inputtap_on",0,"INPUTTAP log: finger movement vs what the game receives"}, {"mvk_log_info",0,"MoltenVK info logging"},
-                  {"own_layout",0,"own controls on (v76)"}, {"rstick_on",0,"right camera stick added to own controls (v87)"}, {"rstick_speed_",1,"right stick: full push in percent of screen width per second (v87)"}, {"rstick_vert_",1,"right stick: up/down speed in percent (v87)"}, {"rstick_invy",0,"right stick: flip up/down (v87)"}, {"ovl_trace",0,"dev overlay measured (v75)"}, {"ovl_hide",0,"dev overlay hidden (v75)"}, {"ovl_off",0,"dev overlay builder not called (v75)"}, {"passtrace_now",0,"dev one-frame pass trace trigger (v75)"}, {"drawtrace_now",0,"dev one-frame draw trace trigger (v75)"}, {"dbgoff_",1,"dev renderer feature switched off via debugoff file (v75)"}, {"env",0,"env switch (see loader help)"}, {"nosplash",0,"skip the autosave splash and the Disclaimer (the original port credits EliteMV; credited in the launcher instead)"},
+                  {"own_layout",0,"own controls on (v76)"}, {"gamepad_off",0,"controller support OFF (default on)"}, {"gamepad_keys",0,"controller drives keyboard keys instead of the game's own XInput pad"}, {"rstick_on",0,"right camera stick added to own controls (v87)"}, {"rstick_speed_",1,"right stick: full push in percent of screen width per second (v87)"}, {"rstick_vert_",1,"right stick: up/down speed in percent (v87)"}, {"rstick_invy",0,"right stick: flip up/down (v87)"}, {"ovl_trace",0,"dev overlay measured (v75)"}, {"ovl_hide",0,"dev overlay hidden (v75)"}, {"ovl_off",0,"dev overlay builder not called (v75)"}, {"passtrace_now",0,"dev one-frame pass trace trigger (v75)"}, {"drawtrace_now",0,"dev one-frame draw trace trigger (v75)"}, {"dbgoff_",1,"dev renderer feature switched off via debugoff file (v75)"}, {"env",0,"env switch (see loader help)"}, {"nosplash",0,"skip the autosave splash and the Disclaimer (the original port credits EliteMV; credited in the launcher instead)"},
                   {"fakeaspect_",1,"fake screen aspect ratio x 10000 (loader writes Documents/fake_aspect)"}, {"touch_coalesce",0,"touch moves coalesced to one per display tick (ignored while smooth panning is on)"}, {"pan_smooth_off",0,"smooth camera panning OFF: every touch move goes to the game raw (v81)"}, {"pan_lag_",1,"smooth panning: fixed lag in ms instead of the measured one (v81)"}, {"pan_clock_off",0,"steady pan clock OFF: camera steps follow the real time the game thread drains, as in v81 (v82)"}, {"inputtap_on",0,"INPUTTAP lines: raw finger px vs what the loader handed the game per frame (v81)"}, {"touch_trace",0,"touch trace (logs TOUCHTRACE lines while touching)"}, {"waitspin_",1,"wait spin in us"}, {"rt_render_",1,"render thread real-time policy, budget in us"}, {"imgdelay_",1,"image delay"}, {"sleepcap_",1,"guest sleep cap in us"},
                   {"hold_s5_",1,"hold at state 5"}, {"hold_s6_",1,"hold at state 6"}, {"ncpu_",1,"reported CPU count"},
                   {"pdelay_",1,"present delay"}, {"pthrottle_",1,"present throttle"}, {"setenv_",1,"sets an env var for the game"},
@@ -1089,7 +1092,7 @@ jobs:
               RootVC *vc = [RootVC new]; vc.game = gGame;
               vc.onPlay = ^{ [self run]; };
               vc.onHz = ^{ [self applyHz]; };
-              self.window.rootViewController = vc; [self.window makeKeyAndVisible]; [self startFlags]; [self startHz]; return YES;
+              self.window.rootViewController = vc; [self.window makeKeyAndVisible]; [self startFlags]; [self startHz]; padStart(); return YES;
           }
           - (void)run {
               if (gRan) { emit("(already ran in this launch: close the app from the app switcher and open it again to repeat)"); return; }
