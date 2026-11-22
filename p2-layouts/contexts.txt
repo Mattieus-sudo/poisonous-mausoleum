@@ -1,0 +1,5 @@
+# Names for the game's touch layouts. layout N name. Built in: 0 foot (the plain files), 1 vehicle, 2 menu (pause, options, any screen with the game's cursor). Others are called layoutN until named here.
+# Easiest: be in a video or a vehicle, open the editor, pick the layout in the picker and choose "Assign to the game's current screen". Or watch p2.log for LAYOUT: lines and add e.g.  layout 3 video
+layout 4 video
+layout 3 menu
+layout 5 video
