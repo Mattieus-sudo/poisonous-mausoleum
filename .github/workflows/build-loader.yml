@@ -4451,10 +4451,43 @@ jobs:
                   static const char *const envs[] = {"LC_HOME_PATH", "CFFIXED_USER_HOME", "HOME"};
                   for (unsigned i = 0; i < 3; i++) { const char *v = getenv(envs[i]); if (v && *v) [c addObject:[[NSString stringWithUTF8String:v] stringByAppendingPathComponent:@"Documents"]]; }
                   [c addObject:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents"]];
+                  NSUInteger nEnv = c.count;   /* c[0..nEnv-1] = std + this process's own HOME-based folders; the Data/Application/<UUID> ones below belong to every app LiveContainer holds */
                   NSString *app = [std stringByAppendingPathComponent:@"Data/Application"];
                   for (NSString *u in [fm contentsOfDirectoryAtPath:app error:nil]) [c addObject:[[app stringByAppendingPathComponent:u] stringByAppendingPathComponent:@"Documents"]];
                   gP2Cands = [c componentsJoinedByString:@"\n"];
                   NSString *pick = nil;
+                  /* LiveContainer v2 fix: std (NSDocumentDirectory) can be LiveContainer's OWN Documents (the root you see in Files > LiveContainer). This app's real Documents is HOME/Documents, which sits
+                     INSIDE std (Data/Application/<UUID>/Documents). If such a folder exists we are a guest: Documents is ALWAYS that folder, never std (the old code picked std as the "root" because
+                     it is a path prefix of the guest folder, so p2.cfg, Logs, spirv, vkpddi_cache, button_icons, layouts and a Prototype2/game link all landed in LiveContainer's root). Game files found
+                     elsewhere (LiveContainer root, another guest) are only LINKED into <guest Documents>/Prototype2/game, nothing is ever created or written in the outer folder. */
+                  NSString *guest = nil;
+                  for (NSUInteger i = 1; i < nEnv; i++) { NSString *d = c[i]; BOOL isDir = NO; if ([d hasPrefix:[std stringByAppendingString:@"/"]] && [fm fileExistsAtPath:d isDirectory:&isDir] && isDir) { guest = d; break; } }
+                  if (guest) {
+                      if (!p2HasGame(guest)) {
+                          NSString *src = nil;
+                          for (NSString *d in c) {   /* a normal game folder in some other Documents (Prototype2/game or Prototype2), symlinks resolved so a link left by the old build is not chained */
+                              if ([d isEqualToString:guest]) continue;
+                              for (NSString *sub in @[@"Prototype2/game", @"Prototype2"]) {
+                                  NSString *g = [[d stringByAppendingPathComponent:sub] stringByResolvingSymlinksInPath]; BOOL ok = YES;
+                                  for (NSString *n in @[@"prototype2.exe", @"prototype2engine.dll", @"binkw32.dll"]) if (![fm fileExistsAtPath:[g stringByAppendingPathComponent:n]]) { ok = NO; break; }
+                                  if (ok) { src = g; break; }
+                              }
+                              if (src) break;
+                          }
+                          if (!src) { NSMutableArray<NSString *> *deep = [NSMutableArray arrayWithObject:guest]; [deep addObjectsFromArray:c]; src = p2DeepFind(deep); if (src) src = [src stringByResolvingSymlinksInPath]; }
+                          if (src) {
+                              gP2GameFound = src;
+                              NSString *pg = [guest stringByAppendingPathComponent:@"Prototype2"], *game = [pg stringByAppendingPathComponent:@"game"];
+                              [fm createDirectoryAtPath:pg withIntermediateDirectories:YES attributes:nil error:nil];
+                              if (![src isEqualToString:game]) {
+                                  NSArray *ex = [fm contentsOfDirectoryAtPath:game error:nil]; if (ex && ex.count == 0) [fm removeItemAtPath:game error:nil];
+                                  if (![fm fileExistsAtPath:game]) { [fm removeItemAtPath:game error:nil]; [fm createSymbolicLinkAtPath:game withDestinationPath:src error:nil]; }   /* removeItem first clears a dead link */
+                              }
+                          }
+                      }
+                      r = guest;
+                      return;
+                  }
                   for (NSString *d in c) if (p2HasGame(d)) { pick = d; break; }
                   if (!pick) {   /* not where the game looks: search deeper (the files may sit in an extra subfolder), then link the folder into Documents/Prototype2/game */
                       NSMutableArray<NSString *> *deep = [NSMutableArray arrayWithArray:[c subarrayWithRange:NSMakeRange(1, c.count - 1)]]; [deep addObject:std];
