@@ -57,8 +57,27 @@ jobs:
           static NSString *layName(int c) {
               if (!gLayNames) {
                   gLayNames = [NSMutableDictionary new]; NSFileManager *fm = NSFileManager.defaultManager; NSString *d = [layDocs() stringByAppendingPathComponent:@"layouts"], *f = layCtxFile();
-                  NSString *bl = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"bundled-layouts"]; BOOL fresh = ![fm fileExistsAtPath:d];   /* first run: copy the layouts that ship in the app (repo folder p2-layouts/); never touches an existing Documents/layouts */
-                  if (fresh && [fm contentsOfDirectoryAtPath:bl error:nil].count) [fm copyItemAtPath:bl toPath:d error:nil];
+                  NSString *bl = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"bundled-layouts"]; BOOL fresh = ![fm fileExistsAtPath:d]; NSArray<NSString *> *bi = [fm contentsOfDirectoryAtPath:bl error:nil];
+                  if (bi.count) {   /* v2: ADDITIVE sync of the layouts that ship in the app (repo folder p2-layouts/). The old code copied them only when Documents/layouts did not exist yet, so a layout added to the repo later (video) never reached an existing install. Now every shipped item that is not in Documents/layouts yet is copied ONCE (names already handled are listed in layouts/.bundled_seen, so a layout you delete stays deleted); nothing existing is overwritten; contexts.txt is merged line by line (only "layout N name" lines that are missing). */
+                      [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:nil];
+                      NSString *mk = [d stringByAppendingPathComponent:@".bundled_seen"];
+                      NSMutableSet<NSString *> *seen = [NSMutableSet setWithArray:[[NSString stringWithContentsOfFile:mk encoding:NSUTF8StringEncoding error:nil] componentsSeparatedByString:@"\n"]]; BOOL grew = NO;
+                      for (NSString *it in bi) {
+                          if ([it hasPrefix:@"."] || [it isEqualToString:@"__MACOSX"] || [seen containsObject:it]) continue;
+                          NSString *to = [d stringByAppendingPathComponent:it], *from = [bl stringByAppendingPathComponent:it];
+                          if ([it isEqualToString:@"contexts.txt"] && [fm fileExistsAtPath:to]) {
+                              NSString *cur = [NSString stringWithContentsOfFile:to encoding:NSUTF8StringEncoding error:nil] ?: @""; NSMutableString *m = [cur mutableCopy];
+                              for (NSString *bln in [[NSString stringWithContentsOfFile:from encoding:NSUTF8StringEncoding error:nil] componentsSeparatedByString:@"\n"]) {
+                                  NSArray<NSString *> *bw = [bln componentsSeparatedByString:@" "]; if (bw.count < 3 || ![bw[0] isEqualToString:@"layout"]) continue;
+                                  NSString *pre = [NSString stringWithFormat:@"layout %@ ", bw[1]]; BOOL has = NO; for (NSString *cl in [cur componentsSeparatedByString:@"\n"]) if ([cl hasPrefix:pre]) { has = YES; break; }
+                                  if (!has) { if (m.length && ![m hasSuffix:@"\n"]) [m appendString:@"\n"]; [m appendFormat:@"%@\n", bln]; }
+                              }
+                              [m writeToFile:to atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                          } else if (![fm fileExistsAtPath:to]) [fm copyItemAtPath:from toPath:to error:nil];
+                          [seen addObject:it]; grew = YES;
+                      }
+                      if (grew) { NSMutableArray<NSString *> *sl = [[seen allObjects] mutableCopy]; [sl removeObject:@""]; [[[sl componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] writeToFile:mk atomically:YES encoding:NSUTF8StringEncoding error:nil]; }
+                  }
                   else if (fresh) {   /* no shipped layouts in this build, so: the folder, the names file, and a video layout that is just a Skip (M) button with no stick */
                       [fm createDirectoryAtPath:[d stringByAppendingPathComponent:@"video"] withIntermediateDirectories:YES attributes:nil error:nil];
                       [@"# Names for the game's touch layouts. layout N name. Built in: 0 foot (layouts/foot), 1 vehicle, 2 menu (pause, options, any screen with the game's cursor). Others are called layoutN until named here.\n# Easiest: be in a video or a vehicle, open the editor, pick the layout in the picker and choose \"Assign to the game's current screen\". Or watch p2.log for LAYOUT: lines and add e.g.  layout 3 video\n" writeToFile:f atomically:YES encoding:NSUTF8StringEncoding error:nil];
@@ -69,6 +88,8 @@ jobs:
                       NSArray<NSString *> *w = [ln componentsSeparatedByString:@" "];
                       if (w.count >= 3 && [w[0] isEqualToString:@"layout"] && [w[2] rangeOfCharacterFromSet:[[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz0123456789_"] invertedSet]].location == NSNotFound) gLayNames[@(w[1].intValue)] = w[2];
                   }
+                  /* v2: the game's touch layouts 0, 1, 2 are foot, vehicle, menu (built in). A "video" layout that exists on disk but is not mapped by contexts.txt could never be selected, so layout 3 (the first of "the dev's other layouts") is named video unless contexts.txt already names 3 or names some layout video. Check p2.log: its LAYOUT: line shows the number the game uses while a video plays; if it is not 3, put  layout N video  in layouts/contexts.txt. */
+                  if (!gLayNames[@3] && ![gLayNames.allValues containsObject:@"video"] && [fm fileExistsAtPath:[d stringByAppendingPathComponent:@"video"]]) gLayNames[@3] = @"video";
               }
               NSString *n = gLayNames[@(c)]; if (n) return n;
               return c == 0 ? @"foot" : c == 1 ? @"vehicle" : c == 2 ? @"menu" : [NSString stringWithFormat:@"layout%d", c];
