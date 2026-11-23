@@ -30,7 +30,7 @@ jobs:
              A switch is one line in Documents/p2.cfg. Every control below only adds or removes such lines.
              CONFIG MODEL: behaviour changes = lines in p2.cfg (loader reads them via p2_cfg_*); host settings = the hidden Documents/.controls.cfg (hostCfgPath). Switches are never written as folders;
              the only exception is files the host reads itself (.render_scale). */
-          static NSString *uiDocs(void) { cfgReady(); return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]; }
+          static NSString *uiDocs(void) { cfgReady(); return p2DocsDir(); }
           static BOOL uiHas(NSString *n) { cfgReady(); return p2_cfg_has(n.UTF8String) != 0; }
           static void uiSet(NSString *n, BOOL on) {
               cfgReady();
@@ -1146,7 +1146,7 @@ jobs:
           - (void)run {
               if (gRan) { emit("(already ran in this launch: close the app from the app switcher and open it again to repeat)"); return; }
               gRan = YES;
-              NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
+              NSString *docs = p2DocsDir();
               sFw = [[NSBundle mainBundle].privateFrameworksPath stringByAppendingString:@"/P2Code.framework/P2Code"];
               sRes = [NSBundle mainBundle].resourcePath;
               sRep = [docs stringByAppendingString:@"/Logs/p2_loader_log.txt"];   /* v103: every log lives in Documents/Logs */

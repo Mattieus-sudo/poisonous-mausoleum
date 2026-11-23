@@ -4413,9 +4413,42 @@ jobs:
           #include "p2core.h"
 
           /* every switch below is a line in Documents/p2.cfg, read and written through p2_cfg_* (p2core.c). */
+          /* LiveContainer fix: inside LiveContainer the guest's real Documents is NOT where NSDocumentDirectory points (LiveContainer keeps it in a subfolder:
+             <LiveContainer>/Documents/Data/Application/<UUID>/Documents). p2DocsDir() is the ONE place that decides which Documents folder the loader, the game and the settings UI use.
+             It tries the normal NSDocumentDirectory first (so a regular sideload behaves exactly as before), then the LiveContainer / HOME based locations, and picks the first one that
+             holds the game files (Prototype2/game, Prototype2, or a game_folder.txt). With no game files anywhere it falls back to a folder that has a Prototype2 folder, else the normal one. */
+          static BOOL p2HasGame(NSString *d) {
+              NSFileManager *fm = NSFileManager.defaultManager;
+              if ([fm fileExistsAtPath:[d stringByAppendingPathComponent:@"game_folder.txt"]]) return YES;
+              for (NSString *sub in @[@"Prototype2/game", @"Prototype2"]) {
+                  NSString *g = [d stringByAppendingPathComponent:sub]; BOOL ok = YES;
+                  for (NSString *n in @[@"prototype2.exe", @"prototype2engine.dll", @"binkw32.dll"])
+                      if (![fm fileExistsAtPath:[g stringByAppendingPathComponent:n]]) { ok = NO; break; }
+                  if (ok) return YES;
+              }
+              return NO;
+          }
+          static NSString *p2DocsDir(void) {
+              static NSString *r; static dispatch_once_t once;
+              dispatch_once(&once, ^{
+                  NSFileManager *fm = NSFileManager.defaultManager;
+                  NSString *std = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0];
+                  NSMutableArray<NSString *> *c = [NSMutableArray arrayWithObject:std];
+                  static const char *const envs[] = {"LC_HOME_PATH", "CFFIXED_USER_HOME", "HOME"};
+                  for (unsigned i = 0; i < 3; i++) { const char *v = getenv(envs[i]); if (v && *v) [c addObject:[[NSString stringWithUTF8String:v] stringByAppendingPathComponent:@"Documents"]]; }
+                  [c addObject:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents"]];
+                  NSString *app = [std stringByAppendingPathComponent:@"Data/Application"];
+                  for (NSString *u in [fm contentsOfDirectoryAtPath:app error:nil]) [c addObject:[[app stringByAppendingPathComponent:u] stringByAppendingPathComponent:@"Documents"]];
+                  NSString *pick = nil;
+                  for (NSString *d in c) if (p2HasGame(d)) { pick = d; break; }
+                  if (!pick) for (NSString *d in c) { BOOL isDir = NO; if ([fm fileExistsAtPath:[d stringByAppendingPathComponent:@"Prototype2"] isDirectory:&isDir] && isDir) { pick = d; break; } }
+                  r = pick ?: std;
+              });
+              return r;
+          }
           static void cfgReady(void) {
               static dispatch_once_t once;
-              dispatch_once(&once, ^{ p2_cfg_init([NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] fileSystemRepresentation]); });
+              dispatch_once(&once, ^{ p2_cfg_init([p2DocsDir() fileSystemRepresentation]); });
           }
 
           /* v69: touch move coalescing + touch trace. Flags touch_coalesce and touch_trace (both off by default). */

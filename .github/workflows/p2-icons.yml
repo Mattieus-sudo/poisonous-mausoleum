@@ -64,7 +64,7 @@ jobs:
           static NSMutableDictionary<NSNumber *, NSString *> *gIcoCap;      /* "caption": key -> text ("none" = no caption) */
           static NSMutableDictionary<NSNumber *, id> *gIcoCache;            /* key -> UIImage, or NSNull when there is none */
           static BOOL gIcoFlat = NO, gIcoCaps = YES, gIcoInit;   /* v96: NO = the picture sits INSIDE the circle of the button (the default); "picture alone" in icon_map.txt takes the circle away */
-          static NSString *icoDir(void) { return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] stringByAppendingPathComponent:@"button_icons"]; }
+          static NSString *icoDir(void) { return [p2DocsDir() stringByAppendingPathComponent:@"button_icons"]; }
           static NSString *icoFindCI(NSString *dir, NSString *name) {   /* the file whose name matches ignoring capitals, or nil: Key_2a.png, KEY_2A.png and key_2A.png are all the same picture */
               for (NSString *f in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil])
                   if ([f.pathExtension caseInsensitiveCompare:@"png"] == NSOrderedSame && [f.stringByDeletingPathExtension caseInsensitiveCompare:name] == NSOrderedSame) return [dir stringByAppendingPathComponent:f];
