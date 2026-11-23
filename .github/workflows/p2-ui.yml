@@ -1070,7 +1070,7 @@ jobs:
           - (void)note:(const char *)s { emit(s); if (!gFlags) gFlags = [NSMutableString new]; [gFlags appendFormat:@"%s\n", s]; }
           - (void)startFlags {
               static const struct { const char *n; int pre; const char *m; } K[] = {
-                  {"hz_off",0,"120 Hz lock OFF"}, {"seeded_nosplash",0,"first-run default (skip splash) already applied"}, {"seeded_traces_off",0,"first-run default (traces off) already applied"}, {"seeded_own_layout",0,"first-run default (own controls on) already applied"}, {"rt_render",0,"render thread real-time policy ON (6000 us budget)"}, {"hz_90",0,"display locked to 90 Hz"}, {"hz_60",0,"display locked to 60 Hz"},
+                  {"hz_off",0,"120 Hz lock OFF"}, {"seeded_nosplash",0,"first-run default (skip splash) already applied"}, {"seeded_traces_off",0,"first-run default (traces off) already applied"}, {"seeded_own_layout",0,"first-run default (own controls on) already applied"}, {"seeded_ovl_hide",0,"first-run default (dev overlay hidden) already applied"}, {"rt_render",0,"render thread real-time policy ON (6000 us budget)"}, {"hz_90",0,"display locked to 90 Hz"}, {"hz_60",0,"display locked to 60 Hz"},
                   {"waittrace_on",0,"WAITTRACE recording ON (default off)"}, {"rbtrace_on",0,"RBTRACE (render-thread trace + GPU timing) ON (default off)"}, {"vktrace_on",0,"per-pass attachment records, draw counts and the automatic VKTRACE dump ON (default off)"}, {"gpuhud_off",0,"GPU % for the dev HUD OFF"}, {"threaddump_on",0,"timed THREADDUMP at 20/45/90 s ON"}, {"gpuhud_est",0,"GPU % estimated from RBTRACE timing (not the Apple counter)"},
                   {"textrace_on",0,"TEXTRACE + UPLOADGAP ON (default off)"}, {"maxlod_",1,"sampler max-LOD cap (maxlod_0 = full-size level only; read at launch)"},
                   {"pcprof_on",0,"PC sampler ON"}, {"futex_off",0,"real futex OFF"}, {"audio_off",0,"audio OFF"}, {"auto_exit",0,"auto exit"},
@@ -1132,6 +1132,7 @@ jobs:
               { cfgReady();   /* nosplash is ON by default: seed it once. The "seeded" markers live in p2.cfg too (they used to be NSUserDefaults), so a fresh p2.cfg gets the defaults again */
                 if (!p2_cfg_has("seeded_nosplash")) { uiSet(@"nosplash", YES); p2_cfg_set("seeded_nosplash", 1); }
                 if (!p2_cfg_has("seeded_own_layout")) { uiSet(@"own_layout", YES); p2_cfg_set("seeded_own_layout", 1); }   /* own controls are ON by default */
+                if (!p2_cfg_has("seeded_ovl_hide")) { uiSet(@"ovl_hide", YES); p2_cfg_set("seeded_ovl_hide", 1); }   /* own_layout only empties the dev's touch-button vectors; the dev's joystick/buttons are DRAWN by its overlay pass, so hide that too (remove the ovl_hide line to bring it back; it stays off, the seed runs once) */
                 /* traces are opt-in in the loader itself (rbtrace_on, waittrace_on, textrace_on, vktrace_on): nothing to seed */ }
               self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
               gView = [[UITextView alloc] initWithFrame:CGRectZero];
