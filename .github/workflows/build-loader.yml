@@ -4428,6 +4428,20 @@ jobs:
               }
               return NO;
           }
+          static NSString *gP2GameFound, *gP2Cands;   /* diagnostics: where the deep search found prototype2engine.dll, and every Documents folder that was looked at */
+          static NSString *p2DeepFind(NSArray<NSString *> *roots) {   /* folder that holds prototype2engine.dll, searched up to 8 levels deep (bounded), or nil */
+              NSFileManager *fm = NSFileManager.defaultManager; int budget = 80000;
+              for (NSString *root in roots) {
+                  if (![fm fileExistsAtPath:root]) continue;
+                  NSDirectoryEnumerator *en = [fm enumeratorAtPath:root];
+                  for (NSString *rel in en) {
+                      if (--budget < 0) return nil;
+                      if (en.level > 8) { [en skipDescendants]; continue; }
+                      if ([rel.lastPathComponent caseInsensitiveCompare:@"prototype2engine.dll"] == NSOrderedSame) return [[root stringByAppendingPathComponent:rel] stringByDeletingLastPathComponent];
+                  }
+              }
+              return nil;
+          }
           static NSString *p2DocsDir(void) {
               static NSString *r; static dispatch_once_t once;
               dispatch_once(&once, ^{
@@ -4439,12 +4453,44 @@ jobs:
                   [c addObject:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents"]];
                   NSString *app = [std stringByAppendingPathComponent:@"Data/Application"];
                   for (NSString *u in [fm contentsOfDirectoryAtPath:app error:nil]) [c addObject:[[app stringByAppendingPathComponent:u] stringByAppendingPathComponent:@"Documents"]];
+                  gP2Cands = [c componentsJoinedByString:@"\n"];
                   NSString *pick = nil;
                   for (NSString *d in c) if (p2HasGame(d)) { pick = d; break; }
+                  if (!pick) {   /* not where the game looks: search deeper (the files may sit in an extra subfolder), then link the folder into Documents/Prototype2/game */
+                      NSMutableArray<NSString *> *deep = [NSMutableArray arrayWithArray:[c subarrayWithRange:NSMakeRange(1, c.count - 1)]]; [deep addObject:std];
+                      NSString *gd = p2DeepFind(deep);
+                      if (gd) {
+                          gP2GameFound = gd;
+                          NSString *root = nil; for (NSString *d in c) if ([gd hasPrefix:[d stringByAppendingString:@"/"]]) { root = d; break; }
+                          if (!root) root = std;
+                          NSString *pg = [root stringByAppendingPathComponent:@"Prototype2"], *game = [pg stringByAppendingPathComponent:@"game"];
+                          [fm createDirectoryAtPath:pg withIntermediateDirectories:YES attributes:nil error:nil];
+                          if (![gd isEqualToString:game]) {
+                              NSArray *ex = [fm contentsOfDirectoryAtPath:game error:nil]; if (ex && ex.count == 0) [fm removeItemAtPath:game error:nil];
+                              if (![fm fileExistsAtPath:game]) [fm createSymbolicLinkAtPath:game withDestinationPath:gd error:nil];
+                          }
+                          pick = root;
+                      }
+                  }
                   if (!pick) for (NSString *d in c) { BOOL isDir = NO; if ([fm fileExistsAtPath:[d stringByAppendingPathComponent:@"Prototype2"] isDirectory:&isDir] && isDir) { pick = d; break; } }
                   r = pick ?: std;
               });
               return r;
+          }
+          static NSString *p2GameDiag(void) {   /* shown in the "Game files not found" popup */
+              NSFileManager *fm = NSFileManager.defaultManager; NSString *d = p2DocsDir();
+              NSMutableString *s = [NSMutableString stringWithFormat:@"Documents used:\n%@\n", d];
+              NSString *g = [d stringByAppendingPathComponent:@"Prototype2/game"];
+              if (![fm fileExistsAtPath:g]) g = [d stringByAppendingPathComponent:@"Prototype2"];
+              [s appendFormat:@"Game folder checked:\n%@\n", g];
+              for (NSString *n in @[@"prototype2.exe", @"prototype2engine.dll", @"binkw32.dll"]) {
+                  NSString *p = [g stringByAppendingPathComponent:n];
+                  if ([fm fileExistsAtPath:p]) [s appendFormat:@"%@: %llu bytes%@\n", n, [[fm attributesOfItemAtPath:[p stringByResolvingSymlinksInPath] error:nil] fileSize], [n isEqualToString:@"prototype2engine.dll"] ? @" (expected 17336320)" : @""];
+                  else [s appendFormat:@"%@: MISSING\n", n];
+              }
+              if (gP2GameFound) [s appendFormat:@"Engine dll found in:\n%@\n", gP2GameFound];
+              [s appendFormat:@"Looked in:\n%@", gP2Cands ?: @""];
+              return s;
           }
           static void cfgReady(void) {
               static dispatch_once_t once;

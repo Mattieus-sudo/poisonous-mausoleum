@@ -53,9 +53,10 @@ jobs:
               NSFileManager *fm = NSFileManager.defaultManager;
               if ([fm fileExistsAtPath:[uiDocs() stringByAppendingPathComponent:@"game_folder.txt"]]) return YES;
               NSString *g = [uiDocs() stringByAppendingPathComponent:@"Prototype2/game"];
+              if (![fm fileExistsAtPath:[g stringByAppendingPathComponent:@"prototype2engine.dll"]]) g = [uiDocs() stringByAppendingPathComponent:@"Prototype2"];   /* the loader also accepts the files directly in Prototype2 */
               for (NSString *n in @[@"prototype2.exe", @"prototype2engine.dll", @"binkw32.dll"])
                   if (![fm fileExistsAtPath:[g stringByAppendingPathComponent:n]]) return NO;
-              return [[fm attributesOfItemAtPath:[g stringByAppendingPathComponent:@"prototype2engine.dll"] error:nil] fileSize] == 17336320ULL;
+              return [[fm attributesOfItemAtPath:[[g stringByAppendingPathComponent:@"prototype2engine.dll"] stringByResolvingSymlinksInPath] error:nil] fileSize] == 17336320ULL;
           }
 
           typedef NS_ENUM(NSInteger, SKind) { SKSwitch, SKMenu, SKLink, SKButton, SKInfo };
@@ -1045,7 +1046,7 @@ jobs:
           }
           - (void)playTapped {
               if (!self.started && !uiGameFilesOK()) {
-                  UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Game files not found" message:@"Game files not found or hashes don't match the expected version. Unpacked game files go in On My iPhone > Prototype 2 > Prototype2 > game, so that prototype2.exe, prototype2engine.dll, woi.rcf, etc. all land in /game/." preferredStyle:UIAlertControllerStyleAlert];
+                  UIAlertController *al = [UIAlertController alertControllerWithTitle:@"Game files not found" message:[@"Game files not found or hashes don't match the expected version. Unpacked game files go in On My iPhone > Prototype 2 > Prototype2 > game, so that prototype2.exe, prototype2engine.dll, woi.rcf, etc. all land in /game/.\n\n" stringByAppendingString:p2GameDiag()] preferredStyle:UIAlertControllerStyleAlert];
                   [al addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
                   [self presentViewController:al animated:YES completion:nil]; return;
               }
